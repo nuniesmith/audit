@@ -1,0 +1,139 @@
+# ============================================================================
+# DevFlow - Developer Workflow Management System
+# ============================================================================
+# A Rust-based workflow management tool for solo developers to track repos,
+# manage notes, generate tasks, and leverage LLM-powered code analysis.
+#
+# Features:
+# - GitHub repo tracking with cached directory trees
+# - Note-taking with tag-based categorization
+# - LLM-powered code analysis (Grok 4.1 API)
+# - RAG system for contextual insights
+# - File scoring and issue detection
+# - Next-action recommendations
+# ============================================================================
+
+[package]
+name = "devflow"
+version = "0.1.0"
+edition = "2021"
+authors = ["nuniesmith"]
+license = "MIT"
+description = "Developer workflow management system with LLM-powered code analysis"
+repository = "https://github.com/nuniesmith/audit"
+keywords = ["developer-tools", "workflow", "llm", "code-analysis", "productivity"]
+categories = ["development-tools", "command-line-utilities"]
+
+[dependencies]
+# ---------------------------------------------------------------------------
+# Web Framework
+# ---------------------------------------------------------------------------
+axum = { version = "0.7", features = ["tokio", "http2", "macros"] }
+tokio = { version = "1.35", features = ["full"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }
+
+# ---------------------------------------------------------------------------
+# Serialization
+# ---------------------------------------------------------------------------
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# ---------------------------------------------------------------------------
+# HTTP Client (for LLM API)
+# ---------------------------------------------------------------------------
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
+# ---------------------------------------------------------------------------
+# Git Operations
+# ---------------------------------------------------------------------------
+git2 = "0.18"
+ignore = "0.4"
+
+# ---------------------------------------------------------------------------
+# File System Operations
+# ---------------------------------------------------------------------------
+walkdir = "2.4"
+
+# ---------------------------------------------------------------------------
+# Regular Expressions
+# ---------------------------------------------------------------------------
+regex = "1.10"
+
+# ---------------------------------------------------------------------------
+# Error Handling
+# ---------------------------------------------------------------------------
+anyhow = "1.0"
+thiserror = "1.0"
+
+# ---------------------------------------------------------------------------
+# Logging & Tracing
+# ---------------------------------------------------------------------------
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+config = "0.14"
+dotenvy = "0.15"
+
+# ---------------------------------------------------------------------------
+# Time & Date
+# ---------------------------------------------------------------------------
+chrono = { version = "0.4", features = ["serde"] }
+
+# ---------------------------------------------------------------------------
+# Cryptography (for hashing)
+# ---------------------------------------------------------------------------
+sha2 = "0.10"
+
+# ---------------------------------------------------------------------------
+# Async Runtime
+# ---------------------------------------------------------------------------
+futures = "0.3"
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+clap = { version = "4.4", features = ["derive", "cargo"] }
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+uuid = { version = "1.6", features = ["v4", "serde"] }
+rand = "0.8"
+
+# ---------------------------------------------------------------------------
+# URL Parsing (for SSRF prevention)
+# ---------------------------------------------------------------------------
+url = "2.5"
+
+[dev-dependencies]
+tempfile = "3.8"
+
+# ---------------------------------------------------------------------------
+# Binaries
+# ---------------------------------------------------------------------------
+
+[[bin]]
+name = "devflow-server"
+path = "src/bin/server.rs"
+
+[[bin]]
+name = "devflow"
+path = "src/bin/cli.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 3

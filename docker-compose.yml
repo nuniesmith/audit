@@ -1,0 +1,66 @@
+services:
+  # ============================================================================
+  # DevFlow Web Server
+  # ============================================================================
+  devflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: devflow
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3000
+      - RUST_LOG=info,devflow=debug
+      - XAI_API_KEY=
+      - DATABASE_URL=postgresql://devflow:devflow@postgres:5432/devflow
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    depends_on:
+      - postgres
+    networks:
+      - devflow
+
+  # ============================================================================
+  # PostgreSQL Database (Future)
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: devflow-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=devflow
+      - POSTGRES_PASSWORD=devflow
+      - POSTGRES_DB=devflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - devflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Redis Cache (Optional, Future)
+  # ============================================================================
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: devflow-redis
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - devflow
+
+volumes:
+  postgres_data:
+  # redis_data:
+
+networks:
+  devflow:
+    driver: bridge

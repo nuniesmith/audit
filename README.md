@@ -1,929 +1,405 @@
-# Audit Service - Rust Implementation
+# DevFlow - Developer Workflow Management System
 
-> **✨ NEW FEATURES:**
-> - 🧠 **Claude Opus 4.5 Support**: Anthropic's most capable model for JANUS whitepaper conformity audits
-> - 📋 **JANUS Audit Command**: Deep analysis of neuromorphic trading system against whitepaper specs
-> - ✨ **Auto-Format**: Automatically format code across Rust, Kotlin, TypeScript, and Python
-> - 📝 **TODO Scanner**: Automatically find and prioritize all TODO/FIXME/HACK comments
-> - 🤖 **LLM File Rating**: AI-powered security and quality ratings for files
-> - 📋 **LLM Questionnaire**: Comprehensive file-by-file audits with standardized questions
-> - 🎯 **Enhanced CI Modes**: Standard and Full audit modes with customizable options
-> - 🔬 **Research Pipeline**: Transform research materials into structured implementation plans and tasks
-> - 🎨 **Neuromorphic Visualization**: Generate brain-inspired architecture diagrams with Mermaid
->
-> See [Quick Reference Card](./QUICK_REFERENCE_CARD.md), [Enhanced Features Guide](./ENHANCED_AUDIT_FEATURES.md), [Research Pipeline Guide](./docs/RESEARCH_PIPELINE.md), or [Visualization Guide](./docs/NEUROMORPHIC_VISUALIZATION.md)
+> 🚀 **A Rust-based workflow manager for solo developers to track repos, capture ideas, and leverage LLM-powered insights**
 
-A high-performance code audit service for static analysis and LLM-powered code review. Built with Rust and Axum, designed for CI/CD integration and API-only access.
+DevFlow helps you manage the entire development lifecycle from idea capture to production deployment. Built with Rust, powered by Grok 4.1 LLM, designed for developers who manage multiple GitHub repositories.
 
-> **⚠️ Architecture Update:** This service now runs in **API-only mode** with no web UI. Static audits run automatically in CI, and deep LLM audits are triggered manually from GitHub Actions.
+## 🎯 Core Features
 
-## 🎯 Features
+### 📝 Note & Thought Capture
+- Quick note input with tag-based categorization
+- Personal notes for random thoughts
+- Project-specific notes linked to repos
+- Forward notes to specific projects for future work
 
-### Core Capabilities
+### 🗂️ Repository Management
+- Track all your GitHub repositories
+- Cache directory trees and file contents
+- Monitor changes across repos
+- Standardize tooling and patterns
 
-- **✨ Auto-Format**: Multi-language code formatting with `cargo fmt`, `ktlint`, `prettier`, and `black`
-- **🏷️ Static Tag Detection**: Scan for custom audit annotations (`@audit-tag`, `@audit-todo`, `@audit-freeze`, etc.)
-- **📝 TODO Scanner**: Find all TODO/FIXME/HACK/XXX/NOTE comments with automatic priority detection
-- **🔍 Static Analysis**: Fast pattern-based analysis for Rust, Python, Kotlin, and infrastructure files
-- **🤖 Multi-Provider LLM**: Deep code analysis using **XAI Grok**, **Anthropic Claude**, or **Google Gemini**
-- **🧠 Claude Opus 4.5**: Anthropic's best model for high-stakes auditing and whitepaper conformity
-- **⭐ LLM File Rating**: Get security and importance ratings for individual files or batches
-- **📋 LLM Questionnaire**: Run standardized audits checking reachability, compliance, and completeness
-- **🔬 Research Pipeline**: Ingest papers, articles, notes and generate implementation plans with actionable tasks
-- **🎨 **Neuromorphic Visualization**: Generate Mermaid flowcharts mapping code to biological brain regions
-- **📋 Task Generation**: Automatically generate actionable tasks from findings
-- **🌐 REST API**: API-only server (no web UI) for programmatic access
-- **💻 CLI Tool**: Command-line interface for local audits and CI/CD integration
-- **📊 Multi-Format Output**: JSON, CSV, and human-readable text formats
-- **🔄 GitHub Actions**: Manual LLM audit workflows with standard/full modes
+### 🤖 LLM-Powered Analysis
+- Grok 4.1 API integration (2M context window)
+- Score files for quality, security, and complexity
+- Find issues and suggest improvements
+- Identify common patterns and shared logic
+- Generate actionable tasks from analysis
 
-### Analysis Types
+### 🎯 Solo Developer Workflow
+- **Research**: Validate and expand research areas
+- **Planning**: Break down complex features
+- **Prototype**: Track experimental code
+- **Production**: Monitor production-ready systems
+- **Next Actions**: Always know what to work on next
 
-#### Static Analysis (Fast Path)
-- Rust: `unwrap()`, `panic!()`, unsafe blocks, async safety
-- Python: bare `except`, `eval()`, SQL injection patterns
-- Docker: root user, `latest` tags, hardcoded secrets
-- Infrastructure: credential exposure, security misconfigurations
+### 💾 RAG System with Git-Friendly Storage
+- Vector embeddings for semantic code search
+- Store vector data as small files in git
+- Incremental updates (minimal daily churn)
+- Build contextual understanding of your codebase
 
-#### LLM Analysis (Deep Path)
-- Security vulnerability detection
-- Architecture quality assessment
-- Code complexity analysis
-- Deprecated code identification
-- Type safety recommendations
-
-#### JANUS Whitepaper Conformity (Claude Opus 4.5)
-- GAF transformation mathematics verification
-- LTN Łukasiewicz logic implementation check
-- Brain-region component mapping validation
-- Memory hierarchy conformity (hippocampus, SWR, neocortex)
-- Compliance constraint verification (wash sale, position limits)
-
-### Tag System
-
-Custom annotations for tracking code status:
-
-```rust
-// @audit-tag: new | old | experimental | deprecated
-// @audit-todo: Task description
-// @audit-freeze
-// @audit-review: Review notes
-// @audit-security: Security concern
-```
-
-Example usage:
-
-```rust
-// @audit-tag: experimental
-// @audit-security: Validate all user input before processing
-pub fn process_data(input: &str) -> Result<Data> {
-    // @audit-todo: Add input validation
-    Ok(Data::new(input))
-}
-
-// @audit-freeze
-const CRITICAL_CONSTANT: u64 = 42;
-```
-
-## 🚀 Quick Start
-
-### 0. Auto-Format Code (FREE, Instant)
-
-```bash
-cd src/audit
-# Check formatting without making changes
-cargo run --release --bin audit-cli -- format ../.. --check
-
-# Apply formatting fixes
-cargo run --release --bin audit-cli -- format ../..
-
-# Format specific languages only
-cargo run --release --bin audit-cli -- format ../.. -f rust -f kotlin
-```
-
-**What you get:**
-- Automatic formatting for Rust, Kotlin, TypeScript/JavaScript, and Python
-- Check mode to see what needs formatting (CI-friendly)
-- Fix mode to apply formatting changes
-- Runs in CI/CD to keep code consistent
-- JSON output for automation
-
-**Supported formatters:**
-- **Rust**: `cargo fmt` (rustfmt)
-- **Kotlin**: `ktlint`
-- **TypeScript/JavaScript**: `prettier`
-- **Python**: `black`
-
-### 1. Find All TODOs (FREE, Instant)
-
-```bash
-cd src/audit
-cargo run --release --bin audit-cli -- todo ../../src/janus
-```
-
-**What you get:**
-- All TODO, FIXME, HACK, XXX, NOTE comments
-- Automatic priority classification (High/Medium/Low)
-- Grouped by file and category
-- Export to JSON/CSV for tracking
-
-### 2. Visualize System Architecture (FREE, Instant)
-
-```bash
-cd src/audit
-cargo run --release --bin audit-cli -- visualize ../..
-```
-
-**What you get:**
-- Interactive Mermaid diagram of neuromorphic architecture
-- Maps code modules to biological brain regions (Sensory, Memory, Executive, Limbic, Action, Output, Meta)
-- Shows data flow pathways through the system
-- Perfect for documentation and onboarding
-- Export to `.mmd` file for embedding in docs
-
-### 2. Rate Files with AI (Paid, Fast)
-
-```bash
-# Set API key
-export XAI_API_KEY=your_key_here
-
-# Rate a critical file
-cargo run --release --bin audit-cli -- rate ../../src/janus/crates/cns/src/brain.rs --provider xai
-
-# Batch rate multiple files (faster)
-cargo run --release --bin audit-cli -- rate ../../src/janus/services --batch --provider xai
-```
-
-**What you get:**
-- Security rating per file
-- Importance level assessment
-- Detected issues with severity
-- Actionable suggestions
-
-### 3. Run Full Audit with Questionnaire (Paid, Comprehensive)
-
-```bash
-cargo run --release --bin audit-cli -- question ../../src/janus --provider xai --output audit.json
-```
-
-**What you get:**
-- File reachability analysis (find dead code)
-- Compliance issue detection
-- Incomplete code identification
-- Suggested audit tags
-- Improvement recommendations
-
-### 4. Test xAI Connection (2 minutes)
-
-```bash
-cd src/audit
-
-# Set your API key
-export XAI_API_KEY="xai-your-key-here"
-
-# Run the test suite
-./scripts/test-xai.sh
-```
-
-**Expected output:**
-```
-✅ API responding: OK
-✅ Response path correct (.output[0].content[0].text)
-✅ Content is valid JSON
-✅ Usage statistics present
-✅ All tests passed!
-```
-
-### Run Local Audit (3 minutes)
-
-```bash
-# Build the service
-cargo build --release
-
-# Test with a file
-export RUST_LOG=debug
-export AUDIT_DEBUG_DIR=./debug
-./target/release/audit-cli analyze --file src/scanner.rs --provider xai
-
-# Check cost
-cat debug/llm-response.json | jq '.usage'
-```
-
-### Trigger CI Audit (2 minutes)
-
-```bash
-# Quick audit (fast, ~$0.02)
-gh workflow run llm-audit.yml -f mode=quick -f llm_provider=xai
-
-# Standard audit (balanced, ~$0.06)
-gh workflow run llm-audit.yml -f mode=standard -f llm_provider=xai
-
-# Monitor and download
-gh run watch
-gh run download
-```
-
-### 📊 What You Get
-
-- **Cost Tracking:** Full breakdown of token usage and costs
-- **Caching:** 50% savings on repeat runs (automatic)
-- **Debug Output:** All responses saved for troubleshooting
-- **Multiple Formats:** Works with xAI, Google, and legacy APIs
-
-### 📚 Documentation
-
-- **Implementation Guide:** [docs/IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)
-- **Detailed Analysis:** [../docs/audit/XAI_INTEGRATION_IMPROVEMENTS.md](../docs/audit/XAI_INTEGRATION_IMPROVEMENTS.md)
-- **Troubleshooting:** [../docs/audit/XAI_TROUBLESHOOTING.md](../docs/audit/XAI_TROUBLESHOOTING.md)
-
----
+### 🏗️ Tech Stack Support
+Built to work with your stack:
+- **Languages**: Rust, Kotlin Multiplatform, JavaScript, TypeScript, Python
+- **Infrastructure**: Docker Compose, Nginx, Prometheus, Alertmanager, Grafana, Loki
+- **Databases**: PostgreSQL, Redis, QuestDB
+- **CI/CD**: GitHub Actions (test → build-push → deploy)
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Rust 1.92.0 or later
+- Rust 1.75+ (`rustup update`)
 - Git
-- Optional: API key for LLM analysis
-  - **XAI Grok**: Get from [console.x.ai](https://console.x.ai)
-  - **Google Gemini**: Get from [aistudio.google.com](https://aistudio.google.com)
+- XAI API Key (Grok 4.1)
+- Docker & Docker Compose (for deployment)
 
 ### Installation
 
 ```bash
-cd fks/src/audit
+# Clone the repo
+git clone https://github.com/your-username/devflow.git
+cd devflow
+
+# Build the project
 cargo build --release
+
+# Set up environment
+cp .env.example .env
+# Edit .env and add your XAI_API_KEY
 ```
 
 ### Environment Setup
 
 Create a `.env` file:
 
-```env
+```bash
+# XAI API Configuration (Grok 4.1)
+XAI_API_KEY=xai-your-api-key-here
+XAI_BASE_URL=https://api.x.ai/v1
+
 # Server Configuration
-AUDIT_HOST=0.0.0.0
-AUDIT_PORT=8080
+HOST=127.0.0.1
+PORT=3000
 
-# LLM Configuration
-LLM_ENABLED=true
-LLM_PROVIDER=xai          # Options: xai | google
-LLM_MODEL=grok-4-1-fast-reasoning       # or: gemini-2.0-flash-exp
-LLM_MAX_TOKENS=4096
-LLM_TEMPERATURE=0.3       # Lower = more focused
+# GitHub Integration
+GITHUB_TOKEN=ghp_your_token_here  # Optional, for private repos
 
-# API Keys (use one based on provider)
-XAI_API_KEY=xai-xxx       # For XAI Grok
-GOOGLE_API_KEY=AIza-xxx   # For Google Gemini
+# Database (future)
+DATABASE_URL=postgresql://user:pass@localhost:5432/devflow
 
-# Git Configuration
-GIT_WORKSPACE_DIR=./workspace
-GIT_DEFAULT_BRANCH=main
-GIT_SHALLOW_CLONE=true
-
-# Scanner Configuration
-SCANNER_MAX_FILE_SIZE=1000000
-SCANNER_INCLUDE_TESTS=true      # Include tests by default for comprehensive analysis
-
-# Storage Configuration
-STORAGE_REPORTS_DIR=./reports
-STORAGE_TASKS_DIR=./tasks
+# Logging
+RUST_LOG=info,devflow=debug
 ```
 
 ## 📖 Usage
 
-### 1. Static Audit (Automated in CI)
-
-Every push to `main`/`develop` automatically runs static analysis. Check the **Actions** tab on GitHub for results.
-
-### 2. LLM Audit (Manual Trigger)
-
-**Trigger deep AI-powered analysis from GitHub:**
-
-1. Go to **Actions** → **🤖 LLM Audit**
-2. Click **Run workflow**
-3. Choose provider: `xai` or `google`
-4. Configure depth (standard/deep)
-5. Includes all focus areas and test files by default
-6. Download artifacts when complete
-
-See [LLM_AUDIT_GUIDE.md](./LLM_AUDIT_GUIDE.md) for detailed instructions.
-
-### 3. API Server (For Custom Integration)
-
-Start the API-only server:
+### 1. Start the Server
 
 ```bash
-export XAI_API_KEY="xai-..."  # or GOOGLE_API_KEY
-export LLM_ENABLED="true"
-cargo run --bin audit-server
+# Run the web server
+cargo run --release --bin devflow-server
+
+# Server starts at http://localhost:3000
 ```
 
-Server runs on `http://localhost:8080` (API endpoints only, no web UI)
-
-#### API Endpoints
-
-##### Health Check
-```bash
-curl http://localhost:8080/health
-```
-
-##### Create Audit
-```bash
-curl -X POST http://localhost:8080/api/audit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repository": "https://github.com/user/repo",
-    "branch": "main",
-    "enable_llm": true,
-    "focus": [],
-    "include_tests": false
-  }'
-```
-
-##### Get Audit Report
-```bash
-curl http://localhost:8080/api/audit/{id}
-```
-
-##### Get Tasks
-```bash
-curl http://localhost:8080/api/audit/{id}/tasks
-```
-
-##### Clone Repository
-```bash
-curl -X POST http://localhost:8080/api/clone \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://github.com/user/repo",
-    "branch": "main"
-  }'
-```
-
-##### Scan Tags Only
-```bash
-curl -X POST http://localhost:8080/api/scan/tags \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": "/path/to/code"
-  }'
-```
-
-##### Static Analysis Only
-```bash
-curl -X POST http://localhost:8080/api/scan/static \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": "/path/to/code"
-  }'
-```
-
-##### Research Analysis (Content)
-```bash
-curl -X POST http://localhost:8080/api/research/analyze \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "# Research Topic\n\nYour research text here...",
-    "title": "research_topic",
-    "generate_tasks": true
-  }'
-```
-
-##### Research Analysis (File)
-```bash
-curl -X POST http://localhost:8080/api/research/file \
-  -H "Content-Type: application/json" \
-  -d '{
-    "file_path": "research/inbox/paper.md",
-    "generate_tasks": true
-  }'
-```
-
-##### Neuromorphic Visualization
-```bash
-curl -X POST http://localhost:8080/api/visualize/neuromorphic \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": "."
-  }'
-```
-
-##### Component Visualization
-```bash
-curl -X POST http://localhost:8080/api/visualize/component \
-  -H "Content-Type: application/json" \
-  -d '{
-    "path": ".",
-    "component": "src/execution"
-  }'
-```
-
-### CLI Tool
-
-The CLI provides standalone functionality for local and CI usage.
-
-#### Full Audit
+### 2. CLI Tool
 
 ```bash
-# Audit a local repository
-# Audit current directory (includes tests by default)
-cargo run --bin audit-cli -- audit /path/to/repo
+# Quick note capture
+devflow note add "Idea for new feature X" --tags idea,research
 
-# Audit with LLM analysis (includes tests by default)
-cargo run --bin audit-cli -- audit /path/to/repo --llm
+# Analyze a repository
+devflow repo analyze /path/to/repo --deep
 
-# Audit a remote repository
-cargo run --bin audit-cli -- audit https://github.com/user/repo --branch main
+# Score all files in a repo
+devflow repo score /path/to/repo --output json
 
-# Exclude tests if needed
-cargo run --bin audit-cli -- audit /path/to/repo --exclude-tests
+# Generate tasks from analysis
+devflow tasks generate /path/to/repo
 
-# Save report to file
-cargo run --bin audit-cli -- audit . --output report.json --format json
+# Find next actions
+devflow next --category prototype
+
+# List all tracked repos
+devflow repo list --status active
 ```
 
-#### Scan for Tags
+### 3. Web Interface
 
 ```bash
-# Scan current directory
-cargo run --bin audit-cli -- tags .
+# Open the web UI
+http://localhost:3000
 
-# Filter by tag type
-cargo run --bin audit-cli -- tags . --tag-type todo
-
-# Output as CSV
-cargo run --bin audit-cli -- tags . --format csv --output tags.csv
+# Features:
+# - Dashboard: Overview of all repos and tasks
+# - Notes: Create and organize notes/thoughts
+# - Repos: Browse cached directory trees
+# - Analysis: View LLM insights and scores
+# - Tasks: Manage generated tasks
 ```
 
-#### Static Analysis
-
-```bash
-# Run fast static analysis
-cargo run --bin audit-cli -- static .
-
-# Focus on specific areas
-cargo run --bin audit-cli -- static . --focus security --focus performance
-
-# Output as JSON
-cargo run --bin audit-cli -- static . --format json --output issues.json
-```
-
-#### Generate Tasks
-
-```bash
-# Generate tasks from tags and issues
-cargo run --bin audit-cli -- tasks .
-
-# Output as CSV for import to project management tools
-cargo run --bin audit-cli -- tasks . --format csv --output tasks.csv
-```
-
-#### Clone Repository
-
-```bash
-# Clone for analysis
-cargo run --bin audit-cli -- clone https://github.com/user/repo
-
-# Clone specific branch
-cargo run --bin audit-cli -- clone https://github.com/user/repo --branch develop --name my-repo
-```
-
-#### Show Statistics
-
-```bash
-# Display codebase statistics
-cargo run --bin audit-cli -- stats .
-```
-
-#### Research Pipeline
-
-Transform research materials into structured implementation plans:
-
-```bash
-# Analyze a research file and generate implementation plan
-cargo run --bin audit-cli -- research research/inbox/new_strategy.md
-
-# Generate tasks automatically from research
-cargo run --bin audit-cli -- research research/inbox/websocket_library.md --generate-tasks
-
-# Custom output directory
-cargo run --bin audit-cli -- research paper.md --output docs/strategies/
-
-# JSON output for programmatic processing
-cargo run --bin audit-cli -- research paper.md --format json
-```
-
-**What you get:**
-- Structured implementation plan with architecture integration
-- Technical requirements and dependencies
-- Step-by-step implementation guide
-- Optional: Actionable task list in JSON format
-- JANUS-aware analysis (Rust/Python/Kotlin components)
-
-**Workflow:**
-1. Save research material to `research/inbox/`
-2. Run analysis: `cargo run --bin audit-cli -- research research/inbox/file.md --generate-tasks`
-3. Review breakdown: `cat docs/research_breakdowns/file_PLAN.md`
-4. Review tasks: `cat docs/research_breakdowns/file_PLAN.tasks.json`
-
-See [Research Pipeline Guide](./docs/RESEARCH_PIPELINE.md) for detailed documentation.
-
-#### Neuromorphic Visualization
-
-Generate brain-inspired architecture diagrams:
-
-```bash
-# Generate full neuromorphic architecture map
-cargo run --bin audit-cli -- visualize .
-
-# Save to file for documentation
-cargo run --bin audit-cli -- visualize . -o brain_map.mmd
-
-# Visualize specific component
-cargo run --bin audit-cli -- visualize . --diagram-type component --component src/execution
-
-# JSON output for programmatic use
-cargo run --bin audit-cli -- visualize . --format json
-```
-
-**What you get:**
-- Mermaid flowchart mapping code to brain regions
-- Biological metaphor (Thalamus=Gating, Hippocampus=Memory, Basal Ganglia=Action Selection)
-- Visual data flow through Sensory → Memory → Executive → Limbic → Action → Output
-- Module detection summary with counts by region
-- Ready for embedding in GitHub/GitLab markdown or MkDocs
-
-**Workflow:**
-1. Run visualization: `cargo run --bin audit-cli -- visualize . -o docs/architecture.mmd`
-2. View at [mermaid.live](https://mermaid.live/) or embed in markdown
-3. Use for onboarding, presentations, and architecture reviews
-
-See [Neuromorphic Visualization Guide](./docs/NEUROMORPHIC_VISUALIZATION.md) for detailed documentation.
-
-## 🔧 CI/CD Integration
-
-### Automated Static Audits
-
-Static audits run automatically on every push via `.github/workflows/ci.yml`. No setup required!
-
-### Manual LLM Audits
-
-Deep AI-powered audits available via `.github/workflows/llm-audit.yml`:
-
-**Prerequisites:**
-1. Add GitHub repository secrets:
-   - `XAI_API_KEY` (for XAI Grok)
-   - `GOOGLE_API_KEY` (for Google Gemini)
-
-**Trigger:**
-1. Go to Actions → 🤖 LLM Audit
-2. Click "Run workflow"
-3. Select provider and options
-   - **Default:** All focus areas (security, logic, performance, compliance, architecture)
-   - **Default:** Includes test files (for comprehensive analysis)
-4. Download artifacts
-
-See [LLM_AUDIT_GUIDE.md](./LLM_AUDIT_GUIDE.md) for complete documentation.
-
-### Custom CI Integration
-
-```yaml
-- name: Run Code Audit
-  working-directory: src/audit
-  run: |
-    # Build CLI
-    cargo build --release --bin audit-cli
-    
-    # Run static analysis (fast, no LLM)
-    ./target/release/audit-cli static ../.. --format json --output audit-report.json
-    
-    # Generate tasks
-    ./target/release/audit-cli tasks ../.. --format csv --output tasks.csv
-    
-    # Optional: Fail on critical issues
-    if jq -e '.issues_by_severity.Critical > 0' audit-report.json; then
-      echo "❌ Critical issues found"
-      exit 1
-    fi
-
-- name: Upload Audit Report
-  uses: actions/upload-artifact@v4
-  with:
-    name: audit-report
-    path: |
-      src/audit/audit-report.json
-      src/audit/tasks.csv
-```
-
-### Pre-commit Hook
-
-Create `.git/hooks/pre-commit`:
-
-```bash
-#!/bin/bash
-echo "Running audit checks..."
-
-# Scan for new TODO tags
-audit-cli tags . --tag-type todo --format text
-
-# Run static analysis on changed files
-audit-cli static . --format text
-
-echo "✓ Audit checks complete"
-```
-
-## 📊 Output Formats
-
-### JSON
-Full structured data for programmatic processing:
-
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "repository": "/path/to/repo",
-  "branch": "main",
-  "created_at": "2025-01-01T00:00:00Z",
-  "summary": {
-    "total_files": 150,
-    "total_lines": 25000,
-    "total_issues": 42,
-    "total_tasks": 15,
-    "critical_files": 3
-  },
-  "files": [...],
-  "tasks": [...],
-  "issues_by_severity": {...}
-}
-```
-
-### CSV
-Tabular data for spreadsheets and import tools:
-
-```csv
-ID,Title,File,Line,Priority,Category,Tags
-TASK-A1B2C3D4,TODO: Add validation,src/main.rs,42,High,Rust,todo;from-tag
-```
-
-### Text
-Human-readable console output:
+## 🏗️ Project Structure
 
 ```
-📋 Audit Report: 550e8400-e29b-41d4-a716-446655440000
-═══════════════════════════════════════
-Repository:       /path/to/repo
-Branch:           main
-Created:          2025-01-01 00:00:00 UTC
-
-Summary:
-  Total Files:    150
-  Total Lines:    25000
-  Total Issues:   42
-  Total Tasks:    15
-  Critical Files: 3
-```
-
-## 🏗️ Architecture
-
-```
-audit/
+devflow/
 ├── src/
-│   ├── lib.rs              # Library exports
-│   ├── config.rs           # Configuration management
-│   ├── error.rs            # Error types
-│   ├── types.rs            # Core data types
-│   ├── tags.rs             # Tag scanner
-│   ├── tasks.rs            # Task generator
-│   ├── scanner.rs          # File system scanner
-│   ├── parser.rs           # Code parser (tree-sitter)
-│   ├── llm.rs              # LLM client (Grok)
-│   ├── git.rs              # Git operations
-│   ├── server.rs           # Axum web server
-│   └── bin/
-│       ├── server.rs       # Server binary
-│       └── cli.rs          # CLI binary
-├── Cargo.toml
-└── README.md
+│   ├── bin/
+│   │   ├── server.rs          # Web server entry point
+│   │   └── cli.rs             # CLI tool
+│   ├── api/                   # REST API handlers
+│   ├── notes/                 # Note-taking system
+│   ├── repos/                 # Repository management
+│   ├── llm/                   # LLM integration (Grok)
+│   ├── analysis/              # Code analysis
+│   ├── rag/                   # RAG system & vector storage
+│   ├── tasks/                 # Task generation
+│   └── lib.rs
+├── static/                    # Web UI assets
+├── config/                    # Configuration profiles
+├── data/                      # Local data storage
+│   ├── repos/                 # Cached repo data
+│   ├── vectors/               # Vector embeddings (git-tracked)
+│   └── notes/                 # Notes database
+├── docker/                    # Docker deployment files
+├── docs/                      # Documentation
+└── Cargo.toml
 ```
 
-## 🧪 Testing
+## 🐳 Docker Deployment
+
+### Home Server Setup
 
 ```bash
-# Run all tests
-cargo test
+# Build and run locally
+docker-compose up -d
 
-# Run with output
-cargo test -- --nocapture
-
-# Run specific test
-cargo test test_scan_rust_file
-
-# Test with coverage
-cargo tarpaulin --out Html
+# Access at http://localhost:3000
 ```
 
-## 🐳 Docker
-
-### Build Image
+### Production Deployment (Linode)
 
 ```bash
-docker build -t audit-service -f ../../docker/Dockerfile .
+# Deploy via Docker Compose
+docker-compose -f docker-compose.prod.yml up -d
+
+# Set up Nginx reverse proxy
+# Configure SSL with Let's Encrypt
+# Set up monitoring (Prometheus + Grafana)
 ```
 
-### Run Container
+## 💡 Workflow Examples
+
+### Capture an Idea
 
 ```bash
-docker run -d \
-  -p 8080:8080 \
-  -v $(pwd)/workspace:/app/workspace \
-  -v $(pwd)/reports:/app/reports \
-  -e XAI_API_KEY=your-key \
-  audit-service
+# Quick thought
+devflow note add "Maybe use WASM for the data processing pipeline" --tags idea,research
+
+# Project-specific
+devflow note add "Refactor auth system" --project myapp --tags refactor,prod
 ```
 
-### Docker Compose
+### Analyze a Repository
 
-```yaml
+```bash
+# Full analysis with Grok
+devflow repo analyze ~/github/myproject --cache --score
 
-services:
-  audit:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    ports:
-      - "8080:8080"
-    environment:
-      - AUDIT_PORT=8080
-      - XAI_API_KEY=${XAI_API_KEY}
-      - LLM_ENABLED=true
-    volumes:
-      - ./workspace:/app/workspace
-      - ./reports:/app/reports
-      - ./tasks:/app/tasks
+# Output:
+# 📊 Repository Analysis: myproject
+# ├── Files: 234
+# ├── Total Lines: 45,678
+# ├── Languages: Rust (65%), JavaScript (25%), Other (10%)
+# ├── Quality Score: 7.8/10
+# ├── Issues Found: 12 (3 high, 9 medium)
+# └── Cached: ✓
 ```
 
-## 🔒 Security
+### Find Next Actions
 
-### API Key Management
+```bash
+# Show me what to work on
+devflow next
 
-- Never hardcode API keys
-- Use environment variables
-- For production, use secrets management (HashiCorp Vault, AWS Secrets Manager)
+# Output:
+# 🎯 Next Actions (5 items):
+#
+# 1. [HIGH] Fix security issue in auth module (myapp)
+#    - File: src/auth/mod.rs:45
+#    - Issue: Potential SQL injection
+#
+# 2. [MEDIUM] Complete user API docs (api-server)
+#    - Missing: 12 endpoints
+#
+# 3. [LOW] Refactor common error handling (shared-lib)
+#    - Pattern found in 8 repos
+```
 
-### Permissions
+### Generate Tasks from Research
 
-The service needs:
-- Read access to repositories
-- Write access to workspace/reports/tasks directories
-- Network access for LLM API calls
+```bash
+# You've done research with Claude Opus 4.5
+# Now break it down into tasks with cheaper Grok
 
-## 📈 Performance
+devflow research import research-notes.md --generate-tasks
 
-### Benchmarks
+# Output:
+# ✅ Imported research document
+# 🔍 Analyzing with Grok 4.1...
+# 📋 Generated 14 tasks:
+#    - 5 research validation tasks
+#    - 6 implementation tasks
+#    - 3 testing tasks
+```
 
-On a typical Rust codebase (50k LOC, including tests):
+## 🔑 Core Concepts
 
-- **Static Analysis**: ~3 seconds
-- **Tag Scanning**: ~700ms
-- **LLM Analysis** (10 files + tests): ~45 seconds
-- **Task Generation**: ~100ms
+### Tags & Categories
 
-### Optimization Tips
+**Built-in Categories:**
+- `personal` - Random thoughts and ideas
+- `research` - Research topics and validation
+- `prototype` - Experimental features
+- `production` - Production systems
+- `infrastructure` - DevOps and tooling
+- `documentation` - Docs and guides
 
-- Use `--no-llm` for fast CI checks
-- Tests are included by default for better analysis (use `--exclude-tests` only if necessary)
-- Set `SCANNER_MAX_FILE_SIZE` appropriately
-- Use `GIT_SHALLOW_CLONE=true` for faster clones
+**Custom Tags:**
+- Any tag you want: `urgent`, `blocked`, `waiting`, `review`, etc.
 
-## 🛠️ Development
+### Repository Tracking
 
-### Adding New Static Checks
+DevFlow maintains a cached view of each repository:
+- Directory tree structure
+- File metadata (size, modified date, language)
+- Git status (branch, commits, changes)
+- Analysis results (scores, issues, patterns)
+- Historical trends
 
-1. Edit `src/scanner.rs`
-2. Add check method (e.g., `check_rust_issues`)
-3. Add to `static_analysis()` match statement
-4. Write tests
+### LLM Cost Management
 
-### Adding New Tag Types
+**Grok 4.1 Fast Reasoning** (cheap & efficient):
+- Input: ~$0.20 per 1M tokens
+- Output: ~$2.00 per 1M tokens
+- Perfect for: Routine analysis, task generation, scoring
 
-1. Edit `src/types.rs` - add to `AuditTagType` enum
-2. Edit `src/tags.rs` - add regex pattern
-3. Update documentation
+**Claude Opus 4.5** (expensive, for deep work):
+- Use for: Research validation, architecture review
+- DevFlow helps you: Split work for cheaper models
+- Manual trigger: Use when quality matters most
 
-### Adding Language Support
+### Vector Storage Strategy
 
-1. Edit `src/types.rs` - add to `Category` enum
-2. Edit `src/scanner.rs` - add analysis methods
-3. Edit `src/llm.rs` - add system prompt
-4. Add tree-sitter parser in `src/parser.rs`
+DevFlow stores embeddings as git-trackable files:
+- One file per code file: `data/vectors/repo-name/src/main.rs.vec`
+- JSON format for human readability
+- Small updates (only changed files)
+- Incremental daily commits
 
-## 🤝 Contributing
+## 🛠️ Configuration
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Run `cargo fmt` and `cargo clippy`
-5. Submit a pull request
+### Repository Profiles
 
-## 📝 License
+Create profiles for different types of projects:
 
-Part of the FKS Trading Platform. See main repository for license details.
+```toml
+# config/rust-service.toml
+[profile]
+name = "rust-service"
+description = "Standard Rust microservice"
 
-## 🆘 Support
+[structure]
+required_dirs = ["src", "tests", "docker"]
+required_files = ["Cargo.toml", "Dockerfile", "README.md"]
 
-- **Issues**: Use GitHub Issues
-- **Docs**: See `/docs/audit/` in main repository
-- **Examples**: Check `/examples/audit/`
+[quality]
+min_doc_coverage = 0.8
+min_test_coverage = 0.7
+max_complexity = 15
+
+[checks]
+enforce_clippy = true
+enforce_fmt = true
+require_ci = true
+```
+
+### Analysis Presets
+
+```toml
+# config/analysis-presets.toml
+[presets.quick]
+static_only = true
+skip_tests = true
+cost = "free"
+
+[presets.standard]
+llm_enabled = true
+model = "grok-4-1-fast-reasoning"
+max_cost = 0.50
+
+[presets.deep]
+llm_enabled = true
+model = "claude-opus-4-5"
+max_cost = 5.00
+```
+
+## 📊 Monitoring & Metrics
+
+Track your development workflow:
+- Notes captured per day/week
+- Repos analyzed
+- Tasks completed
+- LLM API costs
+- Code quality trends
 
 ## 🗺️ Roadmap
 
-- [x] API-only architecture (no web UI)
-- [x] Multi-provider LLM support (XAI + Google)
-- [x] GitHub Actions manual LLM audits
-- [x] Static audits in CI
-- [ ] Tree-sitter integration for deeper parsing
-- [ ] GitHub App for automatic PR audits
-- [ ] Support for more languages (Go, Java, C++)
-- [ ] Custom rule configuration
-- [ ] Incremental analysis (only changed files)
-- [ ] Auto-create GitHub Issues from tasks
-- [ ] Integration with Jira/Linear
-- [ ] Caching for repeated analyses
-- [ ] Distributed scanning for large codebases
+### Phase 1: Core Foundation (Current)
+- ✅ Basic note-taking
+- ✅ Repository caching
+- ✅ Grok 4.1 integration
+- ✅ File scoring
+- 🚧 Web UI
+- 🚧 Task generation
 
-## 📚 Related Documentation
+### Phase 2: Intelligence Layer
+- RAG system with semantic search
+- Pattern detection across repos
+- Automated task prioritization
+- Research validation pipeline
 
-### xAI Integration (Latest!)
+### Phase 3: Automation
+- Auto-generate GitHub issues
+- CI/CD integration for task tracking
+- Slack/Discord notifications
+- Automated research → task → PR flow
 
-- **[Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)** - Step-by-step setup and testing
-- **[Improvements Analysis](../docs/audit/XAI_INTEGRATION_IMPROVEMENTS.md)** - Full technical analysis
-- **[Completed Improvements](../docs/audit/IMPROVEMENTS_COMPLETED.md)** - What was fixed
-- **[xAI Notes](../docs/audit/notes_xai.md)** - API documentation and pricing
+### Phase 4: Collaboration
+- Team features (optional)
+- Shared knowledge base
+- Code review assistance
 
-### JANUS-Specific Documentation
+## 🤝 Philosophy
 
-- **[JANUS Context](./JANUS_CONTEXT.md)** - Comprehensive technical reference for LLM audits
-  - Project overview and architecture
-  - Mathematical specifications (GAF, LTN, PER, UMAP, Circuit Breakers)
-  - Brain-region mappings
-  - Performance requirements and benchmarks
-  - Audit checklists and common issues
+DevFlow is built for solo developers who:
+- Manage multiple GitHub repos
+- Want to standardize tooling and patterns
+- Need help prioritizing work
+- Want LLM assistance without breaking the bank
+- Prefer local/self-hosted tools
+- Value incremental, trackable data
 
-- **[Technical Paper Integration](./TECHNICAL_PAPER_INTEGRATION.md)** - Guide for using the JANUS paper
-  - Equation-to-code mapping
-  - Section-by-section audit guidance
-  - Verification patterns and examples
-  - Common error patterns with fixes
+## 📝 License
 
-- **[JANUS LLM System Prompt](./JANUS_LLM_SYSTEM_PROMPT.md)** - Enhanced AI audit prompt
-  - Complete JANUS context for LLMs
-  - Mathematical correctness guidelines
-  - Safety and compliance requirements
-  - Issue categorization system
+MIT OR Apache-2.0
 
-- **[JANUS Audit Quick Reference](./JANUS_AUDIT_QUICK_REF.md)** - One-page developer cheat sheet
-  - Critical formulas to verify
-  - Quick audit checklist
-  - Common issues and fixes
-  - Performance targets
+## 🆘 Support
 
-- **[Audit Update Summary](./AUDIT_UPDATE_SUMMARY.md)** - Documentation of JANUS integration
-  - All changes made in v2.0 update
-  - Usage impact and metrics
-  - Migration guide and best practices
+- GitHub Issues: https://github.com/your-username/devflow/issues
+- Docs: https://devflow.dev/docs
+- Discord: https://discord.gg/devflow
 
-### General Audit Documentation
+---
 
-- **[LLM Audit Guide](./LLM_AUDIT_GUIDE.md)** - Complete guide for AI-powered audits
-- **[Quick Start](./QUICK_START.md)** - Getting started guide
-- **[Quick Reference](./QUICK_REFERENCE.md)** - Command cheatsheet
-- [CI/CD Workflows](../../.github/workflows/) - GitHub Actions integration
-- [Static Audit CI Docs](../../docs/CI_STATIC_AUDIT.md) - Automated audit documentation
-
-### External Resources
-
-- [JANUS Technical Paper](https://github.com/nuniesmith/technical_papers/blob/main/project_janus/janus.tex) - Complete mathematical specifications (LaTeX)
-- [JANUS Project README](../../janus/README.md) - JANUS service overview
-- [CNS Architecture](../../janus/docs/CNS_ARCHITECTURE.md) - Central Nervous System monitoring
-
-## 🔑 Key Differences from Web UI Version
-
-This service is now **API-only**:
-
-✅ **What's Available:**
-- REST API endpoints for all audit functions
-- CLI tool for local and CI usage
-- Automated static audits in CI
-- Manual LLM audits via GitHub Actions
-- Multi-provider LLM support (XAI + Google)
-
-❌ **What's Removed:**
-- Web UI / HTML interface
-- Static file serving
-- Browser-based audit interface
-
-**Why?** API-only architecture is:
-- More secure (smaller attack surface)
-- Easier to deploy and scale
-- Better for automation and CI/CD
-- Cloud-native and containerizable
-# audit
+**Built with ❤️ in Rust for developers who ship**
