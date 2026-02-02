@@ -1,0 +1,86 @@
+# syntax=docker/dockerfile:1.4
+
+# ============================================================================
+# Build Stage - Compile RustAssistant Web UI
+# ============================================================================
+FROM rust:1.75-slim-bookworm AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /build
+
+# Copy dependency files first for better caching
+COPY Cargo.toml Cargo.lock ./
+
+# Create dummy main.rs to build dependencies
+RUN mkdir -p src/bin && \
+    echo "fn main() {}" > src/bin/webui_server.rs && \
+    echo "fn main() {}" > src/main.rs && \
+    mkdir -p templates/layouts templates/pages && \
+    touch templates/layouts/base.html templates/pages/dashboard.html
+
+# Build dependencies (this layer will be cached)
+RUN cargo build --release --bin webui-server
+
+# Remove dummy files
+RUN rm -rf src templates
+
+# Copy actual source code
+COPY src ./src
+COPY templates ./templates
+
+# Build the actual binary
+RUN cargo build --release --bin webui-server && \
+    strip /build/target/release/webui-server
+
+# ============================================================================
+# Runtime Stage - Minimal image with only what's needed
+# ============================================================================
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    wget \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN useradd -m -u 1000 -s /bin/bash rustassistant && \
+    mkdir -p /app/data /app/config /app/templates && \
+    chown -R rustassistant:rustassistant /app
+
+# Set working directory
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder --chown=rustassistant:rustassistant /build/target/release/webui-server /usr/local/bin/webui-server
+
+# Copy templates
+COPY --chown=rustassistant:rustassistant templates /app/templates
+
+# Switch to non-root user
+USER rustassistant
+
+# Expose web UI port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3001/ || exit 1
+
+# Set environment defaults
+ENV HOST=0.0.0.0 \
+    PORT=3001 \
+    DATABASE_PATH=/app/data/rustassistant.db \
+    CACHE_DB_PATH=/app/data/rustassistant_cache.db \
+    RUST_LOG=info
+
+# Run the web server
+CMD ["webui-server"]
