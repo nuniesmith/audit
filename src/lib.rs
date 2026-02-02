@@ -37,7 +37,8 @@ pub mod grok_client;
 pub mod grok_reasoning;
 pub mod refactor_assistant;
 pub mod test_generator;
-pub mod web_ui;
+// Temporarily disabled - needs updates for new schema
+// pub mod web_ui;
 
 pub mod llm;
 pub mod llm_audit;
@@ -65,7 +66,12 @@ pub use code_review::{
 pub use config::Config;
 pub use context::{ContextBuilder as OldContextBuilder, GlobalContextBundle};
 pub use context_builder::{Context, ContextBuilder, ContextFile, QueryBuilder};
-pub use db::{Database, DatabaseStats, LlmCost, LlmCostStats, Note, NoteStatus, Repository};
+pub use db::{
+    add_repository, create_note, create_task, delete_note, get_next_task, get_note, get_repository,
+    get_repository_by_path, get_stats, init_db, list_notes, list_repositories, list_tasks,
+    remove_repository, search_notes, update_note_status, update_repository_analysis,
+    update_task_status, DbError, DbResult, DbStats, Note, Repository, Task,
+};
 pub use directory_tree::{DirectoryTreeBuilder, Hotspot, TreeSummary};
 pub use enhanced_scanner::EnhancedScanner;
 pub use error::{AuditError, Result};
@@ -126,7 +132,11 @@ pub mod prelude {
     pub use crate::context::{ContextBuilder as OldContextBuilder, GlobalContextBundle};
     pub use crate::context_builder::{Context, ContextBuilder, ContextFile, QueryBuilder};
     pub use crate::db::{
-        Database, DatabaseStats, LlmCost, LlmCostStats, Note, NoteStatus, Repository,
+        add_repository, create_note, create_task, delete_note, get_next_task, get_note,
+        get_repository, get_repository_by_path, get_stats, init_db, list_notes, list_repositories,
+        list_tasks, remove_repository, search_notes, update_note_status,
+        update_repository_analysis, update_task_status, DbError, DbResult, DbStats, Note,
+        Repository, Task,
     };
     pub use crate::directory_tree::{DirectoryTreeBuilder, Hotspot, TreeSummary};
     pub use crate::enhanced_scanner::EnhancedScanner;

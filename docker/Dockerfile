@@ -1,5 +1,5 @@
 # ============================================================================
-# Multi-stage Dockerfile for Rustassistant
+# Multi-stage Dockerfile for Rustassistant Server
 # ============================================================================
 
 # ----------------------------------------------------------------------------
@@ -22,9 +22,10 @@ COPY Cargo.toml Cargo.lock ./
 # Copy source code
 COPY src ./src
 COPY static ./static
+COPY templates ./templates
 
 # Build release binary
-RUN cargo build --release --bin devflow-server
+RUN cargo build --release --bin rustassistant-server
 
 # ----------------------------------------------------------------------------
 # Stage 2: Runtime
@@ -41,26 +42,28 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
-COPY --from=builder /build/target/release/devflow-server /usr/local/bin/
+COPY --from=builder /build/target/release/rustassistant-server /usr/local/bin/rustassistant-server
 
 # Copy static assets and config
 COPY static ./static
 COPY config ./config
+COPY templates ./templates
 
 # Create data directory
 RUN mkdir -p /app/data
 
 # Set environment
-ENV RUST_LOG=info,devflow=debug \
+ENV RUST_LOG=info,rustassistant=debug \
     HOST=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    DATABASE_URL=sqlite:/app/data/rustassistant.db
 
 # Expose port
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+    CMD curl -f http://localhost:3000/health || exit 1
 
 # Run the server
-CMD ["devflow-server"]
+CMD ["rustassistant-server"]

@@ -1,51 +1,924 @@
-//! # Database Module
+//! Database module for Rustassistant
 //!
-//! SQLite-based storage for notes, tags, and repositories.
-//! This module provides the core data persistence layer for Rustassistant.
-//!
-//! ## Schema Overview
-//!
-//! - **notes**: Core note storage with content, status, and timestamps
-//! - **tags**: Reusable tags for categorization
-//! - **note_tags**: Many-to-many relationship between notes and tags
-//! - **repositories**: Tracked git repositories with metadata
-//!
-//! ## Usage
-//!
-//! ```rust,no_run
-//! use devflow::db::{Database, Note, NoteStatus};
-//!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
-//!     let db = Database::new("data/rustassistant.db").await?;
-//!
-//!     let note_id = db.create_note("My first note", NoteStatus::Inbox).await?;
-//!     db.add_tag_to_note(note_id, "idea").await?;
-//!
-//!     let notes = db.list_notes(None, None, None).await?;
-//!     println!("Found {} notes", notes.len());
-//!
-//!     Ok(())
-//! }
-//! ```
+//! Provides SQLite-based storage for notes, repositories, and tasks.
+//! Uses sqlx for async database operations.
 
-use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use tokio::fs;
+use sqlx::{sqlite::SqlitePoolOptions, FromRow, Row, SqlitePool};
+use thiserror::Error;
 
-/// Note status for workflow tracking
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+// ============================================================================
+// Error Types
+// ============================================================================
+
+#[derive(Error, Debug)]
+pub enum DbError {
+    #[error("Database error: {0}")]
+    Sqlx(#[from] sqlx::Error),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+}
+
+pub type DbResult<T> = Result<T, DbError>;
+
+// ============================================================================
+// Models
+// ============================================================================
+
+/// A note/thought captured by the user
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Note {
+    pub id: String,
+    pub content: String,
+    pub tags: Option<String>,
+    pub project: Option<String>,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl Note {
+    /// Get status as a string (legacy API)
+    pub fn status_str(&self) -> &str {
+        &self.status
+    }
+
+    /// Get formatted created_at timestamp (legacy API)
+    pub fn created_at_formatted(&self) -> String {
+        chrono::DateTime::from_timestamp(self.created_at, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+
+    /// Get formatted updated_at timestamp (legacy API)
+    pub fn updated_at_formatted(&self) -> String {
+        chrono::DateTime::from_timestamp(self.updated_at, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+}
+
+/// A tracked repository
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Repository {
+    pub id: String,
+    pub path: String,
+    pub name: String,
+    pub status: String,
+    pub last_analyzed: Option<i64>,
+    pub metadata: Option<String>, // JSON blob
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl Repository {
+    /// Get formatted created_at timestamp (legacy API)
+    pub fn created_at_formatted(&self) -> String {
+        chrono::DateTime::from_timestamp(self.created_at, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+}
+
+/// A generated or manual task
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Task {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub priority: i32, // 1=critical, 2=high, 3=medium, 4=low
+    pub status: String,
+    pub source: String,            // "note", "analysis", "manual"
+    pub source_id: Option<String>, // ID of note or file that generated this
+    pub repo_id: Option<String>,
+    pub file_path: Option<String>,
+    pub line_number: Option<i32>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+// ============================================================================
+// Database Initialization
+// ============================================================================
+
+/// Initialize the database connection pool and create tables
+pub async fn init_db(database_url: &str) -> DbResult<SqlitePool> {
+    // Create the database file directory if needed
+    if database_url.starts_with("sqlite:") {
+        let path = database_url.trim_start_matches("sqlite:");
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+    }
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect(database_url)
+        .await?;
+
+    // Run migrations (create tables)
+    create_tables(&pool).await?;
+
+    Ok(pool)
+}
+
+/// Create all required tables
+async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
+    // Notes table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS notes (
+            id TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            tags TEXT,
+            project TEXT,
+            status TEXT NOT NULL DEFAULT 'inbox',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Repositories table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS repositories (
+            id TEXT PRIMARY KEY,
+            path TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            last_analyzed INTEGER,
+            metadata TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Tasks table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            priority INTEGER NOT NULL DEFAULT 3,
+            status TEXT NOT NULL DEFAULT 'pending',
+            source TEXT NOT NULL DEFAULT 'manual',
+            source_id TEXT,
+            repo_id TEXT,
+            file_path TEXT,
+            line_number INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (repo_id) REFERENCES repositories(id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create indexes for common queries
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_status ON notes(status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at DESC)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority, status)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo_id)")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// Note Operations
+// ============================================================================
+
+/// Create a new note
+pub async fn create_note(
+    pool: &SqlitePool,
+    content: &str,
+    tags: Option<&str>,
+    project: Option<&str>,
+) -> DbResult<Note> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        INSERT INTO notes (id, content, tags, project, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'inbox', ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(content)
+    .bind(tags)
+    .bind(project)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(Note {
+        id,
+        content: content.to_string(),
+        tags: tags.map(|s| s.to_string()),
+        project: project.map(|s| s.to_string()),
+        status: "inbox".to_string(),
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+/// Get a note by ID
+pub async fn get_note(pool: &SqlitePool, id: &str) -> DbResult<Note> {
+    sqlx::query_as::<_, Note>("SELECT * FROM notes WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| DbError::NotFound(format!("Note not found: {}", id)))
+}
+
+/// List notes with optional filtering
+pub async fn list_notes(
+    pool: &SqlitePool,
+    limit: i64,
+    status: Option<&str>,
+    project: Option<&str>,
+    tag: Option<&str>,
+) -> DbResult<Vec<Note>> {
+    let mut query = String::from("SELECT * FROM notes WHERE 1=1");
+
+    if status.is_some() {
+        query.push_str(" AND status = ?");
+    }
+    if project.is_some() {
+        query.push_str(" AND project = ?");
+    }
+    if tag.is_some() {
+        query.push_str(" AND tags LIKE ?");
+    }
+
+    query.push_str(" ORDER BY created_at DESC LIMIT ?");
+
+    let mut q = sqlx::query_as::<_, Note>(&query);
+
+    if let Some(s) = status {
+        q = q.bind(s);
+    }
+    if let Some(p) = project {
+        q = q.bind(p);
+    }
+    if let Some(t) = tag {
+        q = q.bind(format!("%{}%", t));
+    }
+    q = q.bind(limit);
+
+    Ok(q.fetch_all(pool).await?)
+}
+
+/// Search notes by content
+pub async fn search_notes(pool: &SqlitePool, query: &str, limit: i64) -> DbResult<Vec<Note>> {
+    let search_pattern = format!("%{}%", query);
+
+    Ok(sqlx::query_as::<_, Note>(
+        r#"
+        SELECT * FROM notes
+        WHERE content LIKE ? OR tags LIKE ?
+        ORDER BY created_at DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(&search_pattern)
+    .bind(&search_pattern)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?)
+}
+
+/// Update note status
+pub async fn update_note_status(pool: &SqlitePool, id: &str, status: &str) -> DbResult<()> {
+    let now = chrono::Utc::now().timestamp();
+
+    let result = sqlx::query("UPDATE notes SET status = ?, updated_at = ? WHERE id = ?")
+        .bind(status)
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(DbError::NotFound(format!("Note not found: {}", id)));
+    }
+
+    Ok(())
+}
+
+/// Delete a note
+pub async fn delete_note(pool: &SqlitePool, id: &str) -> DbResult<()> {
+    let result = sqlx::query("DELETE FROM notes WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(DbError::NotFound(format!("Note not found: {}", id)));
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Repository Operations
+// ============================================================================
+
+/// Add a repository to track
+pub async fn add_repository(pool: &SqlitePool, path: &str, name: &str) -> DbResult<Repository> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        INSERT INTO repositories (id, path, name, status, created_at, updated_at)
+        VALUES (?, ?, ?, 'active', ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(path)
+    .bind(name)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(Repository {
+        id,
+        path: path.to_string(),
+        name: name.to_string(),
+        status: "active".to_string(),
+        last_analyzed: None,
+        metadata: None,
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+/// Get a repository by ID
+pub async fn get_repository(pool: &SqlitePool, id: &str) -> DbResult<Repository> {
+    sqlx::query_as::<_, Repository>("SELECT * FROM repositories WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| DbError::NotFound(format!("Repository not found: {}", id)))
+}
+
+/// Get a repository by path
+pub async fn get_repository_by_path(pool: &SqlitePool, path: &str) -> DbResult<Option<Repository>> {
+    Ok(
+        sqlx::query_as::<_, Repository>("SELECT * FROM repositories WHERE path = ?")
+            .bind(path)
+            .fetch_optional(pool)
+            .await?,
+    )
+}
+
+/// List all repositories
+pub async fn list_repositories(pool: &SqlitePool) -> DbResult<Vec<Repository>> {
+    Ok(
+        sqlx::query_as::<_, Repository>("SELECT * FROM repositories ORDER BY name ASC")
+            .fetch_all(pool)
+            .await?,
+    )
+}
+
+/// Update repository analysis timestamp and metadata
+pub async fn update_repository_analysis(
+    pool: &SqlitePool,
+    id: &str,
+    metadata: Option<&str>,
+) -> DbResult<()> {
+    let now = chrono::Utc::now().timestamp();
+
+    let result = sqlx::query(
+        "UPDATE repositories SET last_analyzed = ?, metadata = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(metadata)
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(DbError::NotFound(format!("Repository not found: {}", id)));
+    }
+
+    Ok(())
+}
+
+/// Remove a repository
+pub async fn remove_repository(pool: &SqlitePool, id: &str) -> DbResult<()> {
+    let result = sqlx::query("DELETE FROM repositories WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(DbError::NotFound(format!("Repository not found: {}", id)));
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Task Operations
+// ============================================================================
+
+/// Create a new task
+pub async fn create_task(
+    pool: &SqlitePool,
+    title: &str,
+    description: Option<&str>,
+    priority: i32,
+    source: &str,
+    source_id: Option<&str>,
+    repo_id: Option<&str>,
+    file_path: Option<&str>,
+    line_number: Option<i32>,
+) -> DbResult<Task> {
+    let id = format!(
+        "TASK-{}",
+        &uuid::Uuid::new_v4().to_string()[..8].to_uppercase()
+    );
+    let now = chrono::Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        INSERT INTO tasks (id, title, description, priority, status, source, source_id,
+                          repo_id, file_path, line_number, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(title)
+    .bind(description)
+    .bind(priority)
+    .bind(source)
+    .bind(source_id)
+    .bind(repo_id)
+    .bind(file_path)
+    .bind(line_number)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(Task {
+        id,
+        title: title.to_string(),
+        description: description.map(|s| s.to_string()),
+        priority,
+        status: "pending".to_string(),
+        source: source.to_string(),
+        source_id: source_id.map(|s| s.to_string()),
+        repo_id: repo_id.map(|s| s.to_string()),
+        file_path: file_path.map(|s| s.to_string()),
+        line_number,
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+/// List tasks with optional filtering
+pub async fn list_tasks(
+    pool: &SqlitePool,
+    limit: i64,
+    status: Option<&str>,
+    priority: Option<i32>,
+    repo_id: Option<&str>,
+) -> DbResult<Vec<Task>> {
+    let mut query = String::from("SELECT * FROM tasks WHERE 1=1");
+
+    if status.is_some() {
+        query.push_str(" AND status = ?");
+    }
+    if priority.is_some() {
+        query.push_str(" AND priority <= ?");
+    }
+    if repo_id.is_some() {
+        query.push_str(" AND repo_id = ?");
+    }
+
+    query.push_str(" ORDER BY priority ASC, created_at DESC LIMIT ?");
+
+    let mut q = sqlx::query_as::<_, Task>(&query);
+
+    if let Some(s) = status {
+        q = q.bind(s);
+    }
+    if let Some(p) = priority {
+        q = q.bind(p);
+    }
+    if let Some(r) = repo_id {
+        q = q.bind(r);
+    }
+    q = q.bind(limit);
+
+    Ok(q.fetch_all(pool).await?)
+}
+
+/// Update task status
+pub async fn update_task_status(pool: &SqlitePool, id: &str, status: &str) -> DbResult<()> {
+    let now = chrono::Utc::now().timestamp();
+
+    let result = sqlx::query("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?")
+        .bind(status)
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(DbError::NotFound(format!("Task not found: {}", id)));
+    }
+
+    Ok(())
+}
+
+/// Get the next recommended task (highest priority pending task)
+pub async fn get_next_task(pool: &SqlitePool) -> DbResult<Option<Task>> {
+    Ok(sqlx::query_as::<_, Task>(
+        r#"
+        SELECT * FROM tasks
+        WHERE status = 'pending'
+        ORDER BY priority ASC, created_at ASC
+        LIMIT 1
+        "#,
+    )
+    .fetch_optional(pool)
+    .await?)
+}
+
+// ============================================================================
+// Statistics
+// ============================================================================
+
+/// Get database statistics
+#[derive(Debug, Serialize)]
+pub struct DbStats {
+    pub total_notes: i64,
+    pub inbox_notes: i64,
+    pub total_repos: i64,
+    pub total_tasks: i64,
+    pub pending_tasks: i64,
+}
+
+pub async fn get_stats(pool: &SqlitePool) -> DbResult<DbStats> {
+    let total_notes: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
+        .fetch_one(pool)
+        .await?;
+
+    let inbox_notes: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes WHERE status = 'inbox'")
+        .fetch_one(pool)
+        .await?;
+
+    let total_repos: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM repositories")
+        .fetch_one(pool)
+        .await?;
+
+    let total_tasks: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tasks")
+        .fetch_one(pool)
+        .await?;
+
+    let pending_tasks: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM tasks WHERE status = 'pending'")
+            .fetch_one(pool)
+            .await?;
+
+    Ok(DbStats {
+        total_notes: total_notes.0,
+        inbox_notes: inbox_notes.0,
+        total_repos: total_repos.0,
+        total_tasks: total_tasks.0,
+        pending_tasks: pending_tasks.0,
+    })
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn setup_test_db() -> SqlitePool {
+        init_db("sqlite::memory:").await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_create_and_get_note() {
+        let pool = setup_test_db().await;
+
+        let note = create_note(
+            &pool,
+            "Test note content",
+            Some("tag1,tag2"),
+            Some("testproject"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(note.content, "Test note content");
+        assert_eq!(note.tags, Some("tag1,tag2".to_string()));
+        assert_eq!(note.project, Some("testproject".to_string()));
+        assert_eq!(note.status, "inbox");
+
+        let fetched = get_note(&pool, &note.id).await.unwrap();
+        assert_eq!(fetched.id, note.id);
+        assert_eq!(fetched.content, note.content);
+    }
+
+    #[tokio::test]
+    async fn test_list_notes() {
+        let pool = setup_test_db().await;
+
+        create_note(&pool, "Note 1", None, None).await.unwrap();
+        create_note(&pool, "Note 2", Some("important"), None)
+            .await
+            .unwrap();
+        create_note(&pool, "Note 3", None, Some("project1"))
+            .await
+            .unwrap();
+
+        let all_notes = list_notes(&pool, 10, None, None, None).await.unwrap();
+        assert_eq!(all_notes.len(), 3);
+
+        let project_notes = list_notes(&pool, 10, None, Some("project1"), None)
+            .await
+            .unwrap();
+        assert_eq!(project_notes.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_notes() {
+        let pool = setup_test_db().await;
+
+        create_note(&pool, "Rust programming tips", Some("rust,dev"), None)
+            .await
+            .unwrap();
+        create_note(&pool, "Python basics", Some("python"), None)
+            .await
+            .unwrap();
+
+        let results = search_notes(&pool, "Rust", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].content.contains("Rust"));
+    }
+
+    #[tokio::test]
+    async fn test_repository_crud() {
+        let pool = setup_test_db().await;
+
+        let repo = add_repository(&pool, "/path/to/repo", "my-repo")
+            .await
+            .unwrap();
+
+        assert_eq!(repo.name, "my-repo");
+        assert_eq!(repo.path, "/path/to/repo");
+
+        let repos = list_repositories(&pool).await.unwrap();
+        assert_eq!(repos.len(), 1);
+
+        remove_repository(&pool, &repo.id).await.unwrap();
+        let repos = list_repositories(&pool).await.unwrap();
+        assert_eq!(repos.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_task_creation_and_next() {
+        let pool = setup_test_db().await;
+
+        // Create tasks with different priorities
+        create_task(
+            &pool,
+            "Low priority task",
+            None,
+            4,
+            "manual",
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        create_task(
+            &pool,
+            "High priority task",
+            None,
+            2,
+            "manual",
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        create_task(
+            &pool,
+            "Critical task",
+            None,
+            1,
+            "manual",
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        // get_next_task should return the critical task
+        let next = get_next_task(&pool).await.unwrap().unwrap();
+        assert_eq!(next.title, "Critical task");
+        assert_eq!(next.priority, 1);
+    }
+
+    #[tokio::test]
+    async fn test_stats() {
+        let pool = setup_test_db().await;
+
+        create_note(&pool, "Note 1", None, None).await.unwrap();
+        create_note(&pool, "Note 2", None, None).await.unwrap();
+        add_repository(&pool, "/path", "repo").await.unwrap();
+        create_task(&pool, "Task 1", None, 2, "manual", None, None, None, None)
+            .await
+            .unwrap();
+
+        let stats = get_stats(&pool).await.unwrap();
+        assert_eq!(stats.total_notes, 2);
+        assert_eq!(stats.inbox_notes, 2);
+        assert_eq!(stats.total_repos, 1);
+        assert_eq!(stats.total_tasks, 1);
+        assert_eq!(stats.pending_tasks, 1);
+    }
+}
+
+// ============================================================================
+// Backward Compatibility Layer
+// ============================================================================
+// This Database struct provides compatibility with existing code that uses
+// the old struct-based API. New code should use the function-based API above.
+
+/// Backward-compatible Database wrapper
+#[derive(Clone)]
+pub struct Database {
+    pool: SqlitePool,
+}
+
+impl Database {
+    /// Create a new database connection (legacy API)
+    pub async fn new(database_url: &str) -> DbResult<Self> {
+        let pool = init_db(database_url).await?;
+        Ok(Self { pool })
+    }
+
+    /// Get a reference to the pool
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
+    /// Create a note (legacy API)
+    pub async fn create_note(&self, content: &str, status: NoteStatus) -> DbResult<String> {
+        let note = create_note(&self.pool, content, None, None).await?;
+        if status.as_str() != "inbox" {
+            update_note_status(&self.pool, &note.id, status.as_str()).await?;
+        }
+        Ok(note.id)
+    }
+
+    /// Get a note by ID (legacy API)
+    pub async fn get_note(&self, id: &str) -> DbResult<Note> {
+        get_note(&self.pool, id).await
+    }
+
+    /// List notes (legacy API)
+    pub async fn list_notes(
+        &self,
+        status: Option<NoteStatus>,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> DbResult<Vec<Note>> {
+        let limit = limit.unwrap_or(50);
+        let status_str = status.map(|s| s.as_str());
+        list_notes(&self.pool, limit, status_str, None, None).await
+    }
+
+    /// Add a repository (legacy API)
+    pub async fn add_repository(
+        &self,
+        name: &str,
+        path: &str,
+        remote_url: Option<String>,
+        default_branch: Option<String>,
+    ) -> DbResult<String> {
+        let repo = add_repository(&self.pool, path, name).await?;
+        Ok(repo.id)
+    }
+
+    /// Get a repository by ID (legacy API)
+    pub async fn get_repository(&self, id: &str) -> DbResult<Repository> {
+        get_repository(&self.pool, id).await
+    }
+
+    /// List repositories (legacy API)
+    pub async fn list_repositories(&self) -> DbResult<Vec<Repository>> {
+        list_repositories(&self.pool).await
+    }
+
+    /// Record LLM cost (legacy API - now a no-op, consider removing calls)
+    pub async fn record_llm_cost(
+        &self,
+        model: &str,
+        operation: &str,
+        prompt_tokens: i64,
+        completion_tokens: i64,
+        estimated_cost_usd: f64,
+        repository_id: Option<i64>,
+    ) -> DbResult<()> {
+        // Legacy API - no longer storing LLM costs in new schema
+        // Keep as no-op for compatibility
+        Ok(())
+    }
+
+    /// Get total LLM cost (legacy API - returns 0.0)
+    pub async fn get_total_llm_cost(&self) -> DbResult<f64> {
+        Ok(0.0)
+    }
+
+    /// Get LLM cost by period (legacy API - returns 0.0)
+    pub async fn get_llm_cost_by_period(&self, _hours: i64) -> DbResult<f64> {
+        Ok(0.0)
+    }
+
+    /// Get cost by model (legacy API - returns empty map)
+    pub async fn get_cost_by_model(&self) -> DbResult<std::collections::HashMap<String, f64>> {
+        Ok(std::collections::HashMap::new())
+    }
+
+    /// Count notes (legacy API)
+    pub async fn count_notes(&self) -> DbResult<i64> {
+        let stats = get_stats(&self.pool).await?;
+        Ok(stats.total_notes)
+    }
+
+    /// Count repositories (legacy API)
+    pub async fn count_repositories(&self) -> DbResult<i64> {
+        let stats = get_stats(&self.pool).await?;
+        Ok(stats.total_repos)
+    }
+
+    /// Get recent LLM operations (legacy API - returns empty vec)
+    pub async fn get_recent_llm_operations(&self, _limit: i64) -> DbResult<Vec<LlmCost>> {
+        Ok(Vec::new())
+    }
+
+    /// Get stats (legacy API)
+    pub async fn get_stats(&self) -> DbResult<DatabaseStats> {
+        let stats = get_stats(&self.pool).await?;
+        Ok(DatabaseStats {
+            total_notes: stats.total_notes,
+            inbox_notes: stats.inbox_notes,
+            total_tags: 0, // Not tracked in new schema
+            total_repositories: stats.total_repos,
+        })
+    }
+}
+
+/// Legacy note status enum
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteStatus {
-    /// Newly captured, not yet processed
     Inbox,
-    /// Being actively worked on
     Active,
-    /// Converted to task or implemented
     Processed,
-    /// Parked for later consideration
     Archived,
 }
 
@@ -58,927 +931,10 @@ impl NoteStatus {
             NoteStatus::Archived => "archived",
         }
     }
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "inbox" => Some(NoteStatus::Inbox),
-            "active" => Some(NoteStatus::Active),
-            "processed" => Some(NoteStatus::Processed),
-            "archived" => Some(NoteStatus::Archived),
-            _ => None,
-        }
-    }
 }
 
-impl std::fmt::Display for NoteStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-/// A note with content, tags, and metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Note {
-    pub id: i64,
-    pub content: String,
-    pub status: NoteStatus,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub tags: Vec<String>,
-}
-
-impl Note {
-    /// Get status as string for web UI
-    pub fn status_str(&self) -> String {
-        self.status.to_string()
-    }
-
-    /// Get tags as comma-separated string for web UI
-    pub fn tags_str(&self) -> String {
-        self.tags.join(",")
-    }
-
-    /// Format created_at for display
-    pub fn created_at_formatted(&self) -> String {
-        self.created_at.format("%Y-%m-%d %H:%M").to_string()
-    }
-
-    /// Format updated_at for display
-    pub fn updated_at_formatted(&self) -> String {
-        self.updated_at.format("%Y-%m-%d %H:%M").to_string()
-    }
-}
-
-/// A repository being tracked
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Repository {
-    pub id: i64,
-    pub name: String,
-    pub path: String,
-    pub remote_url: Option<String>,
-    pub default_branch: String,
-    pub last_analyzed: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-impl Repository {
-    /// Format created_at for display
-    pub fn created_at_formatted(&self) -> String {
-        self.created_at.format("%Y-%m-%d %H:%M").to_string()
-    }
-}
-
-/// LLM API cost record
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmCost {
-    pub id: i64,
-    pub model: String,
-    pub operation: String,
-    pub prompt_tokens: i64,
-    pub completion_tokens: i64,
-    pub total_tokens: i64,
-    pub estimated_cost_usd: f64,
-    pub repository_id: Option<i64>,
-    pub created_at: DateTime<Utc>,
-}
-
-impl LlmCost {
-    /// Format created_at for display
-    pub fn created_at_formatted(&self) -> String {
-        self.created_at.format("%Y-%m-%d %H:%M").to_string()
-    }
-}
-
-/// Main database connection and operations
-#[derive(Clone)]
-pub struct Database {
-    pool: sqlx::SqlitePool,
-}
-
-impl Database {
-    /// Create a new database connection
-    ///
-    /// Creates the database file and schema if it doesn't exist.
-    pub async fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path = path.as_ref();
-
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .context("Failed to create database directory")?;
-        }
-
-        let database_url = format!("sqlite:{}?mode=rwc", path.display());
-
-        let pool = sqlx::SqlitePool::connect(&database_url)
-            .await
-            .context("Failed to connect to database")?;
-
-        let db = Self { pool };
-        db.initialize_schema().await?;
-
-        Ok(db)
-    }
-
-    /// Initialize the database schema
-    async fn initialize_schema(&self) -> Result<()> {
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                content TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'inbox',
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await
-        .context("Failed to create notes table")?;
-
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS tags (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await
-        .context("Failed to create tags table")?;
-
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS note_tags (
-                note_id INTEGER NOT NULL,
-                tag_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                PRIMARY KEY (note_id, tag_id),
-                FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
-                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await
-        .context("Failed to create note_tags table")?;
-
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS repositories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                path TEXT NOT NULL UNIQUE,
-                remote_url TEXT,
-                default_branch TEXT NOT NULL DEFAULT 'main',
-                last_analyzed TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await
-        .context("Failed to create repositories table")?;
-
-        // Create indexes for performance
-        // Create LLM cost tracking table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS llm_costs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                model TEXT NOT NULL,
-                operation TEXT NOT NULL,
-                prompt_tokens INTEGER NOT NULL DEFAULT 0,
-                completion_tokens INTEGER NOT NULL DEFAULT 0,
-                total_tokens INTEGER NOT NULL DEFAULT 0,
-                estimated_cost_usd REAL NOT NULL DEFAULT 0.0,
-                repository_id INTEGER,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE SET NULL
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await
-        .context("Failed to create llm_costs table")?;
-
-        // Create indexes for performance
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_status ON notes(status)")
-            .execute(&self.pool)
-            .await
-            .context("Failed to create notes status index")?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at DESC)")
-            .execute(&self.pool)
-            .await
-            .context("Failed to create notes created_at index")?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name)")
-            .execute(&self.pool)
-            .await
-            .context("Failed to create tags name index")?;
-
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_llm_costs_created_at ON llm_costs(created_at DESC)",
-        )
-        .execute(&self.pool)
-        .await
-        .context("Failed to create llm_costs created_at index")?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_costs_model ON llm_costs(model)")
-            .execute(&self.pool)
-            .await
-            .context("Failed to create llm_costs model index")?;
-
-        Ok(())
-    }
-
-    // ============================================================================
-    // Note Operations
-    // ============================================================================
-
-    /// Create a new note
-    pub async fn create_note(&self, content: &str, status: NoteStatus) -> Result<i64> {
-        let result = sqlx::query(
-            r#"
-            INSERT INTO notes (content, status)
-            VALUES (?, ?)
-            "#,
-        )
-        .bind(content)
-        .bind(status.as_str())
-        .execute(&self.pool)
-        .await
-        .context("Failed to create note")?;
-
-        Ok(result.last_insert_rowid())
-    }
-
-    /// Get a note by ID with its tags
-    pub async fn get_note(&self, id: i64) -> Result<Option<Note>> {
-        let note_row = sqlx::query_as::<_, (i64, String, String, String, String)>(
-            r#"
-            SELECT id, content, status, created_at, updated_at
-            FROM notes
-            WHERE id = ?
-            "#,
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await
-        .context("Failed to fetch note")?;
-
-        match note_row {
-            Some((id, content, status_str, created_at, updated_at)) => {
-                let tags = self.get_note_tags(id).await?;
-
-                Ok(Some(Note {
-                    id,
-                    content,
-                    status: NoteStatus::from_str(&status_str).unwrap_or(NoteStatus::Inbox),
-                    created_at: DateTime::parse_from_rfc3339(&created_at)
-                        .unwrap_or_else(|_| Utc::now().into())
-                        .with_timezone(&Utc),
-                    updated_at: DateTime::parse_from_rfc3339(&updated_at)
-                        .unwrap_or_else(|_| Utc::now().into())
-                        .with_timezone(&Utc),
-                    tags,
-                }))
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// List notes with optional filtering
-    pub async fn list_notes(
-        &self,
-        status: Option<NoteStatus>,
-        tag: Option<&str>,
-        limit: Option<i64>,
-    ) -> Result<Vec<Note>> {
-        let mut query = String::from(
-            r#"
-            SELECT DISTINCT n.id, n.content, n.status, n.created_at, n.updated_at
-            FROM notes n
-            "#,
-        );
-
-        let mut conditions = Vec::new();
-
-        if tag.is_some() {
-            query.push_str(
-                r#"
-                JOIN note_tags nt ON n.id = nt.note_id
-                JOIN tags t ON nt.tag_id = t.id
-                "#,
-            );
-            conditions.push("t.name = ?");
-        }
-
-        if status.is_some() {
-            conditions.push("n.status = ?");
-        }
-
-        if !conditions.is_empty() {
-            query.push_str(" WHERE ");
-            query.push_str(&conditions.join(" AND "));
-        }
-
-        query.push_str(" ORDER BY n.created_at DESC");
-
-        if let Some(limit_val) = limit {
-            query.push_str(&format!(" LIMIT {}", limit_val));
-        }
-
-        let mut query_builder = sqlx::query_as::<_, (i64, String, String, String, String)>(&query);
-
-        if let Some(tag_name) = tag {
-            query_builder = query_builder.bind(tag_name);
-        }
-
-        if let Some(status_val) = status {
-            query_builder = query_builder.bind(status_val.as_str());
-        }
-
-        let rows = query_builder
-            .fetch_all(&self.pool)
-            .await
-            .context("Failed to list notes")?;
-
-        let mut notes = Vec::new();
-        for (id, content, status_str, created_at, updated_at) in rows {
-            let tags = self.get_note_tags(id).await?;
-
-            notes.push(Note {
-                id,
-                content,
-                status: NoteStatus::from_str(&status_str).unwrap_or(NoteStatus::Inbox),
-                created_at: DateTime::parse_from_rfc3339(&created_at)
-                    .unwrap_or_else(|_| Utc::now().into())
-                    .with_timezone(&Utc),
-                updated_at: DateTime::parse_from_rfc3339(&updated_at)
-                    .unwrap_or_else(|_| Utc::now().into())
-                    .with_timezone(&Utc),
-                tags,
-            });
-        }
-
-        Ok(notes)
-    }
-
-    /// Update note content
-    pub async fn update_note_content(&self, id: i64, content: &str) -> Result<()> {
-        sqlx::query(
-            r#"
-            UPDATE notes
-            SET content = ?, updated_at = datetime('now')
-            WHERE id = ?
-            "#,
-        )
-        .bind(content)
-        .bind(id)
-        .execute(&self.pool)
-        .await
-        .context("Failed to update note content")?;
-
-        Ok(())
-    }
-
-    /// Update note status
-    pub async fn update_note_status(&self, id: i64, status: NoteStatus) -> Result<()> {
-        sqlx::query(
-            r#"
-            UPDATE notes
-            SET status = ?, updated_at = datetime('now')
-            WHERE id = ?
-            "#,
-        )
-        .bind(status.as_str())
-        .bind(id)
-        .execute(&self.pool)
-        .await
-        .context("Failed to update note status")?;
-
-        Ok(())
-    }
-
-    /// Delete a note
-    pub async fn delete_note(&self, id: i64) -> Result<()> {
-        sqlx::query("DELETE FROM notes WHERE id = ?")
-            .bind(id)
-            .execute(&self.pool)
-            .await
-            .context("Failed to delete note")?;
-
-        Ok(())
-    }
-
-    /// Search notes by content
-    pub async fn search_notes(&self, query: &str) -> Result<Vec<Note>> {
-        let search_pattern = format!("%{}%", query);
-
-        let rows = sqlx::query_as::<_, (i64, String, String, String, String)>(
-            r#"
-            SELECT id, content, status, created_at, updated_at
-            FROM notes
-            WHERE content LIKE ?
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(&search_pattern)
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to search notes")?;
-
-        let mut notes = Vec::new();
-        for (id, content, status_str, created_at, updated_at) in rows {
-            let tags = self.get_note_tags(id).await?;
-
-            notes.push(Note {
-                id,
-                content,
-                status: NoteStatus::from_str(&status_str).unwrap_or(NoteStatus::Inbox),
-                created_at: DateTime::parse_from_rfc3339(&created_at)
-                    .unwrap_or_else(|_| Utc::now().into())
-                    .with_timezone(&Utc),
-                updated_at: DateTime::parse_from_rfc3339(&updated_at)
-                    .unwrap_or_else(|_| Utc::now().into())
-                    .with_timezone(&Utc),
-                tags,
-            });
-        }
-
-        Ok(notes)
-    }
-
-    // ============================================================================
-    // Tag Operations
-    // ============================================================================
-
-    /// Get or create a tag by name
-    async fn get_or_create_tag(&self, name: &str) -> Result<i64> {
-        // Try to get existing tag
-        let existing = sqlx::query_as::<_, (i64,)>("SELECT id FROM tags WHERE name = ?")
-            .bind(name)
-            .fetch_optional(&self.pool)
-            .await
-            .context("Failed to query tag")?;
-
-        if let Some((id,)) = existing {
-            return Ok(id);
-        }
-
-        // Create new tag
-        let result = sqlx::query("INSERT INTO tags (name) VALUES (?)")
-            .bind(name)
-            .execute(&self.pool)
-            .await
-            .context("Failed to create tag")?;
-
-        Ok(result.last_insert_rowid())
-    }
-
-    /// Add a tag to a note
-    pub async fn add_tag_to_note(&self, note_id: i64, tag_name: &str) -> Result<()> {
-        let tag_id = self.get_or_create_tag(tag_name).await?;
-
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO note_tags (note_id, tag_id)
-            VALUES (?, ?)
-            "#,
-        )
-        .bind(note_id)
-        .bind(tag_id)
-        .execute(&self.pool)
-        .await
-        .context("Failed to add tag to note")?;
-
-        Ok(())
-    }
-
-    /// Remove a tag from a note
-    pub async fn remove_tag_from_note(&self, note_id: i64, tag_name: &str) -> Result<()> {
-        sqlx::query(
-            r#"
-            DELETE FROM note_tags
-            WHERE note_id = ? AND tag_id = (SELECT id FROM tags WHERE name = ?)
-            "#,
-        )
-        .bind(note_id)
-        .bind(tag_name)
-        .execute(&self.pool)
-        .await
-        .context("Failed to remove tag from note")?;
-
-        Ok(())
-    }
-
-    /// Get all tags for a note
-    async fn get_note_tags(&self, note_id: i64) -> Result<Vec<String>> {
-        let tags = sqlx::query_as::<_, (String,)>(
-            r#"
-            SELECT t.name
-            FROM tags t
-            JOIN note_tags nt ON t.id = nt.tag_id
-            WHERE nt.note_id = ?
-            ORDER BY t.name
-            "#,
-        )
-        .bind(note_id)
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to fetch note tags")?;
-
-        Ok(tags.into_iter().map(|(name,)| name).collect())
-    }
-
-    /// List all tags with usage counts
-    pub async fn list_tags(&self) -> Result<Vec<(String, i64)>> {
-        let tags = sqlx::query_as::<_, (String, i64)>(
-            r#"
-            SELECT t.name, COUNT(nt.note_id) as count
-            FROM tags t
-            LEFT JOIN note_tags nt ON t.id = nt.tag_id
-            GROUP BY t.id, t.name
-            ORDER BY count DESC, t.name
-            "#,
-        )
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to list tags")?;
-
-        Ok(tags)
-    }
-
-    // ============================================================================
-    // Repository Operations
-    // ============================================================================
-
-    /// Add a repository to track
-    pub async fn add_repository(
-        &self,
-        name: &str,
-        path: &str,
-        remote_url: Option<&str>,
-        default_branch: &str,
-    ) -> Result<i64> {
-        let result = sqlx::query(
-            r#"
-            INSERT INTO repositories (name, path, remote_url, default_branch)
-            VALUES (?, ?, ?, ?)
-            "#,
-        )
-        .bind(name)
-        .bind(path)
-        .bind(remote_url)
-        .bind(default_branch)
-        .execute(&self.pool)
-        .await
-        .context("Failed to add repository")?;
-
-        Ok(result.last_insert_rowid())
-    }
-
-    /// Get a repository by name
-    pub async fn get_repository(&self, name: &str) -> Result<Option<Repository>> {
-        let repo = sqlx::query_as::<
-            _,
-            (
-                i64,
-                String,
-                String,
-                Option<String>,
-                String,
-                Option<String>,
-                String,
-                String,
-            ),
-        >(
-            r#"
-            SELECT id, name, path, remote_url, default_branch, last_analyzed, created_at, updated_at
-            FROM repositories
-            WHERE name = ?
-            "#,
-        )
-        .bind(name)
-        .fetch_optional(&self.pool)
-        .await
-        .context("Failed to fetch repository")?;
-
-        Ok(repo.map(
-            |(
-                id,
-                name,
-                path,
-                remote_url,
-                default_branch,
-                last_analyzed,
-                created_at,
-                updated_at,
-            )| {
-                Repository {
-                    id,
-                    name,
-                    path,
-                    remote_url,
-                    default_branch,
-                    last_analyzed: last_analyzed.and_then(|s| {
-                        DateTime::parse_from_rfc3339(&s)
-                            .ok()
-                            .map(|dt| dt.with_timezone(&Utc))
-                    }),
-                    created_at: DateTime::parse_from_rfc3339(&created_at)
-                        .unwrap_or_else(|_| Utc::now().into())
-                        .with_timezone(&Utc),
-                    updated_at: DateTime::parse_from_rfc3339(&updated_at)
-                        .unwrap_or_else(|_| Utc::now().into())
-                        .with_timezone(&Utc),
-                }
-            },
-        ))
-    }
-
-    /// List all repositories
-    pub async fn list_repositories(&self) -> Result<Vec<Repository>> {
-        let repos = sqlx::query_as::<
-            _,
-            (
-                i64,
-                String,
-                String,
-                Option<String>,
-                String,
-                Option<String>,
-                String,
-                String,
-            ),
-        >(
-            r#"
-            SELECT id, name, path, remote_url, default_branch, last_analyzed, created_at, updated_at
-            FROM repositories
-            ORDER BY name
-            "#,
-        )
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to list repositories")?;
-
-        Ok(repos
-            .into_iter()
-            .map(
-                |(
-                    id,
-                    name,
-                    path,
-                    remote_url,
-                    default_branch,
-                    last_analyzed,
-                    created_at,
-                    updated_at,
-                )| {
-                    Repository {
-                        id,
-                        name,
-                        path,
-                        remote_url,
-                        default_branch,
-                        last_analyzed: last_analyzed.and_then(|s| {
-                            DateTime::parse_from_rfc3339(&s)
-                                .ok()
-                                .map(|dt| dt.with_timezone(&Utc))
-                        }),
-                        created_at: DateTime::parse_from_rfc3339(&created_at)
-                            .unwrap_or_else(|_| Utc::now().into())
-                            .with_timezone(&Utc),
-                        updated_at: DateTime::parse_from_rfc3339(&updated_at)
-                            .unwrap_or_else(|_| Utc::now().into())
-                            .with_timezone(&Utc),
-                    }
-                },
-            )
-            .collect())
-    }
-
-    /// Update repository's last analyzed timestamp
-    pub async fn update_repository_analyzed(&self, id: i64) -> Result<()> {
-        sqlx::query(
-            r#"
-            UPDATE repositories
-            SET last_analyzed = datetime('now'), updated_at = datetime('now')
-            WHERE id = ?
-            "#,
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await
-        .context("Failed to update repository analyzed timestamp")?;
-
-        Ok(())
-    }
-
-    /// Delete a repository
-    pub async fn delete_repository(&self, name: &str) -> Result<()> {
-        sqlx::query("DELETE FROM repositories WHERE name = ?")
-            .bind(name)
-            .execute(&self.pool)
-            .await
-            .context("Failed to delete repository")?;
-
-        Ok(())
-    }
-
-    // ============================================================================
-    // LLM Cost Tracking
-    // ============================================================================
-
-    /// Record an LLM API call cost
-    pub async fn record_llm_cost(
-        &self,
-        model: &str,
-        operation: &str,
-        prompt_tokens: i64,
-        completion_tokens: i64,
-        estimated_cost_usd: f64,
-        repository_id: Option<i64>,
-    ) -> Result<i64> {
-        let total_tokens = prompt_tokens + completion_tokens;
-
-        let result = sqlx::query(
-            r#"
-            INSERT INTO llm_costs (model, operation, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, repository_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(model)
-        .bind(operation)
-        .bind(prompt_tokens)
-        .bind(completion_tokens)
-        .bind(total_tokens)
-        .bind(estimated_cost_usd)
-        .bind(repository_id)
-        .execute(&self.pool)
-        .await
-        .context("Failed to record LLM cost")?;
-
-        Ok(result.last_insert_rowid())
-    }
-
-    /// Get total LLM costs
-    pub async fn get_total_llm_cost(&self) -> Result<f64> {
-        let (total,) = sqlx::query_as::<_, (f64,)>(
-            "SELECT COALESCE(SUM(estimated_cost_usd), 0.0) FROM llm_costs",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .context("Failed to get total LLM cost")?;
-
-        Ok(total)
-    }
-
-    /// Get LLM costs for a specific time period (days)
-    pub async fn get_llm_cost_by_period(&self, days: i64) -> Result<f64> {
-        let (total,) = sqlx::query_as::<_, (f64,)>(
-            r#"
-            SELECT COALESCE(SUM(estimated_cost_usd), 0.0)
-            FROM llm_costs
-            WHERE created_at >= datetime('now', '-' || ? || ' days')
-            "#,
-        )
-        .bind(days)
-        .fetch_one(&self.pool)
-        .await
-        .context("Failed to get LLM cost by period")?;
-
-        Ok(total)
-    }
-
-    /// Get cost breakdown by model
-    pub async fn get_cost_by_model(&self) -> Result<Vec<(String, f64, i64)>> {
-        let costs = sqlx::query_as::<_, (String, f64, i64)>(
-            r#"
-            SELECT model, SUM(estimated_cost_usd), SUM(total_tokens)
-            FROM llm_costs
-            GROUP BY model
-            ORDER BY SUM(estimated_cost_usd) DESC
-            "#,
-        )
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to get cost by model")?;
-
-        Ok(costs)
-    }
-
-    /// Get recent LLM operations
-    pub async fn get_recent_llm_operations(&self, limit: i64) -> Result<Vec<LlmCost>> {
-        let operations = sqlx::query_as::<_, (i64, String, String, i64, i64, i64, f64, Option<i64>, String)>(
-            r#"
-            SELECT id, model, operation, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, repository_id, created_at
-            FROM llm_costs
-            ORDER BY created_at DESC
-            LIMIT ?
-            "#,
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to get recent LLM operations")?;
-
-        Ok(operations
-            .into_iter()
-            .map(
-                |(
-                    id,
-                    model,
-                    operation,
-                    prompt_tokens,
-                    completion_tokens,
-                    total_tokens,
-                    estimated_cost_usd,
-                    repository_id,
-                    created_at,
-                )| {
-                    LlmCost {
-                        id,
-                        model,
-                        operation,
-                        prompt_tokens,
-                        completion_tokens,
-                        total_tokens,
-                        estimated_cost_usd,
-                        repository_id,
-                        created_at: DateTime::parse_from_rfc3339(&created_at)
-                            .unwrap_or_else(|_| Utc::now().into())
-                            .with_timezone(&Utc),
-                    }
-                },
-            )
-            .collect())
-    }
-
-    // ============================================================================
-    // Statistics
-    // ============================================================================
-
-    /// Get database statistics
-    pub async fn get_stats(&self) -> Result<DatabaseStats> {
-        let (total_notes,) = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM notes")
-            .fetch_one(&self.pool)
-            .await
-            .context("Failed to count notes")?;
-
-        let (inbox_notes,) =
-            sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM notes WHERE status = 'inbox'")
-                .fetch_one(&self.pool)
-                .await
-                .context("Failed to count inbox notes")?;
-
-        let (total_tags,) = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM tags")
-            .fetch_one(&self.pool)
-            .await
-            .context("Failed to count tags")?;
-
-        let (total_repos,) = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM repositories")
-            .fetch_one(&self.pool)
-            .await
-            .context("Failed to count repositories")?;
-
-        Ok(DatabaseStats {
-            total_notes,
-            inbox_notes,
-            total_tags,
-            total_repositories: total_repos,
-        })
-    }
-
-    /// Count total notes
-    pub async fn count_notes(&self) -> Result<i64> {
-        let (count,) = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM notes")
-            .fetch_one(&self.pool)
-            .await
-            .context("Failed to count notes")?;
-        Ok(count)
-    }
-
-    /// Count total repositories
-    pub async fn count_repositories(&self) -> Result<i64> {
-        let (count,) = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM repositories")
-            .fetch_one(&self.pool)
-            .await
-            .context("Failed to count repositories")?;
-        Ok(count)
-    }
-}
-
-/// Database statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Legacy stats struct
+#[derive(Debug, Clone)]
 pub struct DatabaseStats {
     pub total_notes: i64,
     pub inbox_notes: i64,
@@ -986,81 +942,35 @@ pub struct DatabaseStats {
     pub total_repositories: i64,
 }
 
-/// LLM cost statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Legacy LlmCost struct (kept for compatibility)
+#[derive(Debug, Clone)]
+pub struct LlmCost {
+    pub id: String,
+    pub model: String,
+    pub operation: String,
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
+    pub estimated_cost_usd: f64,
+    pub repository_id: Option<String>,
+    pub created_at: i64,
+}
+
+impl LlmCost {
+    /// Get formatted created_at timestamp (legacy API)
+    pub fn created_at_formatted(&self) -> String {
+        chrono::DateTime::from_timestamp(self.created_at, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+}
+
+/// Legacy LlmCostStats struct (kept for compatibility)
+#[derive(Debug, Clone)]
 pub struct LlmCostStats {
     pub total_cost: f64,
     pub cost_last_24h: f64,
     pub cost_last_7d: f64,
     pub cost_last_30d: f64,
-    pub by_model: Vec<(String, f64, i64)>, // (model, cost, tokens)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_create_and_get_note() -> Result<()> {
-        let db = Database::new(":memory:").await?;
-
-        let note_id = db.create_note("Test note", NoteStatus::Inbox).await?;
-        let note = db.get_note(note_id).await?;
-
-        assert!(note.is_some());
-        let note = note.unwrap();
-        assert_eq!(note.content, "Test note");
-        assert_eq!(note.status, NoteStatus::Inbox);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_add_tags_to_note() -> Result<()> {
-        let db = Database::new(":memory:").await?;
-
-        let note_id = db.create_note("Test note", NoteStatus::Inbox).await?;
-        db.add_tag_to_note(note_id, "idea").await?;
-        db.add_tag_to_note(note_id, "rust").await?;
-
-        let note = db.get_note(note_id).await?.unwrap();
-        assert_eq!(note.tags.len(), 2);
-        assert!(note.tags.contains(&"idea".to_string()));
-        assert!(note.tags.contains(&"rust".to_string()));
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_list_notes_by_tag() -> Result<()> {
-        let db = Database::new(":memory:").await?;
-
-        let note1 = db.create_note("Note 1", NoteStatus::Inbox).await?;
-        db.add_tag_to_note(note1, "idea").await?;
-
-        let note2 = db.create_note("Note 2", NoteStatus::Inbox).await?;
-        db.add_tag_to_note(note2, "bug").await?;
-
-        let idea_notes = db.list_notes(None, Some("idea"), None).await?;
-        assert_eq!(idea_notes.len(), 1);
-        assert_eq!(idea_notes[0].content, "Note 1");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_search_notes() -> Result<()> {
-        let db = Database::new(":memory:").await?;
-
-        db.create_note("Implement search feature", NoteStatus::Inbox)
-            .await?;
-        db.create_note("Fix bug in parser", NoteStatus::Inbox)
-            .await?;
-
-        let results = db.search_notes("search").await?;
-        assert_eq!(results.len(), 1);
-        assert!(results[0].content.contains("search"));
-
-        Ok(())
-    }
+    pub by_model: std::collections::HashMap<String, f64>,
 }

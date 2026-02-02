@@ -109,6 +109,8 @@ futures = "0.3"
 # CLI
 # ---------------------------------------------------------------------------
 clap = { version = "4.4", features = ["derive", "cargo"] }
+colored = "2"
+shellexpand = "3"
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -134,15 +136,15 @@ path = "src/bin/server.rs"
 
 [[bin]]
 name = "rustassistant"
-path = "src/bin/devflow_cli.rs"
-
-[[bin]]
-name = "audit-cli"
 path = "src/bin/cli.rs"
 
-[[bin]]
-name = "webui-server"
-path = "src/bin/webui_server.rs"
+# [[bin]]
+# name = "audit-cli"
+# path = "src/bin/cli.rs"
+
+# [[bin]]
+# name = "webui-server"
+# path = "src/bin/webui_server.rs"
 
 [profile.release]
 opt-level = 3

@@ -1,11 +1,19 @@
 #!/bin/bash
-set -euo pipefail
+# ============================================================================
+# Rustassistant Run Script
+# ============================================================================
+# Handles environment setup and service management
+#
+# Usage:
+#   ./run.sh                    # Interactive mode (asks for missing values)
+#   ./run.sh --non-interactive  # CI/CD mode (uses env vars or defaults)
+#   ./run.sh build              # Build containers
+#   ./run.sh up                 # Start services
+#   ./run.sh down               # Stop services
+#   ./run.sh logs               # View logs
+#   ./run.sh clean              # Clean up containers and volumes
 
-# RustAssistant Quick Start Script
-# This script helps you get started with RustAssistant quickly
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+set -e
 
 # Colors for output
 RED='\033[0;31m'
@@ -14,207 +22,312 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-info() {
+# Configuration
+ENV_FILE=".env"
+INTERACTIVE=true
+
+# Parse arguments
+for arg in "$@"; do
+    case $arg in
+        --non-interactive)
+            INTERACTIVE=false
+            shift
+            ;;
+        build|up|down|logs|clean|restart|status)
+            COMMAND=$arg
+            shift
+            ;;
+    esac
+done
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-success() {
+log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-error() {
+log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Print banner
-echo ""
-echo "╔═══════════════════════════════════════════╗"
-echo "║    RustAssistant - Quick Start            ║"
-echo "║    Developer Workflow & LLM Analysis      ║"
-echo "╚═══════════════════════════════════════════╝"
-echo ""
+generate_secret() {
+    openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 64 | head -n 1
+}
 
-# Check for Rust
-if ! command -v cargo &> /dev/null; then
-    error "Rust/Cargo not found. Please install from https://rustup.rs/"
-    exit 1
-fi
+# ============================================================================
+# Environment Setup
+# ============================================================================
 
-RUST_VERSION=$(cargo --version | awk '{print $2}')
-info "Using Rust version: $RUST_VERSION"
+setup_env() {
+    log_info "Setting up environment..."
 
-# Check for .env file
-if [ ! -f .env ]; then
-    warn ".env file not found. Creating from template..."
-    if [ -f .env.example ]; then
-        cp .env.example .env
-        warn "Please edit .env and add your XAI_API_KEY for LLM features"
+    # Check if .env exists
+    if [ -f "$ENV_FILE" ]; then
+        log_info "Found existing $ENV_FILE"
+        source "$ENV_FILE"
+
+        # Check if XAI_API_KEY is set
+        if [ -z "$XAI_API_KEY" ]; then
+            if [ "$INTERACTIVE" = true ]; then
+                read -p "XAI API Key is missing. Enter your XAI API key: " XAI_API_KEY
+                if [ -n "$XAI_API_KEY" ]; then
+                    echo "XAI_API_KEY=$XAI_API_KEY" >> "$ENV_FILE"
+                    log_success "Added XAI_API_KEY to $ENV_FILE"
+                fi
+            else
+                log_warning "XAI_API_KEY not set. Server will start but API calls will fail."
+            fi
+        fi
     else
-        error ".env.example not found!"
-        exit 1
+        log_info "Creating new $ENV_FILE..."
+
+        # Get XAI API Key
+        if [ "$INTERACTIVE" = true ]; then
+            echo ""
+            echo "╔════════════════════════════════════════════════════════════════╗"
+            echo "║           Rustassistant Environment Configuration             ║"
+            echo "╚════════════════════════════════════════════════════════════════╝"
+            echo ""
+            read -p "Enter your XAI API key (or press Enter to skip): " XAI_API_KEY
+            echo ""
+        else
+            # In non-interactive mode, use environment variable or empty
+            XAI_API_KEY="${XAI_API_KEY:-}"
+        fi
+
+        # Generate secrets
+        log_info "Generating secure random secrets..."
+        DB_ENCRYPTION_KEY=$(generate_secret)
+        SESSION_SECRET=$(generate_secret)
+        REDIS_PASSWORD=$(generate_secret)
+
+        # Create .env file
+        cat > "$ENV_FILE" << EOF
+# ============================================================================
+# Rustassistant Environment Configuration
+# ============================================================================
+# Generated on $(date)
+
+# ----------------------------------------------------------------------------
+# API Keys
+# ----------------------------------------------------------------------------
+XAI_API_KEY=${XAI_API_KEY}
+XAI_BASE_URL=https://api.x.ai/v1
+
+# ----------------------------------------------------------------------------
+# Database
+# ----------------------------------------------------------------------------
+DATABASE_URL=sqlite:/home/jordan/github/rustassistant/data/rustassistant.db
+DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
+
+# ----------------------------------------------------------------------------
+# Server Configuration
+# ----------------------------------------------------------------------------
+HOST=127.0.0.1
+PORT=3000
+RUST_LOG=info,rustassistant=debug
+
+# ----------------------------------------------------------------------------
+# Security
+# ----------------------------------------------------------------------------
+SESSION_SECRET=${SESSION_SECRET}
+
+# ----------------------------------------------------------------------------
+# Redis Cache (Optional)
+# ----------------------------------------------------------------------------
+REDIS_URL=redis://:${REDIS_PASSWORD}@localhost:6379
+REDIS_PASSWORD=${REDIS_PASSWORD}
+
+# ----------------------------------------------------------------------------
+# Docker Configuration
+# ----------------------------------------------------------------------------
+COMPOSE_PROJECT_NAME=rustassistant
+DOCKER_BUILDKIT=1
+EOF
+
+        log_success "Created $ENV_FILE with secure random secrets"
+
+        if [ "$INTERACTIVE" = true ]; then
+            echo ""
+            log_info "Environment file created at: $ENV_FILE"
+            if [ -z "$XAI_API_KEY" ]; then
+                log_warning "XAI_API_KEY is not set. Add it to $ENV_FILE before using LLM features."
+            fi
+            echo ""
+        fi
     fi
-fi
 
-# Create directories
-info "Creating workspace directories..."
-mkdir -p workspace reports tasks
+    # Create data directory if it doesn't exist
+    mkdir -p data
+    log_success "Data directory ready"
+}
 
-# Parse command
-COMMAND=${1:-help}
+# ============================================================================
+# Docker Commands
+# ============================================================================
 
-case $COMMAND in
-    build)
-        info "Building RustAssistant..."
-        cargo build --release
-        success "Build complete! Binaries in target/release/"
-        ;;
+docker_build() {
+    log_info "Building Docker containers..."
+    docker-compose build
+    log_success "Build complete"
+}
 
-    server)
-        info "Starting RustAssistant server..."
-        info "API will be available at http://localhost:8080"
-        cargo run --bin rustassistant-server
-        ;;
+docker_up() {
+    log_info "Starting services..."
+    docker-compose up -d
+    log_success "Services started"
+    docker-compose ps
+    echo ""
+    log_info "API server available at: http://localhost:${PORT:-3000}"
+    log_info "Health check: curl http://localhost:${PORT:-3000}/health"
+}
 
-    cli)
-        shift
-        info "Running CLI command: $*"
-        cargo run --bin rustassistant -- "$@"
-        ;;
+docker_down() {
+    log_info "Stopping services..."
+    docker-compose down
+    log_success "Services stopped"
+}
 
-    test)
-        info "Running tests..."
-        cargo test
-        ;;
+docker_logs() {
+    log_info "Showing logs (Ctrl+C to exit)..."
+    docker-compose logs -f
+}
 
-    audit)
-        TARGET=${2:-.}
-        info "Running quick audit on: $TARGET"
-        cargo run --bin rustassistant -- analyze batch "$TARGET"
-        ;;
+docker_restart() {
+    log_info "Restarting services..."
+    docker-compose restart
+    log_success "Services restarted"
+}
 
-    tags)
-        TARGET=${2:-.}
-        info "Scanning for tags in: $TARGET"
-        cargo run --bin audit-cli -- tags "$TARGET" --format text
-        ;;
+docker_status() {
+    log_info "Service status:"
+    docker-compose ps
+}
 
-    static)
-        TARGET=${2:-.}
-        info "Running static analysis on: $TARGET"
-        cargo run --bin audit-cli -- static "$TARGET" --format text
-        ;;
-
-    tasks)
-        TARGET=${2:-.}
-        info "Generating tasks from: $TARGET"
-        cargo run --bin audit-cli -- tasks "$TARGET" --format text
-        ;;
-
-    stats)
-        TARGET=${2:-.}
-        info "Showing statistics for: $TARGET"
-        cargo run --bin audit-cli -- stats "$TARGET"
-        ;;
-
-    dev)
-        info "Starting development server with auto-reload..."
-        if command -v cargo-watch &> /dev/null; then
-            RUST_LOG=debug cargo watch -x 'run --bin audit-server'
-        else
-            warn "cargo-watch not found. Install with: cargo install cargo-watch"
-            info "Starting server without auto-reload..."
-            RUST_LOG=debug cargo run --bin audit-server
+docker_clean() {
+    log_warning "This will remove all containers, networks, and volumes."
+    if [ "$INTERACTIVE" = true ]; then
+        read -p "Are you sure? (yes/no): " confirm
+        if [ "$confirm" != "yes" ]; then
+            log_info "Cancelled"
+            exit 0
         fi
-        ;;
+    fi
 
-    docker)
-        info "Building Docker image..."
-        docker build -t rustassistant -f docker/Dockerfile .
-        success "Docker image built: rustassistant"
-        info "Run with: docker run -p 8080:8080 -e XAI_API_KEY=your-key rustassistant"
-        ;;
+    log_info "Cleaning up..."
+    docker-compose down -v --remove-orphans
+    log_success "Cleanup complete"
+}
 
-    clean)
-        info "Cleaning build artifacts..."
-        cargo clean
-        rm -rf workspace/* reports/* tasks/*
-        success "Clean complete!"
-        ;;
+# ============================================================================
+# CLI Usage
+# ============================================================================
 
-    install)
-        info "Installing CLI tool globally..."
-        cargo install --path . --bin rustassistant
-        success "Installed! Run 'rustassistant --help'"
-        ;;
+show_usage() {
+    cat << EOF
 
-    check)
-        info "Running quick checks..."
-        echo ""
-        info "1. Checking Rust environment..."
-        cargo --version
-        rustc --version
+╔════════════════════════════════════════════════════════════════╗
+║                    Rustassistant Run Script                    ║
+╚════════════════════════════════════════════════════════════════╝
 
-        echo ""
-        info "2. Checking .env configuration..."
-        if grep -q "your-grok-api-key-here" .env 2>/dev/null; then
-            warn "XAI_API_KEY not set in .env - LLM features will be disabled"
-        else
-            success "XAI_API_KEY is configured"
-        fi
+Usage: ./run.sh [OPTIONS] [COMMAND]
 
-        echo ""
-        info "3. Checking dependencies..."
-        cargo check --quiet && success "Dependencies OK" || error "Dependency issues found"
+OPTIONS:
+    --non-interactive    Run in non-interactive mode (CI/CD)
 
-        echo ""
-        info "4. Running tests..."
-        cargo test --quiet && success "Tests passing" || warn "Some tests failed"
+COMMANDS:
+    build       Build Docker containers
+    up          Start services in detached mode
+    down        Stop services
+    logs        Show and follow service logs
+    restart     Restart all services
+    status      Show service status
+    clean       Remove containers, networks, and volumes
 
-        echo ""
-        success "Environment check complete!"
-        ;;
+EXAMPLES:
+    # First time setup (interactive)
+    ./run.sh
 
-    help|--help|-h)
-        echo "Usage: ./run.sh <command> [options]"
-        echo ""
-        echo "Commands:"
-        echo "  build          Build the project in release mode"
-        echo "  server         Start the web server"
-        echo "  cli <args>     Run CLI with arguments"
-        echo "  test           Run all tests"
-        echo "  audit [path]   Quick audit of path (default: current dir)"
-        echo "  tags [path]    Scan for audit tags"
-        echo "  static [path]  Run static analysis"
-        echo "  tasks [path]   Generate tasks from findings"
-        echo "  stats [path]   Show codebase statistics"
-        echo "  dev            Start dev server with auto-reload"
-        echo "  docker         Build Docker image"
-        echo "  clean          Remove build artifacts"
-        echo "  install        Install CLI tool globally"
-        echo "  check          Run environment checks"
-        echo "  help           Show this help message"
-        echo ""
-        echo "Examples:"
-        echo "  ./run.sh build                    # Build project"
-        echo "  ./run.sh server                   # Start API server"
-        echo "  ./run.sh audit /path/to/repo      # Analyze a repository"
-        echo "  ./run.sh cli note add \"text\"      # Add a note"
-        echo "  ./run.sh cli --help               # See all CLI options"
-        echo "  ./run.sh dev                      # Development mode"
-        echo ""
-        echo "Environment:"
-        echo "  Edit .env to configure API keys and settings"
-        echo "  Set RUST_LOG=debug for verbose logging"
-        echo ""
-        ;;
+    # Start services
+    ./run.sh up
 
-    *)
-        error "Unknown command: $COMMAND"
-        echo "Run './run.sh help' for usage information"
-        exit 1
-        ;;
-esac
+    # CI/CD mode
+    XAI_API_KEY=\${{ secrets.XAI_API_KEY }} ./run.sh --non-interactive up
+
+    # View logs
+    ./run.sh logs
+
+    # Stop everything
+    ./run.sh down
+
+ENVIRONMENT VARIABLES (non-interactive mode):
+    XAI_API_KEY         Your XAI API key (required for LLM features)
+    PORT                Server port (default: 3000)
+    RUST_LOG            Log level (default: info,rustassistant=debug)
+
+EOF
+}
+
+# ============================================================================
+# Main Execution
+# ============================================================================
+
+main() {
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║                      Rustassistant                             ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Setup environment
+    setup_env
+
+    # Execute command
+    case "${COMMAND:-up}" in
+        build)
+            docker_build
+            ;;
+        up)
+            docker_build
+            docker_up
+            ;;
+        down)
+            docker_down
+            ;;
+        logs)
+            docker_logs
+            ;;
+        restart)
+            docker_restart
+            ;;
+        status)
+            docker_status
+            ;;
+        clean)
+            docker_clean
+            ;;
+        help|--help|-h)
+            show_usage
+            ;;
+        *)
+            # Default: start services
+            docker_build
+            docker_up
+            ;;
+    esac
+
+    echo ""
+}
+
+# Run main function
+main "$@"

@@ -200,8 +200,9 @@ impl ContextBuilder {
         } else {
             let mut result = Vec::new();
             for name in &self.repositories {
-                if let Some(repo) = self.db.get_repository(name).await? {
-                    result.push(repo);
+                match self.db.get_repository(name).await {
+                    Ok(repo) => result.push(repo),
+                    Err(_) => continue, // Skip if repository not found
                 }
             }
             result

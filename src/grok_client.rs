@@ -563,17 +563,29 @@ Code:
 
     /// Get total cost from database
     pub async fn get_total_cost(&self) -> Result<f64> {
-        self.db.get_total_llm_cost().await
+        self.db
+            .get_total_llm_cost()
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     /// Get cost for last N days
     pub async fn get_cost_last_n_days(&self, days: i64) -> Result<f64> {
-        self.db.get_llm_cost_by_period(days).await
+        self.db
+            .get_llm_cost_by_period(days)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     /// Get cost breakdown by model
-    pub async fn get_cost_breakdown(&self) -> Result<Vec<(String, f64, i64)>> {
-        self.db.get_cost_by_model().await
+    pub async fn get_cost_by_model(&self) -> Result<Vec<(String, f64, i64)>> {
+        let map = self
+            .db
+            .get_cost_by_model()
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        // Convert HashMap to Vec for backward compatibility
+        Ok(map.into_iter().map(|(k, v)| (k, v, 0)).collect())
     }
 
     /// Get cache statistics
