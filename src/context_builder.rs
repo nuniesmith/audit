@@ -50,6 +50,7 @@ const MAX_CONTEXT_TOKENS: usize = 1_500_000;
 const TOKENS_PER_CHAR: f64 = 0.3;
 
 /// Context builder for RAG queries
+#[derive(Clone)]
 pub struct ContextBuilder {
     db: Database,
     repositories: Vec<String>,

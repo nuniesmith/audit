@@ -280,6 +280,7 @@ pub struct SourceFile {
 }
 
 /// Context builder
+#[derive(Clone)]
 pub struct ContextBuilder {
     root: PathBuf,
     include_tests: bool,

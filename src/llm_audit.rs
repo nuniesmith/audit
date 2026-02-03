@@ -362,14 +362,24 @@ impl LlmAuditor {
     ) -> Result<RegularAuditResult> {
         info!("🔍 Running Regular Audit on: {:?}", project_path);
 
-        // Build context summary
-        let context = self.build_codebase_context(project_path)?;
+        // Collect file contents for analysis
+        let rust_files = self.find_rust_files(project_path)?;
+        let mut file_contents = Vec::new();
+
+        for path in rust_files.iter().take(10) {
+            if let Ok(content) = fs::read_to_string(path) {
+                let path_str = path.to_string_lossy().to_string();
+                file_contents.push((path_str, content));
+            }
+        }
+
+        let file_refs: Vec<(&str, &str)> = file_contents
+            .iter()
+            .map(|(p, c)| (p.as_str(), c.as_str()))
+            .collect();
 
         // Use analyze_codebase for holistic analysis
-        let analysis = self
-            .llm_client
-            .analyze_codebase(&context, &focus_areas)
-            .await?;
+        let analysis = self.llm_client.analyze_codebase(&file_refs).await?;
 
         // Parse into regular audit result
         Ok(RegularAuditResult {

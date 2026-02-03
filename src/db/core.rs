@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePoolOptions, FromRow, Row, SqlitePool};
 use thiserror::Error;
 
+use super::queue::create_queue_tables;
+
 // ============================================================================
 // Error Types
 // ============================================================================
@@ -122,6 +124,11 @@ pub async fn init_db(database_url: &str) -> DbResult<SqlitePool> {
 
     // Run migrations (create tables)
     create_tables(&pool).await?;
+
+    // Create queue system tables
+    create_queue_tables(&pool)
+        .await
+        .map_err(|e| DbError::Sqlx(e))?;
 
     Ok(pool)
 }
@@ -799,6 +806,11 @@ impl Database {
     pub async fn new(database_url: &str) -> DbResult<Self> {
         let pool = init_db(database_url).await?;
         Ok(Self { pool })
+    }
+
+    /// Create a Database from an existing SqlitePool
+    pub fn from_pool(pool: SqlitePool) -> Self {
+        Self { pool }
     }
 
     /// Get a reference to the pool

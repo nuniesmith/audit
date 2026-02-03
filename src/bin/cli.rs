@@ -6,6 +6,10 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 
 // Import from our crate
+use rustassistant::cli::{
+    handle_queue_command, handle_report_command, handle_scan_command, QueueCommands,
+    ReportCommands, ScanCommands,
+};
 use rustassistant::db::{
     self, create_note, get_next_task, get_stats, list_notes, list_repositories, list_tasks,
     search_notes, update_task_status,
@@ -42,6 +46,24 @@ enum Commands {
     Tasks {
         #[command(subcommand)]
         action: TaskAction,
+    },
+
+    /// Manage processing queue
+    Queue {
+        #[command(subcommand)]
+        action: QueueCommands,
+    },
+
+    /// Scan repositories
+    Scan {
+        #[command(subcommand)]
+        action: ScanCommands,
+    },
+
+    /// Generate reports
+    Report {
+        #[command(subcommand)]
+        action: ReportCommands,
     },
 
     /// Get the next recommended task
@@ -174,6 +196,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Note { action } => handle_note_action(&pool, action).await?,
         Commands::Repo { action } => handle_repo_action(&pool, action).await?,
         Commands::Tasks { action } => handle_task_action(&pool, action).await?,
+        Commands::Queue { action } => handle_queue_command(&pool, action).await?,
+        Commands::Scan { action } => handle_scan_command(&pool, action).await?,
+        Commands::Report { action } => handle_report_command(&pool, action).await?,
         Commands::Next => handle_next(&pool).await?,
         Commands::Stats => handle_stats(&pool).await?,
         Commands::TestApi => handle_test_api().await?,

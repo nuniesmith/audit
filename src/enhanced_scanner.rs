@@ -197,102 +197,30 @@ impl EnhancedScanner {
         );
 
         // Run deep analysis
-        let analysis = llm.analyze_with_global_context(&formatted_context).await?;
+        let question = "Analyze this codebase for logic drift, dead code, safety issues, incomplete code, and provide actionable tasks.";
+        let analysis_text = llm
+            .analyze_with_global_context(&formatted_context, question)
+            .await?;
 
         // Convert analysis results to tasks
         let mut tasks = Vec::new();
 
-        // Logic drift issues
-        for issue in &analysis.logic_drift {
-            tasks.push(
-                Task::new(
-                    format!("Logic Drift: {}", issue.category),
-                    issue.description.clone(),
-                    PathBuf::from(&issue.file),
-                    issue.line,
-                    TaskPriority::High,
-                    crate::types::Category::from_path(&issue.file),
-                )
-                .with_tag("logic-drift"),
-            );
-        }
+        // Parse analysis text for issues (simplified - in production use structured output)
+        // For now, create a single task with the analysis
+        tasks.push(
+            Task::new(
+                "Deep Codebase Analysis".to_string(),
+                analysis_text.clone(),
+                PathBuf::new(),
+                None,
+                TaskPriority::High,
+                crate::types::Category::Other,
+            )
+            .with_tag("deep-analysis"),
+        );
 
-        // Dead code
-        for file in &analysis.dead_code {
-            tasks.push(
-                Task::new(
-                    "Dead Code Detected",
-                    format!("File appears to be unused: {}", file),
-                    PathBuf::from(file),
-                    None,
-                    TaskPriority::Medium,
-                    crate::types::Category::from_path(file),
-                )
-                .with_tag("dead-code"),
-            );
-        }
-
-        // Safety issues
-        for issue in &analysis.safety_issues {
-            let priority = match issue.severity.to_lowercase().as_str() {
-                "critical" => TaskPriority::Critical,
-                "high" => TaskPriority::High,
-                "medium" => TaskPriority::Medium,
-                _ => TaskPriority::Low,
-            };
-
-            tasks.push(
-                Task::new(
-                    format!("Safety Issue: {}", issue.category),
-                    issue.description.clone(),
-                    PathBuf::from(&issue.file),
-                    issue.line,
-                    priority,
-                    crate::types::Category::from_path(&issue.file),
-                )
-                .with_tag("safety"),
-            );
-        }
-
-        // Incomplete code
-        for issue in &analysis.incomplete_code {
-            tasks.push(
-                Task::new(
-                    "Incomplete Implementation",
-                    issue.description.clone(),
-                    PathBuf::from(&issue.file),
-                    issue.line,
-                    TaskPriority::Medium,
-                    crate::types::Category::from_path(&issue.file),
-                )
-                .with_tag("incomplete"),
-            );
-        }
-
-        // Add LLM-generated tasks
-        for generated in &analysis.tasks {
-            let priority = match generated.priority.to_lowercase().as_str() {
-                "critical" => TaskPriority::Critical,
-                "high" => TaskPriority::High,
-                "medium" => TaskPriority::Medium,
-                _ => TaskPriority::Low,
-            };
-
-            let mut task = Task::new(
-                generated.category.clone(),
-                generated.description.clone(),
-                PathBuf::from(&generated.file),
-                generated.line,
-                priority,
-                crate::types::Category::from_path(&generated.file),
-            );
-
-            if let Some(ref tag) = generated.suggested_tag {
-                task = task.with_tag(tag);
-            }
-
-            tasks.push(task);
-        }
+        // Note: In the future, we could parse analysis_text to extract structured tasks
+        // For now, the single analysis task contains all findings
 
         Ok(tasks)
     }
@@ -311,8 +239,7 @@ impl EnhancedScanner {
             .map(|f| f.path.clone())
             .collect();
 
-        llm.run_standard_questionnaire(&formatted_context, &file_paths)
-            .await
+        llm.run_standard_questionnaire(&formatted_context).await
     }
 
     /// Generate tasks from file audit results

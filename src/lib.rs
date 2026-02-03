@@ -23,10 +23,12 @@
 //! - RESTful API and CLI interface
 
 pub mod cache;
+pub mod cli;
 pub mod code_review;
 pub mod config;
 pub mod context;
 pub mod context_builder;
+pub mod cost_tracker;
 pub mod db;
 pub mod directory_tree;
 pub mod enhanced_scanner;
@@ -35,16 +37,14 @@ pub mod formatter;
 pub mod git;
 pub mod grok_client;
 pub mod grok_reasoning;
-pub mod refactor_assistant;
-pub mod test_generator;
-// Temporarily disabled - needs updates for new schema
-// pub mod web_ui;
-
 pub mod llm;
 pub mod llm_audit;
 pub mod llm_config;
 pub mod parser;
+pub mod query_router;
 pub mod query_templates;
+pub mod queue;
+pub mod refactor_assistant;
 pub mod repo_analysis;
 pub mod research;
 pub mod response_cache;
@@ -54,18 +54,26 @@ pub mod server;
 pub mod tag_schema;
 pub mod tags;
 pub mod tasks;
+pub mod test_generator;
 pub mod tests_runner;
 pub mod todo_scanner;
 pub mod tree_state;
 pub mod types;
+// Temporarily disabled - needs updates for new schema
+// pub mod web_ui;
 
 pub use cache::{AuditCache, CacheEntry, CacheStats};
+pub use cli::{
+    handle_queue_command, handle_report_command, handle_scan_command, QueueCommands,
+    ReportCommands, ScanCommands,
+};
 pub use code_review::{
     CodeReview, CodeReviewer, FileReview, IssueSeverity, ReviewIssue, ReviewStats,
 };
 pub use config::Config;
 pub use context::{ContextBuilder as OldContextBuilder, GlobalContextBundle};
 pub use context_builder::{Context, ContextBuilder, ContextFile, QueryBuilder};
+pub use cost_tracker::{BudgetStatus, CostStats, CostTracker, OperationCost, TokenUsage};
 pub use db::{
     add_repository, create_note, create_task, delete_note, get_next_task, get_note, get_repository,
     get_repository_by_path, get_stats, init_db, list_notes, list_repositories, list_tasks,
@@ -79,8 +87,12 @@ pub use formatter::{BatchFormatResult, CodeFormatter, FormatMode, FormatResult, 
 pub use git::GitManager;
 pub use grok_client::{FileScoreResult, GrokClient, QuickAnalysisResult};
 pub use grok_reasoning::{
-    analyze_all_batches, BatchAnalysisResult, FileAnalysisResult, FileBatch, FileForAnalysis,
-    GrokReasoningClient, IdentifiedIssue, Improvement, RetryConfig, TokenUsage,
+    analyze_all_batches, BatchAnalysisResult, FileAnalysisResult as GrokFileAnalysisResult,
+    FileBatch, FileForAnalysis, GrokReasoningClient, IdentifiedIssue, Improvement, RetryConfig,
+};
+pub use llm::{
+    GrokAnalyzer, ProjectPhase, ProjectPlan, StandardizationIssue, StandardizationReport,
+    TodoAnalysis,
 };
 pub use llm_audit::{
     ArchitectureInsights, AuditMode, FileAnalysis, FileLlmAnalysis, FileRelationships,
@@ -88,10 +100,17 @@ pub use llm_audit::{
     TechDebtArea,
 };
 pub use llm_config::{
-    claude_models, BudgetStatus, CacheConfig, FileSelectionConfig, LimitsConfig, LlmConfig,
-    ProviderConfig, LLM_CONFIG_FILE,
+    claude_models, CacheConfig, FileSelectionConfig, LimitsConfig, LlmConfig, ProviderConfig,
+    LLM_CONFIG_FILE,
 };
+pub use query_router::{Action, QueryIntent, QueryRouter, RoutingStats, UserContext};
 pub use query_templates::{QueryTemplate, TemplateCategory, TemplateRegistry};
+pub use queue::{
+    advance_stage, capture_note, capture_thought, capture_todo, enqueue, get_pending_items,
+    get_queue_item, get_queue_stats, get_retriable_items, mark_failed, update_analysis,
+    AnalysisResult, FileAnalysisResult as QueueFileAnalysisResult, LlmAnalyzer, ProcessorConfig,
+    QueueProcessor, QueueStats,
+};
 pub use refactor_assistant::{
     CodeLocation, CodeSmell, CodeSmellType, EffortEstimate, PlanStep, RefactorAssistant,
     RefactoringAnalysis, RefactoringExample, RefactoringPlan, RefactoringPriority,
@@ -102,7 +121,11 @@ pub use repo_analysis::{
 };
 pub use research::{ResearchBreakdown, ResearchTask};
 pub use response_cache::{CacheStats as ResponseCacheStats, CachedResponse, ResponseCache};
-pub use scanner::Scanner;
+pub use scanner::{
+    build_dir_tree, fetch_user_repos, get_dir_tree, get_unanalyzed_files, save_dir_tree,
+    save_file_analysis, scan_directory_for_todos, scan_repo_for_todos, sync_repos_to_db,
+    DetectedTodo, GitHubRepo, ScanResult, Scanner, TreeNode as ScannerTreeNode,
+};
 pub use scoring::{
     CodebaseScore, ComplexityIndicators, FileScore, FileScorer, ScoreBreakdown, ScoringWeights,
     TodoBreakdown,
@@ -131,6 +154,9 @@ pub mod prelude {
     pub use crate::config::Config;
     pub use crate::context::{ContextBuilder as OldContextBuilder, GlobalContextBundle};
     pub use crate::context_builder::{Context, ContextBuilder, ContextFile, QueryBuilder};
+    pub use crate::cost_tracker::{
+        BudgetStatus, CostStats, CostTracker, OperationCost, TokenUsage,
+    };
     pub use crate::db::{
         add_repository, create_note, create_task, delete_note, get_next_task, get_note,
         get_repository, get_repository_by_path, get_stats, init_db, list_notes, list_repositories,
@@ -144,19 +170,34 @@ pub mod prelude {
     pub use crate::git::GitManager;
     pub use crate::grok_client::{FileScoreResult, GrokClient, QuickAnalysisResult};
     pub use crate::grok_reasoning::{
-        analyze_all_batches, BatchAnalysisResult, FileAnalysisResult, FileBatch, FileForAnalysis,
-        GrokReasoningClient, IdentifiedIssue, Improvement, RetryConfig, TokenUsage,
+        analyze_all_batches, BatchAnalysisResult, FileAnalysisResult as GrokFileAnalysisResult,
+        FileBatch, FileForAnalysis, GrokReasoningClient, IdentifiedIssue, Improvement, RetryConfig,
     };
+    pub use crate::llm::{
+        GrokAnalyzer, ProjectPhase, ProjectPlan, StandardizationIssue, StandardizationReport,
+        TodoAnalysis,
+    };
+    pub use crate::query_router::{Action, QueryIntent, QueryRouter, RoutingStats, UserContext};
     pub use crate::query_templates::{QueryTemplate, TemplateCategory, TemplateRegistry};
+    pub use crate::queue::{
+        advance_stage, capture_note, capture_thought, capture_todo, enqueue, get_pending_items,
+        get_queue_item, get_queue_stats, get_retriable_items, mark_failed, update_analysis,
+        AnalysisResult, FileAnalysisResult as QueueFileAnalysisResult, LlmAnalyzer,
+        ProcessorConfig, QueueProcessor, QueueStats,
+    };
     pub use crate::repo_analysis::{
         FileMetadata, LanguageStats, RepoAnalyzer, RepoNodeType, RepoTree, TreeNode,
     };
     pub use crate::response_cache::{
         CacheStats as ResponseCacheStats, CachedResponse, ResponseCache,
     };
+    pub use crate::scanner::{
+        build_dir_tree, fetch_user_repos, get_dir_tree, get_unanalyzed_files, save_dir_tree,
+        save_file_analysis, scan_directory_for_todos, scan_repo_for_todos, sync_repos_to_db,
+        DetectedTodo, GitHubRepo, ScanResult, Scanner, TreeNode as ScannerTreeNode,
+    };
 
     pub use crate::research::{ResearchBreakdown, ResearchTask};
-    pub use crate::scanner::Scanner;
     pub use crate::tag_schema::{
         CodeAge, CodeStatus, Complexity, DirectoryNode, IssuesSummary, NodeStats, NodeType,
         Priority, SimpleIssueDetector, TagCategory, TagSchema, TagValidation,
