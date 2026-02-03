@@ -46,6 +46,8 @@ This script will:
 
 **That's it!** The container should start successfully.
 
+**Note:** The fix script creates a basic .env file. If you need LLM features, you'll need to add your XAI_API_KEY manually, or push the updated workflow to trigger automatic deployment (it will pull the key from GitHub secrets).
+
 ---
 
 ## ✅ Quick Fix (Option 2) - Manual Steps
@@ -64,12 +66,17 @@ mkdir -p data config
 chmod 755 data config
 chown -R $(id -u):$(id -g) data config
 
-# 4. Start containers
+# 4. Optional: Add XAI API key to .env
+echo "XAI_API_KEY=your_key_here" >> .env
+
+# 5. Start containers
 docker compose -f docker-compose.prod.yml up -d
 
-# 5. Check logs
+# 6. Check logs
 docker logs rustassistant-web -f
 ```
+
+**Note:** If you skip step 4, the container will start but LLM features won't work. The CI/CD pipeline will automatically set the XAI_API_KEY from GitHub secrets on the next deployment.
 
 ---
 
@@ -117,13 +124,14 @@ INFO rustassistant_server: Server started successfully
 
 ## 🔄 Future Deployments
 
-The CI/CD workflow has been updated to automatically create these directories. So this is a **one-time fix**.
+The CI/CD workflow has been updated to automatically:
 
-After you push the updated workflow (already modified), future deployments will:
-
-1. ✅ Automatically create `data` and `config` directories
+1. ✅ Create `data` and `config` directories
 2. ✅ Set proper permissions
-3. ✅ Start containers successfully
+3. ✅ Configure XAI_API_KEY from GitHub secrets
+4. ✅ Start containers successfully
+
+So this is a **one-time fix**. Future deployments will be fully automated.
 
 ---
 
@@ -217,6 +225,7 @@ Since this was the first deployment, the `data` directory didn't exist yet, caus
 - [ ] `config` directory exists with 755 permissions
 - [ ] Container shows status "Up" (not "Restarting")
 - [ ] No database errors in logs
+- [ ] `.env` file contains XAI_API_KEY (if you want LLM features)
 - [ ] Can access http://localhost:3001/
 - [ ] Both containers healthy: `docker compose -f docker-compose.prod.yml ps`
 

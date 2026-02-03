@@ -8,9 +8,12 @@
 
 ## 🚨 IMMEDIATE ACTION REQUIRED (On Raspberry Pi)
 
-Your containers are deployed and running, but the web container is crash-looping due to a database permissions issue. Fix it NOW:
+Your containers are deployed and running, but there are TWO issues to fix:
 
-### On Your Raspberry Pi (jordan@rasp)
+1. **Database permissions** - Container crash-looping 
+2. **Missing XAI_API_KEY** - Warning: "The XAI_API_KEY variable is not set"
+
+### Fix 1: Database Permissions
 
 ```bash
 # SSH into your Raspberry Pi
@@ -34,7 +37,34 @@ docker ps
 docker logs rustassistant-web
 ```
 
-**Expected Result:** Container status changes from "Restarting" to "Up" and healthy.
+### Fix 2: Add XAI API Key
+
+```bash
+# Still on your Raspberry Pi
+cd ~/rustassistant
+
+# OPTION A: Use the automated script
+chmod +x add-api-key.sh
+./add-api-key.sh
+# (It will prompt you to enter your API key)
+
+# OPTION B: Manually edit .env
+nano .env
+# Add this line:
+# XAI_API_KEY=your_actual_key_here
+# Save with Ctrl+O, exit with Ctrl+X
+
+# Restart container to apply changes
+docker compose -f docker-compose.prod.yml restart rustassistant-web
+
+# Check it worked
+docker logs rustassistant-web --tail=20
+```
+
+**Expected Result:** 
+- Container status changes from "Restarting" to "Up" and healthy
+- No warning about XAI_API_KEY
+- LLM features will work
 
 ---
 
@@ -52,25 +82,31 @@ git status
 git diff
 
 # Commit the fixes
-git add .github/workflows/ci-cd.yml run.sh fix-permissions.sh DEPLOYMENT_FIX.md QUICKFIX.md ACTION_PLAN.md
-git commit -m "fix: deployment pipeline and database permissions
+git add .github/workflows/ci-cd.yml fix-permissions.sh add-api-key.sh QUICKFIX.md ACTION_PLAN.md
+git commit -m "fix: deployment pipeline, database permissions, and XAI API key
 
 Changes:
 - Fix CI/CD to use docker-compose.prod.yml explicitly
-- Add production mode support to run.sh
 - Auto-create data/config directories in deployment
+- Auto-configure XAI_API_KEY from GitHub secrets
 - Add fix-permissions.sh for manual recovery
+- Add add-api-key.sh for manual API key setup
 - Add comprehensive documentation
 
 Fixes:
 - Deployment exit code 1 (wrong compose file)
-- Database permissions error (missing directories)"
+- Database permissions error (missing directories)
+- XAI_API_KEY not being set from GitHub secrets"
 
 # Push to GitHub
 git push origin main
 ```
 
-This will trigger a new CI/CD run, which should now succeed completely.
+This will trigger a new CI/CD run, which should now:
+- ✅ Pull ARM64 images
+- ✅ Create data/config directories
+- ✅ Set XAI_API_KEY from GitHub secrets automatically
+- ✅ Start containers successfully
 
 ---
 
@@ -81,12 +117,19 @@ This will trigger a new CI/CD run, which should now succeed completely.
 
 **Fix:** Updated workflow to explicitly use `docker-compose.prod.yml`
 
-### Problem 2: Database Error (Current Issue)
+### Problem 2: Database Error
 **Root Cause:** Container runs as UID 1000, needs `data` directory to exist with proper permissions
 
 **Fix:** 
 - Immediate: Run `fix-permissions.sh` on Raspberry Pi
 - Long-term: Workflow now auto-creates directories
+
+### Problem 3: Missing XAI_API_KEY
+**Root Cause:** GitHub secret wasn't being passed to the .env file during deployment
+
+**Fix:**
+- Immediate: Run `add-api-key.sh` on Raspberry Pi or manually edit .env
+- Long-term: Workflow now auto-sets from GitHub secrets
 
 ---
 
@@ -96,6 +139,8 @@ This will trigger a new CI/CD run, which should now succeed completely.
 - [x] Containers deployed successfully
 - [ ] Both containers show "Up" status (not "Restarting")
 - [ ] No database errors in logs
+- [ ] No XAI_API_KEY warning in logs
+- [ ] XAI_API_KEY set in .env file
 - [ ] Can access http://localhost:3001/
 - [ ] Health check passes
 
@@ -118,6 +163,7 @@ This will trigger a new CI/CD run, which should now succeed completely.
 
 ### Needs Fix 🔧
 - Database permissions (fix immediately on Pi)
+- XAI_API_KEY configuration (fix immediately on Pi)
 - Workflow improvements (commit later from dev machine)
 
 ---
@@ -127,8 +173,9 @@ This will trigger a new CI/CD run, which should now succeed completely.
 ### NOW (5 minutes)
 1. SSH to Raspberry Pi
 2. Run `fix-permissions.sh`
-3. Verify containers are healthy
-4. Test the application
+3. Run `add-api-key.sh` (or manually add XAI_API_KEY to .env)
+4. Verify containers are healthy
+5. Test the application
 
 ### LATER TODAY (5 minutes)
 1. Review changes on dev machine
@@ -165,16 +212,40 @@ rm -rf data config
 ## 📚 Reference Documents
 
 - `QUICKFIX.md` - Detailed fix instructions
-- `DEPLOYMENT_FIX.md` - Technical analysis of the issues
-- `fix-permissions.sh` - Automated fix script
-- `run.sh` - Updated service management script
+- `fix-permissions.sh` - Automated database permissions fix
+- `add-api-key.sh` - Automated XAI API key configuration
+- `.github/workflows/ci-cd.yml` - Updated deployment workflow
 
 ---
 
 ## 🎉 Final Notes
 
-The good news: **Your deployment actually worked!** The containers are running on your Raspberry Pi. This is just a small permissions issue that takes 30 seconds to fix.
+The good news: **Your deployment actually worked!** The containers are running on your Raspberry Pi. You just need to fix two quick issues:
 
-After you fix this and commit the changes, future deployments will be fully automated and work perfectly.
+1. Database permissions (30 seconds)
+2. XAI API key configuration (30 seconds)
 
-**Priority:** Fix the Raspberry Pi NOW, commit changes LATER.
+After you fix these and commit the changes, future deployments will be fully automated and work perfectly - the workflow will automatically set the XAI_API_KEY from your GitHub secret.
+
+**Priority:** Fix the Raspberry Pi NOW (2 minutes), commit changes LATER (2 minutes).
+
+---
+
+## 📝 Quick Command Summary
+
+**On Raspberry Pi:**
+```bash
+cd ~/rustassistant
+chmod +x fix-permissions.sh add-api-key.sh
+./fix-permissions.sh
+./add-api-key.sh
+docker compose -f docker-compose.prod.yml ps
+```
+
+**On Dev Machine:**
+```bash
+cd ~/github/rustassistant
+git add .github/workflows/ci-cd.yml fix-permissions.sh add-api-key.sh QUICKFIX.md ACTION_PLAN.md
+git commit -m "fix: deployment pipeline, database permissions, and XAI API key"
+git push origin main
+```

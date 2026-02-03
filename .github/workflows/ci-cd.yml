@@ -336,11 +336,24 @@ jobs:
                         cat > .env <<EOF
                       # RustAssistant Environment Configuration
                       RUST_LOG=info
+                      XAI_API_KEY=${{ secrets.XAI_API_KEY }}
                       EOF
                         chmod 600 .env
                         echo "✅ Created default .env file"
                       else
                         echo "✅ Using existing .env file"
+                      fi
+
+                      # Update XAI_API_KEY in .env if it exists
+                      if [ -f ".env" ]; then
+                        if grep -q "^XAI_API_KEY=" .env; then
+                          echo "📝 Updating XAI_API_KEY in .env..."
+                          sed -i 's|^XAI_API_KEY=.*|XAI_API_KEY=${{ secrets.XAI_API_KEY }}|' .env
+                        else
+                          echo "📝 Adding XAI_API_KEY to .env..."
+                          echo "XAI_API_KEY=${{ secrets.XAI_API_KEY }}" >> .env
+                        fi
+                        echo "✅ XAI_API_KEY configured"
                       fi
 
                       # Create required directories with proper permissions

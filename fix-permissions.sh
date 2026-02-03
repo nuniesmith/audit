@@ -69,9 +69,20 @@ XAI_API_KEY=
 EOF
     chmod 600 .env
     echo -e "${GREEN}✓${NC} Created default .env file"
-    echo -e "${YELLOW}!${NC} Remember to add your XAI_API_KEY to .env"
+    echo -e "${YELLOW}!${NC} IMPORTANT: Add your XAI_API_KEY to .env"
+    echo -e "${YELLOW}!${NC}   Edit: nano .env"
+    echo -e "${YELLOW}!${NC}   Or the CI/CD pipeline will set it automatically on next deployment"
 else
     echo -e "${GREEN}✓${NC} .env file exists"
+
+    # Check if XAI_API_KEY is set
+    if grep -q "^XAI_API_KEY=.\+" .env; then
+        echo -e "${GREEN}✓${NC} XAI_API_KEY is configured"
+    else
+        echo -e "${YELLOW}!${NC} XAI_API_KEY is empty or not set"
+        echo -e "${YELLOW}!${NC}   Add it manually: nano .env"
+        echo -e "${YELLOW}!${NC}   Or push changes to trigger CI/CD (will auto-set from GitHub secret)"
+    fi
 fi
 echo ""
 
@@ -109,6 +120,9 @@ if docker ps | grep -q rustassistant-web; then
         echo "  - Check logs: docker logs rustassistant-web -f"
         echo "  - Access UI: http://localhost:3001"
         echo "  - Check health: curl http://localhost:3001/"
+        echo ""
+        echo "Note: If XAI_API_KEY is not set, LLM features won't work."
+        echo "      Edit .env or push to trigger CI/CD deployment."
     else
         echo -e "${YELLOW}⚠️  Container status: $STATUS${NC}"
         echo "Check logs with: docker logs rustassistant-web"
