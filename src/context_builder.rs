@@ -252,12 +252,12 @@ impl ContextBuilder {
                         .metadata
                         .as_ref()
                         .map(|m| m.modified)
-                        .unwrap_or_else(|| chrono::Utc::now());
+                        .unwrap_or_else(chrono::Utc::now);
                     let time_b = b
                         .metadata
                         .as_ref()
                         .map(|m| m.modified)
-                        .unwrap_or_else(|| chrono::Utc::now());
+                        .unwrap_or_else(chrono::Utc::now);
                     time_b.cmp(&time_a)
                 });
 
@@ -382,13 +382,13 @@ impl Context {
             for note in &self.notes {
                 prompt.push_str(&format!("- {}\n", note));
             }
-            prompt.push_str("\n");
+            prompt.push('\n');
         }
 
         // Files
         prompt.push_str("## Source Files\n\n");
         for file in &self.files {
-            let lang = file.language.as_ref().map(|l| l.as_str()).unwrap_or("text");
+            let lang = file.language.as_deref().unwrap_or("text");
             prompt.push_str(&format!("### {}/{}\n", file.repository, file.path));
             prompt.push_str(&format!("```{}\n", lang.to_lowercase()));
             prompt.push_str(&file.content);

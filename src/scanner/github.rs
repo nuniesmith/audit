@@ -5,16 +5,15 @@
 //! - Files needing analysis
 //! - Directory structure caching
 
-use crate::db::queue::{FileAnalysis, QueueSource, RepoCache, TodoItem, GITHUB_USERNAME};
+use crate::db::queue::GITHUB_USERNAME;
 use crate::queue::processor::capture_todo;
 use anyhow::Result;
 use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use walkdir::WalkDir;
 
 // ============================================================================
@@ -300,7 +299,7 @@ pub async fn scan_repo_for_todos(
                 "{}:{}:{}",
                 todo.file_path, todo.line_number, todo.content
             ))
-);
+        );
 
         // Check if this TODO already exists
         let existing: Option<(String,)> =
@@ -347,7 +346,7 @@ pub async fn scan_repo_for_todos(
                 &todo.file_path,
                 todo.line_number,
             )
-.await?;
+            .await?;
 
             new_todos += 1;
         }

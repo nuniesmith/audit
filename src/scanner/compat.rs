@@ -3,7 +3,7 @@
 //! This module provides backward compatibility with the old Scanner interface
 //! that was used by enhanced_scanner and server modules.
 
-use crate::error::{AuditError, Result};
+use crate::error::Result;
 use crate::tags::TagScanner;
 use crate::types::{
     AuditReport, AuditRequest, AuditSummary, Category, FileAnalysis, FilePriority, Issue,
@@ -13,7 +13,7 @@ use ignore::WalkBuilder;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Scanner for analyzing codebases (compatibility layer)
 pub struct Scanner {
@@ -41,7 +41,7 @@ impl Scanner {
     }
 
     /// Scan the codebase and generate a report
-    pub fn scan(&self, request: &AuditRequest) -> Result<AuditReport> {
+    pub fn scan(&self, _request: &AuditRequest) -> Result<AuditReport> {
         info!("Starting codebase scan at {}", self.root.display());
 
         // Build system map
@@ -102,13 +102,11 @@ impl Scanner {
             .git_ignore(true)
             .build();
 
-        for entry in walk {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(analysis) = self.scan_file(path)? {
-                        analyses.push(analysis);
-                    }
+        for entry in walk.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(analysis) = self.scan_file(path)? {
+                    analyses.push(analysis);
                 }
             }
         }
@@ -283,7 +281,7 @@ fn detect_issues(path: &Path, content: &str) -> Vec<Issue> {
         }
 
         // Security patterns
-        if line_lower.contains("unsafe") && path.extension().map_or(false, |e| e == "rs") {
+        if line_lower.contains("unsafe") && path.extension().is_some_and(|e| e == "rs") {
             issues.push(Issue {
                 severity: IssueSeverity::High,
                 category: IssueCategory::Security,
@@ -294,7 +292,7 @@ fn detect_issues(path: &Path, content: &str) -> Vec<Issue> {
             });
         }
 
-        if line_lower.contains("unwrap()") && path.extension().map_or(false, |e| e == "rs") {
+        if line_lower.contains("unwrap()") && path.extension().is_some_and(|e| e == "rs") {
             issues.push(Issue {
                 severity: IssueSeverity::Low,
                 category: IssueCategory::CodeQuality,
@@ -316,9 +314,7 @@ fn calculate_priority(issues: &[Issue], category: &Category) -> FilePriority {
 
     if has_critical {
         FilePriority::Critical
-    } else if has_high {
-        FilePriority::High
-    } else if *category == Category::Janus {
+    } else if has_high || *category == Category::Janus {
         FilePriority::High
     } else if issues.len() > 5 {
         FilePriority::Medium

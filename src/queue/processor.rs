@@ -3,7 +3,7 @@
 //! Handles moving items through processing stages:
 //! Inbox → PendingAnalysis → Analyzing → PendingTagging → Ready
 
-use crate::db::queue::{QueueItem, QueuePriority, QueueSource, QueueStage, GITHUB_USERNAME};
+use crate::db::queue::{QueueItem, QueuePriority, QueueSource, QueueStage};
 use anyhow::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -31,24 +31,28 @@ pub async fn enqueue(
     let content_hash = format!("{:x}", md5::compute(content.as_bytes()));
 
     // Check for duplicate
-    let existing: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM queue_items WHERE content_hash = ? AND stage != 'archived'"
-    )
-    .bind(&content_hash)
-    .fetch_optional(pool)
-    .await?;
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM queue_items WHERE content_hash = ? AND stage != 'archived'")
+            .bind(&content_hash)
+            .fetch_optional(pool)
+            .await?;
 
     if let Some((existing_id,)) = existing {
-        warn!("Duplicate content detected, returning existing item: {}", existing_id);
+        warn!(
+            "Duplicate content detected, returning existing item: {}",
+            existing_id
+        );
         return get_queue_item(pool, &existing_id).await;
     }
 
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         INSERT INTO queue_items 
         (id, content, stage, source, priority, repo_id, file_path, line_number, 
          content_hash, retry_count, created_at, updated_at)
         VALUES (?, ?, 'inbox', ?, ?, ?, ?, ?, ?, 0, ?, ?)
-    "#)
+    "#,
+    )
     .bind(&id)
     .bind(content)
     .bind(format!("{:?}", source).to_lowercase())
@@ -79,7 +83,7 @@ pub async fn get_queue_item(pool: &SqlitePool, id: &str) -> Result<QueueItem> {
 pub async fn advance_stage(pool: &SqlitePool, id: &str) -> Result<QueueStage> {
     let item = get_queue_item(pool, id).await?;
     let current = parse_stage(&item.stage);
-    
+
     let next = match current {
         QueueStage::Inbox => QueueStage::PendingAnalysis,
         QueueStage::PendingAnalysis => QueueStage::Analyzing,
@@ -89,10 +93,14 @@ pub async fn advance_stage(pool: &SqlitePool, id: &str) -> Result<QueueStage> {
         QueueStage::Failed => QueueStage::PendingAnalysis, // Retry
         QueueStage::Archived => QueueStage::Archived,
     };
-    
+
     let now = Utc::now().timestamp();
-    let processed_at = if next == QueueStage::Ready { Some(now) } else { None };
-    
+    let processed_at = if next == QueueStage::Ready {
+        Some(now)
+    } else {
+        None
+    };
+
     sqlx::query("UPDATE queue_items SET stage = ?, updated_at = ?, processed_at = COALESCE(?, processed_at) WHERE id = ?")
         .bind(format!("{:?}", next).to_lowercase())
         .bind(now)
@@ -100,7 +108,7 @@ pub async fn advance_stage(pool: &SqlitePool, id: &str) -> Result<QueueStage> {
         .bind(id)
         .execute(pool)
         .await?;
-    
+
     info!("Item {} moved from {:?} to {:?}", id, current, next);
     Ok(next)
 }
@@ -108,7 +116,7 @@ pub async fn advance_stage(pool: &SqlitePool, id: &str) -> Result<QueueStage> {
 /// Mark item as failed
 pub async fn mark_failed(pool: &SqlitePool, id: &str, error: &str) -> Result<()> {
     let now = Utc::now().timestamp();
-    
+
     sqlx::query(
         "UPDATE queue_items SET stage = 'failed', last_error = ?, retry_count = retry_count + 1, updated_at = ? WHERE id = ?"
     )
@@ -117,21 +125,17 @@ pub async fn mark_failed(pool: &SqlitePool, id: &str, error: &str) -> Result<()>
     .bind(id)
     .execute(pool)
     .await?;
-    
+
     error!("Item {} failed: {}", id, error);
     Ok(())
 }
 
 /// Update item with analysis results
-pub async fn update_analysis(
-    pool: &SqlitePool,
-    id: &str,
-    analysis: &AnalysisResult,
-) -> Result<()> {
+pub async fn update_analysis(pool: &SqlitePool, id: &str, analysis: &AnalysisResult) -> Result<()> {
     let now = Utc::now().timestamp();
     let analysis_json = serde_json::to_string(analysis)?;
     let tags = analysis.tags.join(",");
-    
+
     sqlx::query(r#"
         UPDATE queue_items 
         SET analysis = ?, tags = ?, category = ?, score = ?, stage = 'pending_tagging', updated_at = ?
@@ -145,7 +149,7 @@ pub async fn update_analysis(
     .bind(id)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
@@ -156,9 +160,9 @@ pub async fn get_pending_items(
     limit: i32,
 ) -> Result<Vec<QueueItem>> {
     let stage_str = format!("{:?}", stage).to_lowercase();
-    
+
     sqlx::query_as::<_, QueueItem>(
-        "SELECT * FROM queue_items WHERE stage = ? ORDER BY priority ASC, created_at ASC LIMIT ?"
+        "SELECT * FROM queue_items WHERE stage = ? ORDER BY priority ASC, created_at ASC LIMIT ?",
     )
     .bind(&stage_str)
     .bind(limit)
@@ -180,12 +184,11 @@ pub async fn get_retriable_items(pool: &SqlitePool, max_retries: i32) -> Result<
 
 /// Get queue statistics
 pub async fn get_queue_stats(pool: &SqlitePool) -> Result<QueueStats> {
-    let counts: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT stage, COUNT(*) as count FROM queue_items GROUP BY stage"
-    )
-    .fetch_all(pool)
-    .await?;
-    
+    let counts: Vec<(String, i64)> =
+        sqlx::query_as("SELECT stage, COUNT(*) as count FROM queue_items GROUP BY stage")
+            .fetch_all(pool)
+            .await?;
+
     let mut stats = QueueStats::default();
     for (stage, count) in counts {
         match stage.as_str() {
@@ -199,7 +202,7 @@ pub async fn get_queue_stats(pool: &SqlitePool) -> Result<QueueStats> {
             _ => {}
         }
     }
-    
+
     Ok(stats)
 }
 
@@ -212,22 +215,22 @@ pub async fn get_queue_stats(pool: &SqlitePool) -> Result<QueueStats> {
 pub struct AnalysisResult {
     /// Short summary of the content
     pub summary: String,
-    
+
     /// Suggested tags
     pub tags: Vec<String>,
-    
+
     /// Category (docs, code, idea, task, research, etc)
     pub category: String,
-    
+
     /// Importance/quality score (1-10)
     pub score: i32,
-    
+
     /// Actionable items extracted
     pub action_items: Vec<String>,
-    
+
     /// Related concepts/topics
     pub related_topics: Vec<String>,
-    
+
     /// Suggested project association
     pub suggested_project: Option<String>,
 }
@@ -258,13 +261,13 @@ impl QueueStats {
 pub struct ProcessorConfig {
     /// How many items to process per batch
     pub batch_size: i32,
-    
+
     /// Delay between batches (ms)
     pub batch_delay_ms: u64,
-    
+
     /// Maximum retries before giving up
     pub max_retries: i32,
-    
+
     /// Delay before retrying failed items (seconds)
     pub retry_delay_secs: u64,
 }
@@ -291,7 +294,12 @@ pub struct QueueProcessor {
 #[async_trait::async_trait]
 pub trait LlmAnalyzer {
     async fn analyze_content(&self, content: &str, source: &str) -> Result<AnalysisResult>;
-    async fn analyze_file(&self, content: &str, file_path: &str, language: &str) -> Result<FileAnalysisResult>;
+    async fn analyze_file(
+        &self,
+        content: &str,
+        file_path: &str,
+        language: &str,
+    ) -> Result<FileAnalysisResult>;
 }
 
 /// File-specific analysis result
@@ -316,94 +324,120 @@ impl QueueProcessor {
         config: ProcessorConfig,
         llm_client: Box<dyn LlmAnalyzer + Send + Sync>,
     ) -> Self {
-        Self { pool, config, llm_client }
+        Self {
+            pool,
+            config,
+            llm_client,
+        }
     }
-    
+
     /// Run the processor loop
     pub async fn run(&self) -> Result<()> {
         info!("Queue processor started");
-        
+
         loop {
             // Process inbox items (move to pending_analysis)
             self.process_inbox().await?;
-            
+
             // Process pending analysis items
             self.process_analysis().await?;
-            
+
             // Process pending tagging items
             self.process_tagging().await?;
-            
+
             // Retry failed items
             self.retry_failed().await?;
-            
+
             // Brief pause between cycles
             sleep(Duration::from_millis(self.config.batch_delay_ms)).await;
         }
     }
-    
+
     /// Move inbox items to pending_analysis
     async fn process_inbox(&self) -> Result<()> {
-        let items = get_pending_items(&self.pool, QueueStage::Inbox, self.config.batch_size).await?;
-        
+        let items =
+            get_pending_items(&self.pool, QueueStage::Inbox, self.config.batch_size).await?;
+
         for item in items {
             // Simple validation - if content is too short, skip
             if item.content.trim().len() < 5 {
                 mark_failed(&self.pool, &item.id, "Content too short").await?;
                 continue;
             }
-            
+
             advance_stage(&self.pool, &item.id).await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Run LLM analysis on pending items
     async fn process_analysis(&self) -> Result<()> {
-        let items = get_pending_items(&self.pool, QueueStage::PendingAnalysis, self.config.batch_size).await?;
-        
+        let items = get_pending_items(
+            &self.pool,
+            QueueStage::PendingAnalysis,
+            self.config.batch_size,
+        )
+        .await?;
+
         for item in items {
             // Mark as analyzing
             advance_stage(&self.pool, &item.id).await?;
-            
+
             // Run LLM analysis
-            match self.llm_client.analyze_content(&item.content, &item.source).await {
+            match self
+                .llm_client
+                .analyze_content(&item.content, &item.source)
+                .await
+            {
                 Ok(analysis) => {
                     update_analysis(&self.pool, &item.id, &analysis).await?;
-                    info!("Analyzed item {}: category={}, score={}", item.id, analysis.category, analysis.score);
+                    info!(
+                        "Analyzed item {}: category={}, score={}",
+                        item.id, analysis.category, analysis.score
+                    );
                 }
                 Err(e) => {
                     mark_failed(&self.pool, &item.id, &e.to_string()).await?;
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Finalize tagging and move to ready
     async fn process_tagging(&self) -> Result<()> {
-        let items = get_pending_items(&self.pool, QueueStage::PendingTagging, self.config.batch_size).await?;
-        
+        let items = get_pending_items(
+            &self.pool,
+            QueueStage::PendingTagging,
+            self.config.batch_size,
+        )
+        .await?;
+
         for item in items {
             // TODO: Additional tag refinement, linking to projects, etc.
             // For now, just advance to ready
             advance_stage(&self.pool, &item.id).await?;
             info!("Item {} is now ready", item.id);
         }
-        
+
         Ok(())
     }
-    
+
     /// Retry failed items
     async fn retry_failed(&self) -> Result<()> {
         let items = get_retriable_items(&self.pool, self.config.max_retries).await?;
-        
+
         for item in items {
-            info!("Retrying failed item {} (attempt {})", item.id, item.retry_count + 1);
+            info!(
+                "Retrying failed item {} (attempt {})",
+                item.id,
+                item.retry_count + 1
+            );
             advance_stage(&self.pool, &item.id).await?; // Moves back to pending_analysis
         }
-        
+
         Ok(())
     }
 }
@@ -439,7 +473,8 @@ pub async fn capture_thought(pool: &SqlitePool, text: &str) -> Result<QueueItem>
         None,
         None,
         None,
-    ).await
+    )
+    .await
 }
 
 /// Quick capture for notes
@@ -458,7 +493,7 @@ pub async fn capture_note(
     } else {
         None
     };
-    
+
     enqueue(
         pool,
         text,
@@ -467,7 +502,8 @@ pub async fn capture_note(
         repo_id.as_deref(),
         None,
         None,
-    ).await
+    )
+    .await
 }
 
 /// Capture a TODO found in code
@@ -486,5 +522,6 @@ pub async fn capture_todo(
         Some(repo_id),
         Some(file_path),
         Some(line_number),
-    ).await
+    )
+    .await
 }

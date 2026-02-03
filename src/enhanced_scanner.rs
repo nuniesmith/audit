@@ -203,21 +203,17 @@ impl EnhancedScanner {
             .await?;
 
         // Convert analysis results to tasks
-        let mut tasks = Vec::new();
-
         // Parse analysis text for issues (simplified - in production use structured output)
         // For now, create a single task with the analysis
-        tasks.push(
-            Task::new(
-                "Deep Codebase Analysis".to_string(),
-                analysis_text.clone(),
-                PathBuf::new(),
-                None,
-                TaskPriority::High,
-                crate::types::Category::Other,
-            )
-            .with_tag("deep-analysis"),
-        );
+        let tasks = vec![Task::new(
+            "Deep Codebase Analysis".to_string(),
+            analysis_text.clone(),
+            PathBuf::new(),
+            None,
+            TaskPriority::High,
+            crate::types::Category::Other,
+        )
+        .with_tag("deep-analysis")];
 
         // Note: In the future, we could parse analysis_text to extract structured tasks
         // For now, the single analysis task contains all findings
@@ -232,7 +228,7 @@ impl EnhancedScanner {
         bundle: &GlobalContextBundle,
     ) -> Result<Vec<FileAuditResult>> {
         let formatted_context = ContextBuilder::format_for_llm(bundle);
-        let file_paths: Vec<String> = bundle
+        let _file_paths: Vec<String> = bundle
             .source_bundle
             .files
             .iter()

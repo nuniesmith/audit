@@ -11,11 +11,10 @@ use crate::queue::processor::{
     ProcessorConfig, QueueProcessor,
 };
 use crate::scanner::github::{
-    build_dir_tree, fetch_user_repos, get_unanalyzed_files, save_dir_tree, scan_repo_for_todos,
-    sync_repos_to_db,
+    build_dir_tree, get_unanalyzed_files, save_dir_tree, scan_repo_for_todos, sync_repos_to_db,
 };
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::Subcommand;
 use colored::Colorize;
 use sqlx::SqlitePool;
 use std::path::PathBuf;
@@ -190,7 +189,7 @@ pub async fn handle_queue_command(pool: &SqlitePool, cmd: QueueCommands) -> Resu
             project,
         } => {
             let source = parse_source(&source);
-            let priority = parse_priority(&priority);
+            let _priority = parse_priority(&priority);
 
             let item = match source {
                 QueueSource::RawThought => capture_thought(pool, &content).await?,
@@ -206,7 +205,7 @@ pub async fn handle_queue_command(pool: &SqlitePool, cmd: QueueCommands) -> Resu
         QueueCommands::Status => {
             let stats = get_queue_stats(pool).await?;
 
-            println!("{} Queue Status\n", "📊");
+            println!("📊 Queue Status\n");
             println!("  {} {}", "Inbox:".dimmed(), stats.inbox);
             println!(
                 "  {} {}",
@@ -237,7 +236,7 @@ pub async fn handle_queue_command(pool: &SqlitePool, cmd: QueueCommands) -> Resu
             if items.is_empty() {
                 println!("{} No items in {} stage", "📭".dimmed(), stage);
             } else {
-                println!("{} Items in {} stage ({}):\n", "📋", stage, items.len());
+                println!("📋 Items in {} stage ({}):\n", stage, items.len());
 
                 for item in items {
                     let preview: String = item.content.chars().take(60).collect();
@@ -275,7 +274,7 @@ pub async fn handle_queue_command(pool: &SqlitePool, cmd: QueueCommands) -> Resu
 
             let processor = QueueProcessor::new(pool.clone(), config, analyzer);
 
-            println!("{} Starting queue processor...", "🔄");
+            println!("🔄 Starting queue processor...");
 
             if once {
                 // Process one cycle and exit
@@ -294,7 +293,7 @@ pub async fn handle_queue_command(pool: &SqlitePool, cmd: QueueCommands) -> Resu
                 println!("{} Retry by ID not yet implemented", "⚠".yellow());
             } else {
                 let items = crate::queue::processor::get_retriable_items(pool, 3).await?;
-                println!("{} Found {} retriable items", "🔄", items.len());
+                println!("🔄 Found {} retriable items", items.len());
 
                 for item in items {
                     crate::queue::processor::advance_stage(pool, &item.id).await?;
@@ -312,11 +311,7 @@ pub async fn handle_scan_command(pool: &SqlitePool, cmd: ScanCommands) -> Result
 
     match cmd {
         ScanCommands::Repos { token } => {
-            println!(
-                "{} Syncing repositories for {}...",
-                "🔄",
-                GITHUB_USERNAME.cyan()
-            );
+            println!("🔄 Syncing repositories for {}...", GITHUB_USERNAME.cyan());
 
             let repo_ids = sync_repos_to_db(pool, token.as_deref()).await?;
 
@@ -329,15 +324,15 @@ pub async fn handle_scan_command(pool: &SqlitePool, cmd: ScanCommands) -> Result
             .fetch_all(pool)
             .await?;
 
-            for (id, name) in repos {
-                println!("  {} {}", "📁", name);
+            for (_id, name) in repos {
+                println!("  📁 {}", name);
             }
         }
 
         ScanCommands::Todos { repo } => {
             let (repo_id, repo_path) = resolve_repo(pool, &repo).await?;
 
-            println!("{} Scanning {} for TODOs...", "🔍", repo_path.display());
+            println!("🔍 Scanning {} for TODOs...", repo_path.display());
 
             let result = scan_repo_for_todos(pool, &repo_id, &repo_path).await?;
 
@@ -351,11 +346,7 @@ pub async fn handle_scan_command(pool: &SqlitePool, cmd: ScanCommands) -> Result
         ScanCommands::Tree { repo, depth } => {
             let (repo_id, repo_path) = resolve_repo(pool, &repo).await?;
 
-            println!(
-                "{} Building directory tree for {}...",
-                "🌳",
-                repo_path.display()
-            );
+            println!("🌳 Building directory tree for {}...", repo_path.display());
 
             let tree = build_dir_tree(&repo_path, depth)?;
             save_dir_tree(pool, &repo_id, &tree).await?;
@@ -391,7 +382,7 @@ pub async fn handle_scan_command(pool: &SqlitePool, cmd: ScanCommands) -> Result
             if files.is_empty() {
                 println!("{} All files have been analyzed!", "✓".green());
             } else {
-                println!("{} Unanalyzed files ({}):\n", "📄", files.len());
+                println!("📄 Unanalyzed files ({}):\n", files.len());
 
                 for file in files {
                     let rel_path = file.strip_prefix(&repo_path).unwrap_or(&file);
@@ -414,7 +405,7 @@ pub async fn handle_scan_command(pool: &SqlitePool, cmd: ScanCommands) -> Result
                 return Ok(());
             }
 
-            println!("{} Analyzing {} files...\n", "🔬", files.len());
+            println!("🔬 Analyzing {} files...\n", files.len());
 
             for file in files {
                 let rel_path = file.strip_prefix(&repo_path).unwrap_or(&file);
@@ -478,7 +469,7 @@ pub async fn handle_scan_command(pool: &SqlitePool, cmd: ScanCommands) -> Result
                 }
             }
 
-            println!("\n{} Tokens used: {}", "📊", analyzer.tokens_used());
+            println!("\n📊 Tokens used: {}", analyzer.tokens_used());
         }
 
         ScanCommands::All {
@@ -486,14 +477,10 @@ pub async fn handle_scan_command(pool: &SqlitePool, cmd: ScanCommands) -> Result
             skip_todos,
             skip_tree,
         } => {
-            println!(
-                "{} Running full scan for {}...\n",
-                "🚀",
-                GITHUB_USERNAME.cyan()
-            );
+            println!("🚀 Running full scan for {}...\n", GITHUB_USERNAME.cyan());
 
             // Sync repos
-            println!("{} Syncing repositories...", "1️⃣");
+            println!("1️⃣ Syncing repositories...");
             let repo_ids = sync_repos_to_db(pool, token.as_deref()).await?;
             println!("   {} {} repos synced\n", "✓".green(), repo_ids.len());
 
@@ -505,12 +492,12 @@ pub async fn handle_scan_command(pool: &SqlitePool, cmd: ScanCommands) -> Result
                         .fetch_optional(pool)
                         .await?;
 
-                let (name, path) = match repo {
+                let (name, _path) = match repo {
                     Some(r) => r,
                     None => continue,
                 };
 
-                println!("{} Processing {}...", "📁", name.cyan());
+                println!("📁 Processing {}...", name.cyan());
 
                 // Try to find local clone
                 let local_path = find_local_repo(&name);
@@ -566,6 +553,7 @@ pub async fn handle_report_command(pool: &SqlitePool, cmd: ReportCommands) -> Re
 
             #[derive(sqlx::FromRow)]
             struct TodoWithRepo {
+                #[allow(dead_code)]
                 id: String,
                 file_path: String,
                 line_number: i32,
@@ -588,7 +576,7 @@ pub async fn handle_report_command(pool: &SqlitePool, cmd: ReportCommands) -> Re
             if todos.is_empty() {
                 println!("{} No TODOs found", "✓".green());
             } else {
-                println!("{} TODOs ({}):\n", "📋", todos.len());
+                println!("📋 TODOs ({}):\n", todos.len());
 
                 for todo in todos {
                     let priority_icon = match todo.priority {
@@ -653,7 +641,7 @@ pub async fn handle_report_command(pool: &SqlitePool, cmd: ReportCommands) -> Re
             if files.is_empty() {
                 println!("{} No analyzed files found", "📭".dimmed());
             } else {
-                println!("{} Analyzed Files ({}):\n", "📄", files.len());
+                println!("📄 Analyzed Files ({}):\n", files.len());
 
                 for file in files {
                     let attention_icon = if file.needs_attention { "⚠️ " } else { "" };
@@ -687,7 +675,7 @@ pub async fn handle_report_command(pool: &SqlitePool, cmd: ReportCommands) -> Re
                 .await?;
 
                 if let Some((total, analyzed, total_todos, active_todos, health)) = cache {
-                    println!("{} Health Report: {}\n", "📊", repo_name.cyan());
+                    println!("📊 Health Report: {}\n", repo_name.cyan());
                     println!(
                         "  {} {}",
                         "Health Score:".dimmed(),
@@ -716,7 +704,7 @@ pub async fn handle_report_command(pool: &SqlitePool, cmd: ReportCommands) -> Re
                 .fetch_all(pool)
                 .await?;
 
-                println!("{} Repository Health Summary\n", "📊");
+                println!("📊 Repository Health Summary\n");
 
                 for (name, total, analyzed, todos, health) in repos {
                     let health_str = health
@@ -729,8 +717,8 @@ pub async fn handle_report_command(pool: &SqlitePool, cmd: ReportCommands) -> Re
                     };
 
                     println!(
-                        "  {} {} | Health: {} | Analyzed: {} | TODOs: {}",
-                        "📁", name, health_str, progress, todos
+                        "  📁 {} | Health: {} | Analyzed: {} | TODOs: {}",
+                        name, health_str, progress, todos
                     );
                 }
             }
@@ -739,13 +727,10 @@ pub async fn handle_report_command(pool: &SqlitePool, cmd: ReportCommands) -> Re
         ReportCommands::Standardization { repo } => {
             let api_key = std::env::var("XAI_API_KEY").expect("XAI_API_KEY must be set");
 
-            let (repo_id, repo_path) = resolve_repo(pool, &repo).await?;
+            let (repo_id, _repo_path) = resolve_repo(pool, &repo).await?;
             let analyzer = GrokAnalyzer::new(api_key);
 
-            println!(
-                "{} Generating standardization report for {}...\n",
-                "🔬", repo
-            );
+            println!("🔬 Generating standardization report for {}...\n", repo);
 
             // Get tree structure
             let tree = crate::scanner::github::get_dir_tree(pool, &repo_id)
@@ -787,7 +772,7 @@ pub async fn handle_report_command(pool: &SqlitePool, cmd: ReportCommands) -> Re
                 .analyze_repo_standardization(&repo, &tree_text, &sample_files)
                 .await?;
 
-            println!("{} Standardization Report\n", "📋");
+            println!("📋 Standardization Report\n");
             println!("  {} {}/10\n", "Health Score:".cyan(), report.health_score);
 
             if !report.issues.is_empty() {
@@ -932,11 +917,7 @@ fn find_local_repo(name_or_path: &str) -> Option<PathBuf> {
         home.join(name_or_path),
     ];
 
-    for path in candidates {
-        if path.exists() && path.is_dir() {
-            return Some(path);
-        }
-    }
-
-    None
+    candidates
+        .into_iter()
+        .find(|path| path.exists() && path.is_dir())
 }

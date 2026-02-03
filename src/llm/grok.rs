@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error};
 
 // ============================================================================
 // Configuration
@@ -17,7 +17,7 @@ use tracing::{debug, error, info, warn};
 
 const GROK_API_URL: &str = "https://api.x.ai/v1/chat/completions";
 const DEFAULT_MODEL: &str = "grok-3-mini"; // Fast and cheap for analysis
-const ANALYSIS_MODEL: &str = "grok-3";     // Better for complex file analysis
+const ANALYSIS_MODEL: &str = "grok-3"; // Better for complex file analysis
 
 // ============================================================================
 // Grok Client
@@ -36,18 +36,18 @@ impl GrokAnalyzer {
             .timeout(Duration::from_secs(120))
             .build()
             .expect("Failed to build HTTP client");
-        
+
         Self {
             client,
             api_key,
             tokens_used: std::sync::atomic::AtomicU64::new(0),
         }
     }
-    
+
     pub fn tokens_used(&self) -> u64 {
         self.tokens_used.load(std::sync::atomic::Ordering::Relaxed)
     }
-    
+
     async fn call_grok(
         &self,
         model: &str,
@@ -64,42 +64,48 @@ impl GrokAnalyzer {
             "temperature": 0.3,
             "max_tokens": 2048
         });
-        
+
         if json_mode {
             payload["response_format"] = json!({"type": "json_object"});
         }
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(GROK_API_URL)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
             .await?;
-        
+
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             error!("Grok API error: {} - {}", status, body);
             anyhow::bail!("Grok API error: {}", status);
         }
-        
+
         let result: GrokResponse = response.json().await?;
-        
+
         // Track usage
         if let Some(usage) = result.usage {
             self.tokens_used.fetch_add(
                 usage.total_tokens as u64,
                 std::sync::atomic::Ordering::Relaxed,
             );
-            debug!("Tokens used: {} (total: {})", usage.total_tokens, self.tokens_used());
+            debug!(
+                "Tokens used: {} (total: {})",
+                usage.total_tokens,
+                self.tokens_used()
+            );
         }
-        
-        let content = result.choices
+
+        let content = result
+            .choices
             .first()
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
-        
+
         Ok(content)
     }
 }
@@ -156,28 +162,42 @@ Guidelines:
             "Content source: {}\n\nContent to analyze:\n{}",
             source, content
         );
-        
-        let response = self.call_grok(DEFAULT_MODEL, system_prompt, &user_prompt, true).await?;
-        
+
+        let response = self
+            .call_grok(DEFAULT_MODEL, system_prompt, &user_prompt, true)
+            .await?;
+
         // Parse JSON response
         let parsed: serde_json::Value = serde_json::from_str(&response)
             .map_err(|e| anyhow::anyhow!("Failed to parse Grok response: {} - {}", e, response))?;
-        
+
         Ok(AnalysisResult {
             summary: parsed["summary"].as_str().unwrap_or("").to_string(),
             tags: parsed["tags"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             category: parsed["category"].as_str().unwrap_or("note").to_string(),
             score: parsed["score"].as_i64().unwrap_or(5) as i32,
             action_items: parsed["action_items"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             related_topics: parsed["related_topics"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             suggested_project: parsed["suggested_project"]
                 .as_str()
@@ -185,7 +205,7 @@ Guidelines:
                 .map(String::from),
         })
     }
-    
+
     async fn analyze_file(
         &self,
         content: &str,
@@ -221,13 +241,15 @@ Guidelines:
             "File: {}\nLanguage: {}\n\nSource code:\n```{}\n{}\n```",
             file_path, language, language, content
         );
-        
+
         // Use better model for file analysis
-        let response = self.call_grok(ANALYSIS_MODEL, system_prompt, &user_prompt, true).await?;
-        
+        let response = self
+            .call_grok(ANALYSIS_MODEL, system_prompt, &user_prompt, true)
+            .await?;
+
         let parsed: serde_json::Value = serde_json::from_str(&response)
             .map_err(|e| anyhow::anyhow!("Failed to parse Grok response: {} - {}", e, response))?;
-        
+
         Ok(FileAnalysisResult {
             summary: parsed["summary"].as_str().unwrap_or("").to_string(),
             purpose: parsed["purpose"].as_str().unwrap_or("").to_string(),
@@ -236,23 +258,43 @@ Guidelines:
             quality_score: parsed["quality_score"].as_i64().unwrap_or(5) as i32,
             security_notes: parsed["security_notes"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             improvements: parsed["improvements"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             dependencies: parsed["dependencies"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             exports: parsed["exports"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             tags: parsed["tags"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             needs_attention: parsed["needs_attention"].as_bool().unwrap_or(false),
         })
@@ -297,19 +339,24 @@ Priority guidelines:
         } else {
             format!("File: {}\nTODO: {}", file_path, todo_content)
         };
-        
-        let response = self.call_grok(DEFAULT_MODEL, system_prompt, &user_prompt, true).await?;
+
+        let response = self
+            .call_grok(DEFAULT_MODEL, system_prompt, &user_prompt, true)
+            .await?;
         let parsed: serde_json::Value = serde_json::from_str(&response)?;
-        
+
         Ok(TodoAnalysis {
             priority: parsed["priority"].as_i64().unwrap_or(3) as i32,
             context: parsed["context"].as_str().unwrap_or("").to_string(),
             estimated_effort: parsed["estimated_effort"].as_f64().unwrap_or(1.0) as f32,
             category: parsed["category"].as_str().unwrap_or("feature").to_string(),
-            suggested_task_title: parsed["suggested_task_title"].as_str().unwrap_or("").to_string(),
+            suggested_task_title: parsed["suggested_task_title"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
         })
     }
-    
+
     /// Analyze repository for standardization issues
     pub async fn analyze_repo_standardization(
         &self,
@@ -342,43 +389,61 @@ Be specific and actionable in recommendations."#;
             .iter()
             .map(|(path, content)| format!("--- {} ---\n{}\n", path, content))
             .collect();
-        
+
         let user_prompt = format!(
             "Repository: {}\n\nFile structure:\n{}\n\nSample files:\n{}",
             repo_name, file_structure, samples_text
         );
-        
-        let response = self.call_grok(ANALYSIS_MODEL, system_prompt, &user_prompt, true).await?;
+
+        let response = self
+            .call_grok(ANALYSIS_MODEL, system_prompt, &user_prompt, true)
+            .await?;
         let parsed: serde_json::Value = serde_json::from_str(&response)?;
-        
+
         Ok(StandardizationReport {
             health_score: parsed["health_score"].as_i64().unwrap_or(5) as i32,
             issues: parsed["issues"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| {
-                    Some(StandardizationIssue {
-                        severity: v["severity"].as_str()?.to_string(),
-                        category: v["category"].as_str()?.to_string(),
-                        description: v["description"].as_str()?.to_string(),
-                        recommendation: v["recommendation"].as_str()?.to_string(),
-                    })
-                }).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| {
+                            Some(StandardizationIssue {
+                                severity: v["severity"].as_str()?.to_string(),
+                                category: v["category"].as_str()?.to_string(),
+                                description: v["description"].as_str()?.to_string(),
+                                recommendation: v["recommendation"].as_str()?.to_string(),
+                            })
+                        })
+                        .collect()
+                })
                 .unwrap_or_default(),
             strengths: parsed["strengths"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             patterns: parsed["patterns"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             missing_files: parsed["missing_files"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
         })
     }
-    
+
     /// Generate a project plan from analyzed content
     pub async fn generate_project_plan(
         &self,
@@ -408,45 +473,72 @@ Respond with JSON:
 
         let notes_text = notes.join("\n\n");
         let tasks_text = existing_tasks.join("\n");
-        
+
         let user_prompt = format!(
             "Project: {}\n\nNotes and ideas:\n{}\n\nExisting tasks:\n{}",
             project_name, notes_text, tasks_text
         );
-        
-        let response = self.call_grok(ANALYSIS_MODEL, system_prompt, &user_prompt, true).await?;
+
+        let response = self
+            .call_grok(ANALYSIS_MODEL, system_prompt, &user_prompt, true)
+            .await?;
         let parsed: serde_json::Value = serde_json::from_str(&response)?;
-        
+
         Ok(ProjectPlan {
             summary: parsed["summary"].as_str().unwrap_or("").to_string(),
             goals: parsed["goals"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             phases: parsed["phases"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| {
-                    Some(ProjectPhase {
-                        name: v["name"].as_str()?.to_string(),
-                        description: v["description"].as_str()?.to_string(),
-                        tasks: v["tasks"].as_array()
-                            .map(|t| t.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-                            .unwrap_or_default(),
-                        estimated_days: v["estimated_days"].as_i64().unwrap_or(7) as i32,
-                    })
-                }).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| {
+                            Some(ProjectPhase {
+                                name: v["name"].as_str()?.to_string(),
+                                description: v["description"].as_str()?.to_string(),
+                                tasks: v["tasks"]
+                                    .as_array()
+                                    .map(|t| {
+                                        t.iter()
+                                            .filter_map(|x| x.as_str().map(String::from))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
+                                estimated_days: v["estimated_days"].as_i64().unwrap_or(7) as i32,
+                            })
+                        })
+                        .collect()
+                })
                 .unwrap_or_default(),
             risks: parsed["risks"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             dependencies: parsed["dependencies"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             success_criteria: parsed["success_criteria"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
         })
     }

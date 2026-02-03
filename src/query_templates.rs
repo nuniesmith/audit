@@ -515,7 +515,7 @@ mod tests {
         let registry = TemplateRegistry::new();
 
         // Should have built-in templates
-        assert!(registry.templates.len() > 0);
+        assert!(!registry.templates.is_empty());
 
         // Should be able to get a template
         let template = registry.get("security_audit");
@@ -527,9 +527,9 @@ mod tests {
         let registry = TemplateRegistry::new();
 
         let results = registry.search("security");
-        assert!(results.len() > 0);
+        assert!(!results.is_empty());
 
         let results = registry.search("refactor");
-        assert!(results.len() > 0);
+        assert!(!results.is_empty());
     }
 }

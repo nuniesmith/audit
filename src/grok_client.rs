@@ -44,6 +44,7 @@ const GROK_MODEL: &str = "grok-4-1-fast-reasoning";
 /// Pricing per million tokens for Grok 4.1 Fast
 const COST_PER_MILLION_INPUT_TOKENS: f64 = 0.20;
 const COST_PER_MILLION_OUTPUT_TOKENS: f64 = 0.50;
+#[allow(dead_code)]
 const COST_PER_MILLION_CACHED_TOKENS: f64 = 0.05;
 
 /// Maximum retries for API calls

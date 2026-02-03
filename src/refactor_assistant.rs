@@ -972,7 +972,7 @@ impl RefactoringAnalysis {
                     for benefit in &suggestion.benefits {
                         output.push_str(&format!("- {}\n", benefit));
                     }
-                    output.push_str("\n");
+                    output.push('\n');
                 }
 
                 if !suggestion.steps.is_empty() {
@@ -980,7 +980,7 @@ impl RefactoringAnalysis {
                     for (j, step) in suggestion.steps.iter().enumerate() {
                         output.push_str(&format!("{}. {}\n", j + 1, step));
                     }
-                    output.push_str("\n");
+                    output.push('\n');
                 }
 
                 if let Some(example) = &suggestion.example {
@@ -1002,7 +1002,7 @@ impl RefactoringAnalysis {
             for (i, priority) in self.priorities.iter().enumerate() {
                 output.push_str(&format!("{}. {}\n", i + 1, priority));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         output
@@ -1025,7 +1025,7 @@ impl RefactoringPlan {
             for benefit in &self.benefits {
                 output.push_str(&format!("- {}\n", benefit));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         // Steps
@@ -1055,7 +1055,7 @@ impl RefactoringPlan {
                         output.push_str(&format!("- {}\n", validation));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
         }
 

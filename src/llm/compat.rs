@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// LLM client for code analysis (compatibility layer)
 pub struct LlmClient {

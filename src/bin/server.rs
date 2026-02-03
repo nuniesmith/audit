@@ -11,14 +11,13 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 // Import from our crate
 use rustassistant::db::{
-    self, create_note, create_task, get_next_task, get_stats, list_notes, list_repositories,
-    list_tasks, search_notes, update_note_status, update_task_status, Note, Repository, Task,
+    self, create_note, get_next_task, get_stats, list_notes, list_repositories, list_tasks,
+    search_notes, update_note_status, update_task_status,
 };
 
 // ============================================================================

@@ -4,7 +4,7 @@
 //! Uses sqlx for async database operations.
 
 use serde::{Deserialize, Serialize};
-use sqlx::{sqlite::SqlitePoolOptions, FromRow, Row, SqlitePool};
+use sqlx::{sqlite::SqlitePoolOptions, FromRow, SqlitePool};
 use thiserror::Error;
 
 use super::queue::create_queue_tables;
@@ -126,9 +126,7 @@ pub async fn init_db(database_url: &str) -> DbResult<SqlitePool> {
     create_tables(&pool).await?;
 
     // Create queue system tables
-    create_queue_tables(&pool)
-        .await
-        .map_err(|e| DbError::Sqlx(e))?;
+    create_queue_tables(&pool).await.map_err(DbError::Sqlx)?;
 
     Ok(pool)
 }
@@ -458,6 +456,7 @@ pub async fn remove_repository(pool: &SqlitePool, id: &str) -> DbResult<()> {
 // ============================================================================
 
 /// Create a new task
+#[allow(clippy::too_many_arguments)]
 pub async fn create_task(
     pool: &SqlitePool,
     title: &str,
@@ -837,7 +836,7 @@ impl Database {
         &self,
         status: Option<NoteStatus>,
         limit: Option<i64>,
-        offset: Option<i64>,
+        _offset: Option<i64>,
     ) -> DbResult<Vec<Note>> {
         let limit = limit.unwrap_or(50);
         let status_str = status.map(|s| s.as_str());
@@ -849,8 +848,8 @@ impl Database {
         &self,
         name: &str,
         path: &str,
-        remote_url: Option<String>,
-        default_branch: Option<String>,
+        _remote_url: Option<String>,
+        _default_branch: Option<String>,
     ) -> DbResult<String> {
         let repo = add_repository(&self.pool, path, name).await?;
         Ok(repo.id)
@@ -869,12 +868,12 @@ impl Database {
     /// Record LLM cost (legacy API - now a no-op, consider removing calls)
     pub async fn record_llm_cost(
         &self,
-        model: &str,
-        operation: &str,
-        prompt_tokens: i64,
-        completion_tokens: i64,
-        estimated_cost_usd: f64,
-        repository_id: Option<i64>,
+        _model: &str,
+        _operation: &str,
+        _prompt_tokens: i64,
+        _completion_tokens: i64,
+        _estimated_cost_usd: f64,
+        _repository_id: Option<i64>,
     ) -> DbResult<()> {
         // Legacy API - no longer storing LLM costs in new schema
         // Keep as no-op for compatibility

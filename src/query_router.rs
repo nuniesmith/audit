@@ -37,12 +37,11 @@
 //! ```
 
 use crate::context_builder::{Context, ContextBuilder};
-use crate::db::{search_notes, DbResult};
 use crate::response_cache::ResponseCache;
 use anyhow::{Context as AnyhowContext, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Query intent classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,6 +118,7 @@ pub struct RoutingStats {
 /// Query router with intelligent routing
 pub struct QueryRouter {
     /// Database connection pool
+    #[allow(dead_code)]
     pool: sqlx::SqlitePool,
 
     /// Response cache
@@ -261,7 +261,7 @@ impl QueryRouter {
             || query.starts_with("thank you ")
     }
 
-    fn is_note_search(&self, query: &str, words: &[&str]) -> bool {
+    fn is_note_search(&self, _query: &str, words: &[&str]) -> bool {
         let search_keywords = ["find", "search", "show", "list", "get"];
         let note_keywords = ["note", "notes", "idea", "ideas", "thought", "thoughts"];
 
@@ -305,7 +305,7 @@ impl QueryRouter {
         has_task || (has_generation && query.contains("should"))
     }
 
-    fn is_code_question(&self, query: &str, words: &[&str]) -> bool {
+    fn is_code_question(&self, _query: &str, words: &[&str]) -> bool {
         let question_words = ["how", "why", "what", "when", "where", "explain"];
         let code_words = ["function", "class", "method", "variable", "work", "works"];
 
@@ -349,7 +349,7 @@ impl QueryRouter {
 
     async fn build_analysis_context(
         &self,
-        query: &str,
+        _query: &str,
         user_context: &UserContext,
     ) -> Result<Context> {
         let mut builder = self.context_builder.clone();
@@ -368,7 +368,11 @@ impl QueryRouter {
             .context("Failed to build analysis context")
     }
 
-    async fn build_task_context(&self, query: &str, user_context: &UserContext) -> Result<Context> {
+    async fn build_task_context(
+        &self,
+        _query: &str,
+        user_context: &UserContext,
+    ) -> Result<Context> {
         let mut builder = self
             .context_builder
             .clone()
@@ -389,8 +393,8 @@ impl QueryRouter {
 
     async fn build_generic_context(
         &self,
-        query: &str,
-        user_context: &UserContext,
+        _query: &str,
+        _user_context: &UserContext,
     ) -> Result<Context> {
         self.context_builder
             .clone()
@@ -446,7 +450,7 @@ impl QueryRouter {
 
     // Cost estimation
 
-    fn estimate_grok_cost(query: &str) -> f64 {
+    fn estimate_grok_cost(_query: &str) -> f64 {
         // Rough estimate: avg 100k tokens per full query
         let avg_input_tokens = 100_000.0;
         let avg_output_tokens = 50_000.0;
@@ -501,6 +505,7 @@ impl Default for RoutingStats {
 }
 
 #[cfg(test)]
+#[allow(unreachable_code, unused_variables)]
 mod tests {
     use super::*;
 

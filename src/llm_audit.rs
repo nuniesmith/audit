@@ -358,7 +358,7 @@ impl LlmAuditor {
     pub async fn run_regular_audit(
         &self,
         project_path: &Path,
-        focus_areas: Vec<String>,
+        _focus_areas: Vec<String>,
     ) -> Result<RegularAuditResult> {
         info!("🔍 Running Regular Audit on: {:?}", project_path);
 
@@ -535,6 +535,7 @@ impl LlmAuditor {
     }
 
     /// Build a summary context of the codebase
+    #[allow(dead_code)]
     fn build_codebase_context(&self, project_path: &Path) -> Result<String> {
         let mut context = String::new();
         context.push_str(&format!("Codebase at: {}\n\n", project_path.display()));

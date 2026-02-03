@@ -253,7 +253,7 @@ async fn handle_note_action(pool: &sqlx::SqlitePool, action: NoteAction) -> anyh
                     "rustassistant".cyan()
                 );
             } else {
-                println!("{} Notes ({}):\n", "📝", notes.len());
+                println!("📝 Notes ({}):\n", notes.len());
                 for note in notes {
                     print_note(&note);
                 }
@@ -266,12 +266,7 @@ async fn handle_note_action(pool: &sqlx::SqlitePool, action: NoteAction) -> anyh
             if notes.is_empty() {
                 println!("{} No notes matching \"{}\"", "🔍".dimmed(), query);
             } else {
-                println!(
-                    "{} Found {} notes matching \"{}\":\n",
-                    "🔍",
-                    notes.len(),
-                    query
-                );
+                println!("🔍 Found {} notes matching \"{}\":\n", notes.len(), query);
                 for note in notes {
                     print_note(&note);
                 }
@@ -349,7 +344,7 @@ async fn handle_repo_action(pool: &sqlx::SqlitePool, action: RepoAction) -> anyh
                     "rustassistant".cyan()
                 );
             } else {
-                println!("{} Tracked repositories ({}):\n", "📂", repos.len());
+                println!("📂 Tracked repositories ({}):\n", repos.len());
                 for repo in repos {
                     let analyzed = repo
                         .last_analyzed
@@ -360,7 +355,7 @@ async fn handle_repo_action(pool: &sqlx::SqlitePool, action: RepoAction) -> anyh
                         })
                         .unwrap_or_else(|| "never".into());
 
-                    println!("  {} {} ({})", "📁", repo.name.cyan(), repo.id.dimmed());
+                    println!("  📁 {} ({})", repo.name.cyan(), repo.id.dimmed());
                     println!("     {} {}", "Path:".dimmed(), repo.path);
                     println!("     {} {}", "Analyzed:".dimmed(), analyzed);
                     println!();
@@ -393,7 +388,7 @@ async fn handle_task_action(pool: &sqlx::SqlitePool, action: TaskAction) -> anyh
             if tasks.is_empty() {
                 println!("{} No tasks found", "📋".dimmed());
             } else {
-                println!("{} Tasks ({}):\n", "📋", tasks.len());
+                println!("📋 Tasks ({}):\n", tasks.len());
                 for task in tasks {
                     print_task(&task);
                 }
@@ -471,7 +466,7 @@ fn print_task(task: &db::Task) {
 async fn handle_next(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     match get_next_task(pool).await? {
         Some(task) => {
-            println!("{} Next recommended task:\n", "🎯");
+            println!("🎯 Next recommended task:\n");
             print_task(&task);
             println!(
                 "Start working on it: {} tasks start {}",
@@ -480,7 +475,7 @@ async fn handle_next(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
             );
         }
         None => {
-            println!("{} No pending tasks! Time to relax or add some work.", "🎉");
+            println!("🎉 No pending tasks! Time to relax or add some work.");
         }
     }
 
@@ -490,7 +485,7 @@ async fn handle_next(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 async fn handle_stats(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     let stats = get_stats(pool).await?;
 
-    println!("{} Rustassistant Statistics\n", "📊");
+    println!("📊 Rustassistant Statistics\n");
     println!("  {} {}", "Total notes:".dimmed(), stats.total_notes);
     println!("  {} {}", "Inbox notes:".dimmed(), stats.inbox_notes);
     println!("  {} {}", "Repositories:".dimmed(), stats.total_repos);
@@ -501,7 +496,7 @@ async fn handle_stats(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 }
 
 async fn handle_test_api() -> anyhow::Result<()> {
-    println!("{} Testing XAI API connection...\n", "🔌");
+    println!("🔌 Testing XAI API connection...\n");
 
     let api_key = std::env::var("XAI_API_KEY");
 

@@ -725,7 +725,7 @@ impl GeneratedTests {
                 for assertion in &test.assertions {
                     output.push_str(&format!("- {}\n", assertion));
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
 
             output.push_str("```rust\n");
@@ -784,7 +784,7 @@ impl TestGapAnalysis {
                     for test in &func.recommended_tests {
                         output.push_str(&format!("- {}\n", test));
                     }
-                    output.push_str("\n");
+                    output.push('\n');
                 }
             }
         }
@@ -794,7 +794,7 @@ impl TestGapAnalysis {
             for test_type in &self.missing_test_types {
                 output.push_str(&format!("- {:?}\n", test_type));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         if !self.recommendations.is_empty() {
@@ -802,7 +802,7 @@ impl TestGapAnalysis {
             for (i, rec) in self.recommendations.iter().enumerate() {
                 output.push_str(&format!("{}. {}\n", i + 1, rec));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         output

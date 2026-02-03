@@ -522,7 +522,7 @@ impl CodeReview {
         // Summary
         output.push_str("## Summary\n\n");
         output.push_str(&self.summary);
-        output.push_str("\n");
+        output.push('\n');
 
         // Statistics
         output.push_str("## Statistics\n\n");
@@ -542,7 +542,7 @@ impl CodeReview {
             "- **Lines Changed:** {}\n",
             self.stats.total_lines_changed
         ));
-        output.push_str("\n");
+        output.push('\n');
 
         // Issue breakdown
         if self.stats.total_issues > 0 {
@@ -562,7 +562,7 @@ impl CodeReview {
             if self.stats.low_issues > 0 {
                 output.push_str(&format!("- 🔵 **Low:** {}\n", self.stats.low_issues));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         // File reviews
@@ -579,7 +579,7 @@ impl CodeReview {
                 if file.lines_changed > 0 {
                     output.push_str(&format!("- **Lines Changed:** {}\n", file.lines_changed));
                 }
-                output.push_str("\n");
+                output.push('\n');
 
                 // Issues
                 if !file.issues.is_empty() {
@@ -597,7 +597,7 @@ impl CodeReview {
                             icon, issue.severity, issue.description
                         ));
                     }
-                    output.push_str("\n");
+                    output.push('\n');
                 }
 
                 // Suggestions
@@ -606,7 +606,7 @@ impl CodeReview {
                     for suggestion in &file.suggestions {
                         output.push_str(&format!("- {}\n", suggestion));
                     }
-                    output.push_str("\n");
+                    output.push('\n');
                 }
             }
         }
@@ -655,7 +655,7 @@ impl CodeReview {
                             .push_str(&format!("- {:?}: {}\n", issue.severity, issue.description));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
         }
 
