@@ -22,7 +22,7 @@ COPY Cargo.toml Cargo.lock ./
 # Copy source code
 COPY src ./src
 COPY static ./static
-COPY templates ./templates
+COPY askama.toml ./askama.toml
 
 # Build release binary
 RUN cargo build --release --bin rustassistant-server
@@ -47,7 +47,6 @@ COPY --from=builder /build/target/release/rustassistant-server /usr/local/bin/ru
 # Copy static assets and config
 COPY static ./static
 COPY config ./config
-COPY templates ./templates
 
 # Create data directory
 RUN mkdir -p /app/data

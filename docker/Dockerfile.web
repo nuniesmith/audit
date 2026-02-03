@@ -19,21 +19,20 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 
 # Create dummy main.rs to build dependencies
-RUN mkdir -p src/bin && \
+RUN mkdir -p src/bin src/templates/layouts src/templates/pages && \
     echo "fn main() {}" > src/bin/server.rs && \
     echo "fn main() {}" > src/main.rs && \
-    mkdir -p templates/layouts templates/pages && \
-    touch templates/layouts/base.html templates/pages/dashboard.html
+    touch src/templates/layouts/base.html src/templates/pages/dashboard.html
 
 # Build dependencies (this layer will be cached)
 RUN cargo build --release --bin rustassistant-server
 
 # Remove dummy files
-RUN rm -rf src templates
+RUN rm -rf src
 
-# Copy actual source code
+# Copy actual source code and templates
 COPY src ./src
-COPY templates ./templates
+COPY askama.toml ./askama.toml
 
 # Build the actual binary
 RUN cargo build --release --bin rustassistant-server && \
@@ -53,17 +52,14 @@ RUN apt-get update && apt-get install -y \
 
 # Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash rustassistant && \
-    mkdir -p /app/data /app/config /app/templates && \
+    mkdir -p /app/data /app/config && \
     chown -R rustassistant:rustassistant /app
 
 # Set working directory
 WORKDIR /app
 
-# Copy binary from builder
+# Copy binary from builder (templates are embedded via Askama)
 COPY --from=builder --chown=rustassistant:rustassistant /build/target/release/rustassistant-server /usr/local/bin/rustassistant-server
-
-# Copy templates
-COPY --chown=rustassistant:rustassistant templates /app/templates
 
 # Switch to non-root user
 USER rustassistant
