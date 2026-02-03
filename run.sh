@@ -24,6 +24,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 ENV_FILE=".env"
+COMPOSE_FILE="docker-compose.yml"
 INTERACTIVE=true
 
 # Parse arguments
@@ -33,7 +34,11 @@ for arg in "$@"; do
             INTERACTIVE=false
             shift
             ;;
-        build|up|down|logs|clean|restart|status)
+        --prod|--production)
+            COMPOSE_FILE="docker-compose.prod.yml"
+            shift
+            ;;
+        build|up|down|start|stop|pull|logs|clean|restart|status)
             COMMAND=$arg
             shift
             ;;
@@ -178,40 +183,58 @@ EOF
 
 docker_build() {
     log_info "Building Docker containers..."
-    docker-compose build
+    docker compose -f "$COMPOSE_FILE" build
     log_success "Build complete"
+}
+
+docker_pull() {
+    log_info "Pulling Docker images..."
+    docker compose -f "$COMPOSE_FILE" pull
+    log_success "Pull complete"
 }
 
 docker_up() {
     log_info "Starting services..."
-    docker-compose up -d
+    docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
     log_success "Services started"
-    docker-compose ps
+    docker compose -f "$COMPOSE_FILE" ps
     echo ""
     log_info "API server available at: http://localhost:${PORT:-3000}"
     log_info "Health check: curl http://localhost:${PORT:-3000}/health"
 }
 
+docker_start() {
+    log_info "Starting services (pull + up)..."
+    docker_pull
+    docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+    log_success "Services started"
+    docker compose -f "$COMPOSE_FILE" ps
+}
+
 docker_down() {
     log_info "Stopping services..."
-    docker-compose down
+    docker compose -f "$COMPOSE_FILE" down
     log_success "Services stopped"
+}
+
+docker_stop() {
+    docker_down
 }
 
 docker_logs() {
     log_info "Showing logs (Ctrl+C to exit)..."
-    docker-compose logs -f
+    docker compose -f "$COMPOSE_FILE" logs -f
 }
 
 docker_restart() {
     log_info "Restarting services..."
-    docker-compose restart
+    docker compose -f "$COMPOSE_FILE" restart
     log_success "Services restarted"
 }
 
 docker_status() {
     log_info "Service status:"
-    docker-compose ps
+    docker compose -f "$COMPOSE_FILE" ps
 }
 
 docker_clean() {
@@ -225,7 +248,7 @@ docker_clean() {
     fi
 
     log_info "Cleaning up..."
-    docker-compose down -v --remove-orphans
+    docker compose -f "$COMPOSE_FILE" down -v --remove-orphans
     log_success "Cleanup complete"
 }
 
@@ -244,11 +267,15 @@ Usage: ./run.sh [OPTIONS] [COMMAND]
 
 OPTIONS:
     --non-interactive    Run in non-interactive mode (CI/CD)
+    --prod, --production Use production docker-compose.prod.yml
 
 COMMANDS:
     build       Build Docker containers
+    pull        Pull Docker images from registry
     up          Start services in detached mode
+    start       Pull images and start services (production)
     down        Stop services
+    stop        Stop services (alias for down)
     logs        Show and follow service logs
     restart     Restart all services
     status      Show service status
@@ -258,11 +285,14 @@ EXAMPLES:
     # First time setup (interactive)
     ./run.sh
 
-    # Start services
+    # Start services (development)
     ./run.sh up
 
+    # Production deployment (pull and start)
+    ./run.sh --prod start
+
     # CI/CD mode
-    XAI_API_KEY=\${{ secrets.XAI_API_KEY }} ./run.sh --non-interactive up
+    XAI_API_KEY=\${{ secrets.XAI_API_KEY }} ./run.sh --non-interactive --prod start
 
     # View logs
     ./run.sh logs
@@ -289,6 +319,14 @@ main() {
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
 
+    # Show which compose file we're using
+    if [ "$COMPOSE_FILE" = "docker-compose.prod.yml" ]; then
+        log_info "Using production configuration: $COMPOSE_FILE"
+    else
+        log_info "Using development configuration: $COMPOSE_FILE"
+    fi
+    echo ""
+
     # Setup environment
     setup_env
 
@@ -297,11 +335,17 @@ main() {
         build)
             docker_build
             ;;
+        pull)
+            docker_pull
+            ;;
         up)
             docker_build
             docker_up
             ;;
-        down)
+        start)
+            docker_start
+            ;;
+        down|stop)
             docker_down
             ;;
         logs)

@@ -346,17 +346,17 @@ jobs:
                   deploy-command: |
                       cd ~/rustassistant
 
-                      # Deploy using run.sh to pull images and restart services
-                      if [ -x "./run.sh" ]; then
-                        echo "🐳 Stopping existing services..."
-                        ./run.sh stop 2>/dev/null || true
-                        echo "🐳 Pulling latest ARM64 images from Docker Hub..."
-                        ./run.sh start
-                      else
-                        echo "⚠️ run.sh not found, using docker compose directly"
-                        docker compose -f docker-compose.prod.yml pull --ignore-pull-failures
-                        docker compose -f docker-compose.prod.yml up -d --remove-orphans
-                      fi
+                      # Stop existing services
+                      echo "🐳 Stopping existing services..."
+                      docker compose -f docker-compose.prod.yml down 2>/dev/null || true
+
+                      # Pull latest ARM64 images from Docker Hub
+                      echo "🐳 Pulling latest ARM64 images from Docker Hub..."
+                      docker compose -f docker-compose.prod.yml pull
+
+                      # Start services
+                      echo "🚀 Starting services..."
+                      docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
                   post-deploy-command: |
                       cd ~/rustassistant
