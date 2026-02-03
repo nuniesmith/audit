@@ -20,13 +20,13 @@ COPY Cargo.toml Cargo.lock ./
 
 # Create dummy main.rs to build dependencies
 RUN mkdir -p src/bin && \
-    echo "fn main() {}" > src/bin/webui_server.rs && \
+    echo "fn main() {}" > src/bin/server.rs && \
     echo "fn main() {}" > src/main.rs && \
     mkdir -p templates/layouts templates/pages && \
     touch templates/layouts/base.html templates/pages/dashboard.html
 
 # Build dependencies (this layer will be cached)
-RUN cargo build --release --bin webui-server
+RUN cargo build --release --bin rustassistant-server
 
 # Remove dummy files
 RUN rm -rf src templates
@@ -36,8 +36,8 @@ COPY src ./src
 COPY templates ./templates
 
 # Build the actual binary
-RUN cargo build --release --bin webui-server && \
-    strip /build/target/release/webui-server
+RUN cargo build --release --bin rustassistant-server && \
+    strip /build/target/release/rustassistant-server
 
 # ============================================================================
 # Runtime Stage - Minimal image with only what's needed
@@ -60,7 +60,7 @@ RUN useradd -m -u 1000 -s /bin/bash rustassistant && \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder --chown=rustassistant:rustassistant /build/target/release/webui-server /usr/local/bin/webui-server
+COPY --from=builder --chown=rustassistant:rustassistant /build/target/release/rustassistant-server /usr/local/bin/rustassistant-server
 
 # Copy templates
 COPY --chown=rustassistant:rustassistant templates /app/templates
@@ -83,4 +83,4 @@ ENV HOST=0.0.0.0 \
     RUST_LOG=info
 
 # Run the web server
-CMD ["webui-server"]
+CMD ["rustassistant-server"]
