@@ -157,7 +157,7 @@ jobs:
         name: 🐳 Build ARM64 Image
         needs: test-and-lint
         runs-on: ubuntu-latest
-        timeout-minutes: 30
+        timeout-minutes: 60
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         steps:
             - name: 📥 Checkout code
