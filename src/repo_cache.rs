@@ -27,7 +27,7 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use rustassistant::repo_cache::{RepoCache, CacheType};
+//! use rustassistant::repo_cache::{RepoCache, CacheType, CacheSetParams};
 //! use std::path::Path;
 //!
 //! # async fn example() -> anyhow::Result<()> {

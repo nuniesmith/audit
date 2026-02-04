@@ -10,8 +10,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     let pool = sqlx::SqlitePool::connect("sqlite:data/rustassistant.db").await?;
-//!     let db = Database::new(pool)?;
+//!     let db = Database::new("sqlite:data/rustassistant.db").await?;
 //!     let generator = DocGenerator::new(db).await?;
 //!
 //!     let docs = generator.generate_module_docs("src/db.rs").await?;
