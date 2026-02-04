@@ -4,7 +4,7 @@
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use sha2::{Digest, Sha256};
+
 use std::path::PathBuf;
 
 // Import from our crate
@@ -16,7 +16,7 @@ use rustassistant::db::{
     self, create_note, get_next_task, get_stats, list_notes, list_repositories, list_tasks,
     search_notes, update_task_status,
 };
-use rustassistant::repo_cache::{CacheSetParams, CacheType, RepoCache};
+use rustassistant::repo_cache::{CacheType, RepoCache};
 use rustassistant::repo_cache_sql::{CacheSetParams as SqlCacheSetParams, RepoCacheSql};
 
 // ============================================================================
