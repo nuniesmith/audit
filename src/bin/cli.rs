@@ -74,6 +74,12 @@ enum Commands {
 
     /// Test API connection (XAI/Grok)
     TestApi,
+
+    /// Generate documentation
+    Docs {
+        #[command(subcommand)]
+        action: DocsAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -145,6 +151,30 @@ enum RepoAction {
 }
 
 #[derive(Subcommand)]
+enum DocsAction {
+    /// Generate documentation for a module/file
+    Module {
+        /// File path
+        file: String,
+
+        /// Output file (prints to stdout if not specified)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
+    /// Generate README for repository
+    Readme {
+        /// Repository path
+        #[arg(default_value = ".")]
+        repo: String,
+
+        /// Output file (prints to stdout if not specified)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum TaskAction {
     /// List tasks
     List {
@@ -202,6 +232,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Next => handle_next(&pool).await?,
         Commands::Stats => handle_stats(&pool).await?,
         Commands::TestApi => handle_test_api().await?,
+        Commands::Docs { action } => handle_docs_action(&pool, action).await?,
     }
 
     Ok(())
@@ -525,6 +556,46 @@ async fn handle_test_api() -> anyhow::Result<()> {
             println!(
                 "\n  Set it in your .env file or environment:\n  export XAI_API_KEY=xai-your-key-here"
             );
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_docs_action(pool: &sqlx::SqlitePool, action: DocsAction) -> anyhow::Result<()> {
+    use rustassistant::db::Database;
+    use rustassistant::doc_generator::DocGenerator;
+
+    let db = Database::from_pool(pool.clone());
+    let generator = DocGenerator::new(db).await?;
+
+    match action {
+        DocsAction::Module { file, output } => {
+            println!("📝 Generating documentation for {}...\n", file);
+
+            let doc = generator.generate_module_docs(&file).await?;
+            let markdown = generator.format_module_doc(&doc);
+
+            if let Some(output_path) = output {
+                std::fs::write(&output_path, &markdown)?;
+                println!("{} Documentation written to {}", "✓".green(), output_path);
+            } else {
+                println!("{}", markdown);
+            }
+        }
+
+        DocsAction::Readme { repo, output } => {
+            println!("📖 Generating README for {}...\n", repo);
+
+            let content = generator.generate_readme(&repo).await?;
+            let markdown = generator.format_readme(&content);
+
+            if let Some(output_path) = output {
+                std::fs::write(&output_path, &markdown)?;
+                println!("{} README written to {}", "✓".green(), output_path);
+            } else {
+                println!("{}", markdown);
+            }
         }
     }
 

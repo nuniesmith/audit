@@ -31,6 +31,7 @@ pub mod context_builder;
 pub mod cost_tracker;
 pub mod db;
 pub mod directory_tree;
+pub mod doc_generator;
 pub mod enhanced_scanner;
 pub mod error;
 pub mod formatter;
@@ -81,6 +82,7 @@ pub use db::{
     update_task_status, DbError, DbResult, DbStats, Note, Repository, Task,
 };
 pub use directory_tree::{DirectoryTreeBuilder, Hotspot, TreeSummary};
+pub use doc_generator::{DocGenerator, FunctionDoc, ModuleDoc, ParameterDoc, ReadmeContent};
 pub use enhanced_scanner::EnhancedScanner;
 pub use error::{AuditError, Result};
 pub use formatter::{BatchFormatResult, CodeFormatter, FormatMode, FormatResult, Formatter};
