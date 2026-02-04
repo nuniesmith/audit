@@ -15,7 +15,7 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use rustassistant::repo_cache_sql::RepoCacheSql;
+//! use rustassistant::repo_cache_sql::{RepoCacheSql, CacheSetParams};
 //! use rustassistant::repo_cache::CacheType;
 //!
 //! #[tokio::main]
@@ -23,13 +23,34 @@
 //!     let cache = RepoCacheSql::new("~/.rustassistant/cache/cache.db").await?;
 //!
 //!     // Check cache
-//!     if let Some(entry) = cache.get(CacheType::Refactor, "src/main.rs", content).await? {
+//!     let content = "fn main() {}";
+//!     if let Some(entry) = cache.get(
+//!         CacheType::Refactor,
+//!         "src/main.rs",
+//!         content,
+//!         "xai",
+//!         "grok-beta",
+//!         None,
+//!         None
+//!     ).await? {
 //!         println!("Cache hit!");
 //!         return Ok(());
 //!     }
 //!
 //!     // Store result
-//!     cache.set(params).await?;
+//!     let result = serde_json::json!({"score": 95});
+//!     cache.set(CacheSetParams {
+//!         cache_type: CacheType::Refactor,
+//!         repo_path: "/path/to/repo",
+//!         file_path: "src/main.rs",
+//!         content,
+//!         provider: "xai",
+//!         model: "grok-beta",
+//!         result,
+//!         tokens_used: Some(150),
+//!         prompt_hash: None,
+//!         schema_version: None,
+//!     }).await?;
 //!
 //!     // Get statistics
 //!     let stats = cache.stats().await?;
@@ -266,6 +287,7 @@ impl RepoCacheSql {
     }
 
     /// Get cached entry
+    #[allow(clippy::too_many_arguments)]
     pub async fn get(
         &self,
         cache_type: crate::repo_cache::CacheType,
@@ -379,6 +401,7 @@ impl RepoCacheSql {
     }
 
     /// Set cache entry with pre-computed cache key (for migration)
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_with_cache_key(
         &self,
         cache_type: crate::repo_cache::CacheType,

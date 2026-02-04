@@ -168,7 +168,9 @@ impl LlmClient {
 
         #[derive(Deserialize)]
         struct XaiUsage {
+            #[allow(dead_code)]
             prompt_tokens: Option<usize>,
+            #[allow(dead_code)]
             completion_tokens: Option<usize>,
             total_tokens: Option<usize>,
         }
@@ -276,8 +278,10 @@ impl LlmClient {
         #[derive(Deserialize)]
         struct GeminiUsage {
             #[serde(rename = "promptTokenCount")]
+            #[allow(dead_code)]
             prompt_token_count: Option<usize>,
             #[serde(rename = "candidatesTokenCount")]
+            #[allow(dead_code)]
             candidates_token_count: Option<usize>,
             #[serde(rename = "totalTokenCount")]
             total_token_count: Option<usize>,

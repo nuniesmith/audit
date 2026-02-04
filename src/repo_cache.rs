@@ -49,6 +49,8 @@
 //!         model: "grok-beta",
 //!         result,
 //!         tokens_used: Some(150),
+//!         prompt_hash: None,
+//!         schema_version: None,
 //!     })?;
 //! }
 //! # Ok(())
@@ -65,18 +67,13 @@ use tracing::{debug, info};
 pub const REPO_CACHE_DIR: &str = ".rustassistant";
 
 /// Cache storage strategy
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheStrategy {
     /// Centralized cache in ~/.rustassistant/cache/repos/<hash>/
+    #[default]
     Centralized,
     /// Local cache in <repo>/.rustassistant/cache/
     Local,
-}
-
-impl Default for CacheStrategy {
-    fn default() -> Self {
-        Self::Centralized
-    }
 }
 
 /// Compute stable hash of repository path
