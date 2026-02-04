@@ -4,6 +4,8 @@
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use sha2::{Digest, Sha256};
+use std::path::PathBuf;
 
 // Import from our crate
 use rustassistant::cli::{
@@ -15,6 +17,7 @@ use rustassistant::db::{
     search_notes, update_task_status,
 };
 use rustassistant::repo_cache::{CacheSetParams, CacheType, RepoCache};
+use rustassistant::repo_cache_sql::{CacheSetParams as SqlCacheSetParams, RepoCacheSql};
 
 // ============================================================================
 // CLI Structure
@@ -160,6 +163,28 @@ enum RepoAction {
     Remove {
         /// Repository ID
         id: String,
+    },
+
+    /// Enable auto-scanning for a repository
+    EnableAutoScan {
+        /// Repository ID or path
+        repo: String,
+
+        /// Scan interval in minutes (default: 60)
+        #[arg(short, long)]
+        interval: Option<i64>,
+    },
+
+    /// Disable auto-scanning for a repository
+    DisableAutoScan {
+        /// Repository ID or path
+        repo: String,
+    },
+
+    /// Force an immediate scan check
+    ForceScan {
+        /// Repository ID or path
+        repo: String,
     },
 }
 
@@ -483,6 +508,69 @@ async fn handle_repo_action(pool: &sqlx::SqlitePool, action: RepoAction) -> anyh
             db::remove_repository(pool, &id).await?;
             println!("{} Repository removed: {}", "✓".green(), id);
         }
+
+        RepoAction::EnableAutoScan { repo, interval } => {
+            // Resolve repo ID
+            let repo_id = if repo.starts_with("gh-") || repo.len() == 36 {
+                repo
+            } else {
+                // Try to find by path or name
+                let repos = list_repositories(pool).await?;
+                repos
+                    .iter()
+                    .find(|r| r.path == repo || r.name == repo)
+                    .map(|r| r.id.clone())
+                    .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", repo))?
+            };
+
+            rustassistant::auto_scanner::enable_auto_scan(pool, &repo_id, interval).await?;
+
+            let interval_str = interval.unwrap_or(60);
+            println!(
+                "{} Auto-scan enabled for repository (interval: {} minutes)",
+                "✓".green(),
+                interval_str
+            );
+        }
+
+        RepoAction::DisableAutoScan { repo } => {
+            // Resolve repo ID
+            let repo_id = if repo.starts_with("gh-") || repo.len() == 36 {
+                repo
+            } else {
+                // Try to find by path or name
+                let repos = list_repositories(pool).await?;
+                repos
+                    .iter()
+                    .find(|r| r.path == repo || r.name == repo)
+                    .map(|r| r.id.clone())
+                    .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", repo))?
+            };
+
+            rustassistant::auto_scanner::disable_auto_scan(pool, &repo_id).await?;
+            println!("{} Auto-scan disabled for repository", "✓".green());
+        }
+
+        RepoAction::ForceScan { repo } => {
+            // Resolve repo ID
+            let repo_id = if repo.starts_with("gh-") || repo.len() == 36 {
+                repo
+            } else {
+                // Try to find by path or name
+                let repos = list_repositories(pool).await?;
+                repos
+                    .iter()
+                    .find(|r| r.path == repo || r.name == repo)
+                    .map(|r| r.id.clone())
+                    .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", repo))?
+            };
+
+            rustassistant::auto_scanner::force_scan(pool, &repo_id).await?;
+            println!(
+                "{} Forced scan check - will scan on next cycle",
+                "✓".green()
+            );
+        }
     }
 
     Ok(())
@@ -659,44 +747,58 @@ async fn handle_refactor_action(
 
     match action {
         RefactorAction::Analyze { file } => {
-            // Try to get repository root (current directory for now)
+            // Use SQLite cache organized by repo in XDG cache directory
             let repo_path = std::env::current_dir()?;
-            let cache = RepoCache::new(&repo_path)?;
+            let cache = RepoCacheSql::new_for_repo(&repo_path).await?;
+            let repo_path_str = repo_path.to_string_lossy().to_string();
 
             // Read file content for cache checking
             let file_content = std::fs::read_to_string(&file)?;
 
             // Check cache first
-            let analysis =
-                if let Some(cached) = cache.get(CacheType::Refactor, &file, &file_content)? {
-                    println!("📦 Using cached analysis for {}\n", file);
-                    serde_json::from_value(cached.result)?
-                } else {
-                    println!("🔍 Analyzing {} for refactoring opportunities...\n", file);
-                    let analysis = assistant.analyze_file(&file).await?;
+            let analysis = if let Some(cached) = cache
+                .get(
+                    CacheType::Refactor,
+                    &file,
+                    &file_content,
+                    "xai",
+                    "grok-beta",
+                    None,
+                    None,
+                )
+                .await?
+            {
+                println!("📦 Using cached analysis for {}\n", file);
+                serde_json::from_value(cached)?
+            } else {
+                println!("🔍 Analyzing {} for refactoring opportunities...\n", file);
+                let analysis = assistant.analyze_file(&file).await?;
 
-                    // Cache the result
-                    let result_json = serde_json::to_value(&analysis)?;
-                    cache.set(CacheSetParams {
+                // Cache the result
+                let result_json = serde_json::to_value(&analysis)?;
+                cache
+                    .set(SqlCacheSetParams {
                         cache_type: CacheType::Refactor,
+                        repo_path: &repo_path_str,
                         file_path: &file,
                         content: &file_content,
-                        provider: "xai",    // TODO: get from config
-                        model: "grok-beta", // TODO: get from config
+                        provider: "xai",
+                        model: "grok-beta",
                         result: result_json,
                         tokens_used: analysis.tokens_used,
-                        prompt_hash: None,    // Auto-computed from cache_type
-                        schema_version: None, // Defaults to 1
-                    })?;
+                        prompt_hash: None,
+                        schema_version: None,
+                    })
+                    .await?;
 
-                    if let Some(tokens) = analysis.tokens_used {
-                        println!("💾 Analysis cached (tokens used: {})\n", tokens);
-                    } else {
-                        println!("💾 Analysis cached\n");
-                    }
+                if let Some(tokens) = analysis.tokens_used {
+                    println!("💾 Analysis cached (tokens used: {})\n", tokens);
+                } else {
+                    println!("💾 Analysis cached\n");
+                }
 
-                    analysis
-                };
+                analysis
+            };
 
             println!("📊 Refactoring Analysis:\n");
             println!("  {} {}", "File:".dimmed(), file);
@@ -817,34 +919,49 @@ async fn handle_docs_action(pool: &sqlx::SqlitePool, action: DocsAction) -> anyh
 
     match action {
         DocsAction::Module { file, output } => {
-            // Try to get repository root (current directory for now)
+            // Use SQLite cache organized by repo in XDG cache directory
             let repo_path = std::env::current_dir()?;
-            let cache = RepoCache::new(&repo_path)?;
+            let cache = RepoCacheSql::new_for_repo(&repo_path).await?;
+            let repo_path_str = repo_path.to_string_lossy().to_string();
 
             // Read file content for cache checking
             let file_content = std::fs::read_to_string(&file)?;
 
             // Check cache first
-            let doc = if let Some(cached) = cache.get(CacheType::Docs, &file, &file_content)? {
+            let doc = if let Some(cached) = cache
+                .get(
+                    CacheType::Docs,
+                    &file,
+                    &file_content,
+                    "xai",
+                    "grok-beta",
+                    None,
+                    None,
+                )
+                .await?
+            {
                 println!("📦 Using cached documentation for {}\n", file);
-                serde_json::from_value(cached.result)?
+                serde_json::from_value(cached)?
             } else {
                 println!("📝 Generating documentation for {}...\n", file);
                 let doc = generator.generate_module_docs(&file).await?;
 
                 // Cache the result
                 let result_json = serde_json::to_value(&doc)?;
-                cache.set(CacheSetParams {
-                    cache_type: CacheType::Docs,
-                    file_path: &file,
-                    content: &file_content,
-                    provider: "xai",    // TODO: get from config
-                    model: "grok-beta", // TODO: get from config
-                    result: result_json,
-                    tokens_used: None,    // TODO: track tokens
-                    prompt_hash: None,    // Auto-computed from cache_type
-                    schema_version: None, // Defaults to 1
-                })?;
+                cache
+                    .set(SqlCacheSetParams {
+                        cache_type: CacheType::Docs,
+                        repo_path: &repo_path_str,
+                        file_path: &file,
+                        content: &file_content,
+                        provider: "xai",
+                        model: "grok-beta",
+                        result: result_json,
+                        tokens_used: None,
+                        prompt_hash: None,
+                        schema_version: None,
+                    })
+                    .await?;
                 println!("💾 Documentation cached\n");
 
                 doc
@@ -899,12 +1016,90 @@ async fn handle_cache_action(action: CacheAction) -> anyhow::Result<()> {
         }
 
         CacheAction::Status { path } => {
-            let repo_path = path.unwrap_or_else(|| ".".to_string());
-            let cache = RepoCache::new(&repo_path)?;
+            // Use SQLite cache for stats
+            let repo_path = if let Some(p) = path {
+                PathBuf::from(p)
+            } else {
+                std::env::current_dir()?
+            };
+
+            let cache = RepoCacheSql::new_for_repo(&repo_path).await?;
+            let stats = cache.stats().await?;
 
             // Use default budget config ($3/month)
             let budget_config = rustassistant::BudgetConfig::default();
-            cache.print_detailed_summary(Some(&budget_config))?;
+
+            // Compute cache location
+            use sha2::{Digest, Sha256};
+            let canonical_path = repo_path
+                .canonicalize()
+                .unwrap_or_else(|_| repo_path.clone());
+            let mut hasher = Sha256::new();
+            hasher.update(canonical_path.to_string_lossy().as_bytes());
+            let hash = hasher.finalize();
+            let repo_hash = format!("{:x}", hash)[..8].to_string();
+
+            let cache_dir = if let Some(cache_home) = std::env::var_os("XDG_CACHE_HOME") {
+                PathBuf::from(cache_home)
+            } else if let Some(home) = dirs::home_dir() {
+                home.join(".cache")
+            } else {
+                PathBuf::from(".")
+            };
+            let cache_location = cache_dir
+                .join("rustassistant")
+                .join("repos")
+                .join(&repo_hash)
+                .join("cache.db");
+
+            println!("📦 SQLite Cache Summary");
+            println!("  Repository: {}", canonical_path.display());
+            println!("  Cache Location: {}", cache_location.display());
+            println!();
+
+            // Group by cache type
+            for type_stats in &stats.by_type {
+                println!("  {} cache:", type_stats.cache_type);
+                println!("    Entries: {}", type_stats.entries);
+                println!("    Tokens: {}", type_stats.tokens);
+                println!("    Estimated cost: ${:.4}", type_stats.cost);
+            }
+
+            println!();
+            println!("  Total entries: {}", stats.total_entries);
+            println!("  Total tokens: {}", stats.total_tokens);
+            println!("  Total estimated cost: ${:.4}", stats.estimated_cost);
+            println!();
+
+            // Budget status
+            let remaining = budget_config.monthly_budget - stats.estimated_cost;
+            let percentage = (stats.estimated_cost / budget_config.monthly_budget) * 100.0;
+
+            println!("💰 Budget Status:");
+            if percentage >= budget_config.alert_threshold * 100.0 {
+                println!(
+                    "  🔴 Budget Alert: ${:.2} / ${:.2} ({:.1}%)",
+                    stats.estimated_cost, budget_config.monthly_budget, percentage
+                );
+            } else if percentage >= budget_config.warning_threshold * 100.0 {
+                println!(
+                    "  ⚠️  Budget Warning: ${:.2} / ${:.2} ({:.1}%)",
+                    stats.estimated_cost, budget_config.monthly_budget, percentage
+                );
+            } else {
+                println!(
+                    "  ✅ Budget OK: ${:.2} / ${:.2} ({:.1}%)",
+                    stats.estimated_cost, budget_config.monthly_budget, percentage
+                );
+            }
+            println!("  Remaining: ${:.2}", remaining);
+
+            if stats.total_tokens > 0 {
+                let tokens_per_dollar =
+                    stats.total_tokens as f64 / stats.estimated_cost.max(0.0001);
+                let remaining_tokens = (remaining * tokens_per_dollar) as usize;
+                println!("  Estimated tokens remaining: ~{}", remaining_tokens);
+            }
         }
 
         CacheAction::Clear {
@@ -912,11 +1107,17 @@ async fn handle_cache_action(action: CacheAction) -> anyhow::Result<()> {
             cache_type,
             all,
         } => {
-            let repo_path = path.unwrap_or_else(|| ".".to_string());
-            let cache = RepoCache::new(&repo_path)?;
+            // Use SQLite cache
+            let repo_path = if let Some(p) = path {
+                PathBuf::from(p)
+            } else {
+                std::env::current_dir()?
+            };
+
+            let cache = RepoCacheSql::new_for_repo(&repo_path).await?;
 
             if all {
-                let removed = cache.clear_all()?;
+                let removed = cache.clear_all().await?;
                 println!("{} Cleared {} cache entries", "✓".green(), removed);
             } else if let Some(type_str) = cache_type {
                 let cache_type = match type_str.as_str() {
@@ -933,7 +1134,7 @@ async fn handle_cache_action(action: CacheAction) -> anyhow::Result<()> {
                     }
                 };
 
-                let removed = cache.clear_type(cache_type)?;
+                let removed = cache.clear_type(cache_type).await?;
                 println!(
                     "{} Cleared {} {} cache entries",
                     "✓".green(),

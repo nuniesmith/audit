@@ -210,7 +210,7 @@ impl CacheMigrator {
             let repo_path = if meta_path.exists() {
                 let meta_content = std::fs::read_to_string(&meta_path)?;
                 let meta: serde_json::Value = serde_json::from_str(&meta_content)?;
-                meta["repo_path"].as_str().unwrap_or_default().to_string()
+                meta["path"].as_str().unwrap_or_default().to_string()
             } else {
                 repo_path_dir.to_string_lossy().to_string()
             };
@@ -283,18 +283,44 @@ impl CacheMigrator {
         cache_type: CacheType,
         entry: &RepoCacheEntry,
     ) -> Result<()> {
-        // Use the pre-computed cache_key from the JSON entry
-        // since we don't have the original file content
+        // Compute cache_key if it's missing (for old cache entries)
+        let cache_key = if entry.cache_key.is_empty() {
+            // Compute the cache key from available fields
+            use sha2::{Digest, Sha256};
+
+            let prompt_hash = if entry.prompt_hash.is_empty() {
+                crate::prompt_hashes::get_prompt_hash_for_type(cache_type)
+            } else {
+                entry.prompt_hash.clone()
+            };
+
+            let mut hasher = Sha256::new();
+            hasher.update(entry.file_hash.as_bytes());
+            hasher.update(entry.model.as_bytes());
+            hasher.update(prompt_hash.as_bytes());
+            hasher.update(entry.schema_version.to_string().as_bytes());
+            let hash = hasher.finalize();
+            format!("{:x}", hash)[..32].to_string()
+        } else {
+            entry.cache_key.clone()
+        };
+
+        let prompt_hash = if entry.prompt_hash.is_empty() {
+            crate::prompt_hashes::get_prompt_hash_for_type(cache_type)
+        } else {
+            entry.prompt_hash.clone()
+        };
+
         self.sql_cache
             .set_with_cache_key(
                 cache_type,
                 repo_path,
                 &entry.file_path,
                 &entry.file_hash,
-                &entry.cache_key,
+                &cache_key,
                 &entry.provider,
                 &entry.model,
-                &entry.prompt_hash,
+                &prompt_hash,
                 entry.schema_version,
                 entry.result.clone(),
                 entry.tokens_used,

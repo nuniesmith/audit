@@ -73,6 +73,9 @@ pub struct Repository {
     pub status: String,
     pub last_analyzed: Option<i64>,
     pub metadata: Option<String>, // JSON blob
+    pub auto_scan_enabled: i64,
+    pub scan_interval_minutes: i64,
+    pub last_scan_check: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -169,6 +172,9 @@ async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
             status TEXT NOT NULL DEFAULT 'active',
             last_analyzed INTEGER,
             metadata TEXT,
+            auto_scan_enabled INTEGER NOT NULL DEFAULT 0,
+            scan_interval_minutes INTEGER NOT NULL DEFAULT 60,
+            last_scan_check INTEGER,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         )
@@ -388,6 +394,9 @@ pub async fn add_repository(pool: &SqlitePool, path: &str, name: &str) -> DbResu
         status: "active".to_string(),
         last_analyzed: None,
         metadata: None,
+        auto_scan_enabled: 0,
+        scan_interval_minutes: 60,
+        last_scan_check: None,
         created_at: now,
         updated_at: now,
     })

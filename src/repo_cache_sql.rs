@@ -20,7 +20,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     let cache = RepoCacheSql::new("~/.rustassistant/cache/cache.db").await?;
+//!     let cache = RepoCacheSql::new_for_repo("/path/to/repo").await?;
 //!
 //!     // Check cache
 //!     let content = "fn main() {}";
@@ -65,7 +65,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 // Re-export CacheType from repo_cache
@@ -159,6 +159,42 @@ pub struct RepoCacheSql {
 }
 
 impl RepoCacheSql {
+    /// Create a new SQLite cache for a specific repository
+    /// Uses XDG cache directory: ~/.cache/rustassistant/repos/<repo-hash>/cache.db
+    pub async fn new_for_repo(repo_path: impl AsRef<Path>) -> Result<Self> {
+        use sha2::{Digest, Sha256};
+
+        let repo_path = repo_path.as_ref();
+
+        // Compute stable hash for repo path
+        let canonical_path = repo_path
+            .canonicalize()
+            .unwrap_or_else(|_| repo_path.to_path_buf());
+        let path_str = canonical_path.to_string_lossy();
+
+        let mut hasher = Sha256::new();
+        hasher.update(path_str.as_bytes());
+        let hash = hasher.finalize();
+        let repo_hash = format!("{:x}", hash)[..8].to_string();
+
+        // Get XDG cache directory
+        let cache_dir = if let Some(cache_home) = std::env::var_os("XDG_CACHE_HOME") {
+            PathBuf::from(cache_home)
+        } else if let Some(home) = dirs::home_dir() {
+            home.join(".cache")
+        } else {
+            anyhow::bail!("Cannot determine cache directory");
+        };
+
+        let db_path = cache_dir
+            .join("rustassistant")
+            .join("repos")
+            .join(&repo_hash)
+            .join("cache.db");
+
+        Self::new(&db_path).await
+    }
+
     /// Create a new SQLite cache
     pub async fn new(database_path: impl AsRef<Path>) -> Result<Self> {
         let path = database_path.as_ref();
