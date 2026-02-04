@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Repository Scanner - RustAssistant</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .repos-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .page-header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5em;
+        }
+
+        .page-header p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .controls-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 10px 0;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .repos-list {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .repo-item {
+            padding: 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .repo-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .repo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 12px;
+        }
+
+        .repo-name {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2d3748;
+            margin: 0;
+        }
+
+        .repo-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-inactive {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .repo-path {
+            color: #718096;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin: 8px 0;
+        }
+
+        .repo-meta {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #718096;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loading-overlay .spinner {
+            width: 60px;
+            height: 60px;
+            border-width: 4px;
+        }
+
+        .loading-text {
+            color: white;
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border-left: 4px solid #48bb78;
+        }
+
+        .alert-error {
+            background: #fed7d7;
+            color: #742a2a;
+            border-left: 4px solid #f56565;
+        }
+
+        .alert-info {
+            background: #bee3f8;
+            color: #2c5282;
+            border-left: 4px solid #4299e1;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #718096;
+        }
+
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="repos-container">
+        <!-- Page Header -->
+        <div class="page-header">
+            <h1>🗂️ Repository Scanner</h1>
+            <p>Manage and scan your tracked repositories from your Raspberry Pi</p>
+        </div>
+
+        <!-- Controls Section -->
+        <div class="controls-section">
+            <h2>🎮 Controls</h2>
+            <div class="control-buttons">
+                <button id="scan-repos-btn" class="btn btn-primary" onclick="scanRepositories()">
+                    🔄 Scan Repositories
+                </button>
+                <button id="refresh-btn" class="btn btn-secondary" onclick="loadRepositories()">
+                    ♻️ Refresh List
+                </button>
+                <button id="queue-status-btn" class="btn btn-secondary" onclick="checkQueueStatus()">
+                    📊 Queue Status
+                </button>
+            </div>
+        </div>
+
+        <!-- Alert Area -->
+        <div id="alert-area"></div>
+
+        <!-- Status Cards -->
+        <div class="status-card">
+            <h2></h2>📈 Statistics</h2>
+            <div class="status-grid">
+                <div class="stat-box">
+                    <div class="stat-label">Total Repositories</div>
+                    <div class="stat-value" id="total-repos">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Active</div>
+                    <div class="stat-value" id="active-repos">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Queue Items</div>
+                    <div class="stat-value" id="queue-items">-</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Last Scan</div>
+                    <div class="stat-value" id="last-scan" style="font-size: 1.2em;">Never</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Repositories List -->
+        <div class="repos-list">
+            <h2></h2>📚 Tracked Repositories</h2>
+            <div id="repos-container">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <p>Loading repositories...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loading-text">Processing...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let repositories = [];
+        let queueStats = null;
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadRepositories();
+            checkQueueStatus();
+
+            // Auto-refresh every 30 seconds
+            setInterval(() => {
+                loadRepositories();
+                checkQueueStatus();
+            }, 30000);
+        });
+
+        // Load repositories from API
+        async function loadRepositories() {
+            try {
+                const response = await fetch(`${API_BASE}/repos`);
+
+                if (!response.ok) {
+                    throw new Error('Failed to load repositories');
+                }
+
+                repositories = await response.json();
+                renderRepositories();
+                updateStats();
+
+            } catch (error) {
+                console.error('Error loading repositories:', error);
+                showAlert('Failed to load repositories: ' + error.message, 'error');
+            }
+        }
+
+        // Render repositories list
+        function renderRepositories() {
+            const container = document.getElementById('repos-container');
+
+            if (repositories.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>No Repositories Found</h3>
+                        <p>Click "Scan Repositories" to sync from GitHub</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = repositories.map(repo => `
+                <div class="repo-item">
+                    <div class="repo-header">
+                        <h3 class="repo-name">${escapeHtml(repo.name || repo.id)}</h3>
+                        <span class="repo-status ${repo.status === 'active' ? 'status-active' : 'status-inactive'}">
+                            ${repo.status || 'unknown'}
+                        </span>
+                    </div>
+                    <div class="repo-path">📁 ${escapeHtml(repo.path || 'N/A')}</div>
+                    <div class="repo-meta">
+                        <span>🆔 ${escapeHtml(repo.id.substring(0, 8))}...</span>
+                        ${repo.last_analyzed ? `<span>🔍 Last analyzed: ${formatDate(repo.last_analyzed)}</span>` : '<span>🔍 Not analyzed yet</span>'}
+                        ${repo.created_at ? `<span>📅 Added: ${formatDate(repo.created_at)}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Update statistics
+        function updateStats() {
+            document.getElementById('total-repos').textContent = repositories.length;
+
+            const activeCount = repositories.filter(r => r.status === 'active').length;
+            document.getElementById('active-repos').textContent = activeCount;
+
+            // Update last scan time
+            const now = new Date();
+            document.getElementById('last-scan').textContent = now.toLocaleTimeString();
+        }
+
+        // Scan repositories from GitHub
+        async function scanRepositories() {
+            const btn = document.getElementById('scan-repos-btn');
+            btn.disabled = true;
+
+            showLoading('Scanning repositories from GitHub...');
+
+            try {
+                const response = await fetch(`${API_BASE}/repos/scan`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        token: null // Will use env var GITHUB_TOKEN
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Scan failed');
+                }
+
+                const result = await response.json();
+
+                hideLoading();
+                showAlert(`✅ Successfully synced ${result.synced_count} repositories!`, 'success');
+
+                repositories = result.repositories;
+                renderRepositories();
+                updateStats();
+
+            } catch (error) {
+                hideLoading();
+                showAlert('Scan failed: ' + error.message, 'error');
+                console.error('Scan error:', error);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // Check queue status
+        async function checkQueueStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/queue/status`);
+
+                if (!response.ok) {
+                    throw new Error('Failed to get queue status');
+                }
+
+                queueStats = await response.json();
+
+                // Update queue items stat
+                const totalQueue = (queueStats.inbox || 0) +
+                                   (queueStats.pending_analysis || 0) +
+                                   (queueStats.analyzing || 0);
+
+                document.getElementById('queue-items').textContent = totalQueue;
+
+            } catch (error) {
+                console.error('Error checking queue status:', error);
+                document.getElementById('queue-items').textContent = '?';
+            }
+        }
+
+        // Show loading overlay
+        function showLoading(message = 'Processing...') {
+            document.getElementById('loading-text').textContent = message;
+            document.getElementById('loading-overlay').classList.remove('hidden');
+        }
+
+        // Hide loading overlay
+        function hideLoading() {
+            document.getElementById('loading-overlay').classList.add('hidden');
+        }
+
+        // Show alert
+        function showAlert(message, type = 'info') {
+            const alertArea = document.getElementById('alert-area');
+            const alertClass = type === 'error' ? 'alert-error' :
+                              type === 'success' ? 'alert-success' : 'alert-info';
+
+            const alert = document.createElement('div');
+            alert.className = `alert ${alertClass}`;
+            alert.textContent = message;
+
+            alertArea.appendChild(alert);
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // Utility: Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Utility: Format timestamp
+        function formatDate(timestamp) {
+            if (!timestamp) return 'N/A';
+
+            // Handle both Unix timestamp and ISO string
+            const date = typeof timestamp === 'number'
+                ? new Date(timestamp * 1000)
+                : new Date(timestamp);
+
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        }
+    </script>
+</body>
+</html>

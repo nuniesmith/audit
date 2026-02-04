@@ -1,9 +1,12 @@
 //! Axum API server for the audit service (API-only, no web UI)
 
 use crate::config::Config;
+use crate::db::{self, Repository};
 use crate::error::{AuditError, Result};
 use crate::git::GitManager;
 use crate::llm::LlmClient;
+use crate::queue::{get_queue_stats, QueueStats};
+use crate::scanner::github::sync_repos_to_db;
 // Neuromorphic mapper removed - feature not currently implemented
 use crate::research;
 use crate::scanner::Scanner;
@@ -18,6 +21,7 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -33,11 +37,12 @@ pub struct AppState {
     config: Arc<Config>,
     git_manager: Arc<GitManager>,
     llm_client: Option<Arc<LlmClient>>,
+    db_pool: SqlitePool,
 }
 
 impl AppState {
     /// Create new application state
-    pub fn new(config: Config) -> Result<Self> {
+    pub async fn new(config: Config) -> Result<Self> {
         let git_manager = Arc::new(GitManager::new(
             config.git.workspace_dir.clone(),
             config.git.shallow_clone,
@@ -60,10 +65,18 @@ impl AppState {
             None
         };
 
+        // Initialize database
+        let database_url =
+            std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:data/rustassistant.db".into());
+        let db_pool = db::init_db(&database_url)
+            .await
+            .map_err(|e| AuditError::other(format!("Failed to initialize database: {}", e)))?;
+
         Ok(Self {
             config: Arc::new(config),
             git_manager,
             llm_client,
+            db_pool,
         })
     }
 }
@@ -86,7 +99,7 @@ pub async fn run_server(config: Config) -> Result<()> {
         .init();
 
     // Create application state
-    let state = AppState::new(config.clone())?;
+    let state = AppState::new(config.clone()).await?;
 
     // SECURITY: Configure restrictive CORS policy instead of permissive
     // Only allow requests from trusted origins
@@ -107,6 +120,9 @@ pub async fn run_server(config: Config) -> Result<()> {
         .route("/api/scan/static", post(scan_static))
         .route("/api/research/analyze", post(analyze_research))
         .route("/api/research/file", post(analyze_research_file))
+        .route("/api/repos", get(list_repos))
+        .route("/api/repos/scan", post(scan_repos))
+        .route("/api/queue/status", get(queue_status))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -657,4 +673,62 @@ impl IntoResponse for AuditError {
 struct ErrorResponse {
     error: String,
     status: u16,
+}
+
+// ============================================================================
+// Repository Management Endpoints
+// ============================================================================
+
+/// List all tracked repositories
+async fn list_repos(State(state): State<AppState>) -> Result<Json<Vec<Repository>>> {
+    let repos = db::list_repositories(&state.db_pool)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to list repositories: {}", e)))?;
+
+    Ok(Json(repos))
+}
+
+#[derive(Debug, Deserialize)]
+struct ScanReposRequest {
+    token: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ScanReposResponse {
+    synced_count: usize,
+    repositories: Vec<Repository>,
+}
+
+/// Scan and sync repositories from GitHub
+async fn scan_repos(
+    State(state): State<AppState>,
+    Json(req): Json<ScanReposRequest>,
+) -> Result<Json<ScanReposResponse>> {
+    // Sync repositories from GitHub
+    let repo_ids = sync_repos_to_db(&state.db_pool, req.token.as_deref())
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to sync repositories: {}", e)))?;
+
+    // Fetch the synced repositories
+    let repositories = db::list_repositories(&state.db_pool)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to list repositories: {}", e)))?;
+
+    Ok(Json(ScanReposResponse {
+        synced_count: repo_ids.len(),
+        repositories,
+    }))
+}
+
+// ============================================================================
+// Queue Management Endpoints
+// ============================================================================
+
+/// Get queue status
+async fn queue_status(State(state): State<AppState>) -> Result<Json<QueueStats>> {
+    let stats = get_queue_stats(&state.db_pool)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to get queue stats: {}", e)))?;
+
+    Ok(Json(stats))
 }
