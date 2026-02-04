@@ -152,7 +152,7 @@ impl DocGenerator {
                             param.name, param.param_type, param.description
                         ));
                     }
-                    md.push_str("\n");
+                    md.push('\n');
                 }
 
                 md.push_str(&format!("**Returns:** {}\n\n", func.returns));
@@ -187,7 +187,7 @@ impl DocGenerator {
         for feature in &content.features {
             md.push_str(&format!("- {}\n", feature));
         }
-        md.push_str("\n");
+        md.push('\n');
 
         md.push_str("## Installation\n\n");
         md.push_str(&content.installation);
@@ -204,7 +204,7 @@ impl DocGenerator {
 
         md.push_str("## Contributing\n\n");
         md.push_str(&content.contributing);
-        md.push_str("\n");
+        md.push('\n');
 
         md
     }

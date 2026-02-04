@@ -41,7 +41,15 @@
 //! } else {
 //!     // Perform analysis...
 //!     let result = serde_json::json!({"score": 95});
-//!     cache.set(CacheType::Refactor, "src/main.rs", file_content, "xai", "grok-beta", result, Some(150))?;
+//!     cache.set(CacheSetParams {
+//!         cache_type: CacheType::Refactor,
+//!         file_path: "src/main.rs",
+//!         content: file_content,
+//!         provider: "xai",
+//!         model: "grok-beta",
+//!         result,
+//!         tokens_used: Some(150),
+//!     })?;
 //! }
 //! # Ok(())
 //! # }
@@ -109,6 +117,24 @@ pub struct RepoCacheEntry {
 
     /// Cache type
     pub cache_type: String,
+}
+
+/// Parameters for setting a cache entry
+pub struct CacheSetParams<'a> {
+    /// Cache type
+    pub cache_type: CacheType,
+    /// File path (relative to repo root)
+    pub file_path: &'a str,
+    /// File content
+    pub content: &'a str,
+    /// LLM provider
+    pub provider: &'a str,
+    /// Model name
+    pub model: &'a str,
+    /// Analysis result
+    pub result: serde_json::Value,
+    /// Token count (if available)
+    pub tokens_used: Option<usize>,
 }
 
 /// Repository cache manager
@@ -296,33 +322,24 @@ Add to `.gitignore` if you prefer not to track cache files:
     }
 
     /// Store analysis result in cache
-    pub fn set(
-        &self,
-        cache_type: CacheType,
-        file_path: &str,
-        content: &str,
-        provider: &str,
-        model: &str,
-        result: serde_json::Value,
-        tokens_used: Option<usize>,
-    ) -> anyhow::Result<()> {
+    pub fn set(&self, params: CacheSetParams) -> anyhow::Result<()> {
         if !self.enabled {
             return Ok(());
         }
 
         let entry = RepoCacheEntry {
-            file_path: file_path.to_string(),
-            file_hash: self.hash_content(content),
+            file_path: params.file_path.to_string(),
+            file_hash: self.hash_content(params.content),
             analyzed_at: chrono::Utc::now().to_rfc3339(),
-            provider: provider.to_string(),
-            model: model.to_string(),
-            result,
-            tokens_used,
-            file_size: content.len(),
-            cache_type: cache_type.subdirectory().to_string(),
+            provider: params.provider.to_string(),
+            model: params.model.to_string(),
+            result: params.result,
+            tokens_used: params.tokens_used,
+            file_size: params.content.len(),
+            cache_type: params.cache_type.subdirectory().to_string(),
         };
 
-        let cache_file = self.cache_file_path(cache_type, file_path);
+        let cache_file = self.cache_file_path(params.cache_type, params.file_path);
 
         // Ensure parent directory exists
         if let Some(parent) = cache_file.parent() {
@@ -335,8 +352,8 @@ Add to `.gitignore` if you prefer not to track cache files:
 
         debug!(
             "Cached {} analysis for: {}",
-            cache_type.subdirectory(),
-            file_path
+            params.cache_type.subdirectory(),
+            params.file_path
         );
         Ok(())
     }
@@ -407,8 +424,7 @@ Add to `.gitignore` if you prefer not to track cache files:
 
         for entry in fs::read_dir(&cache_dir)? {
             let entry = entry?;
-            if entry.file_type()?.is_file()
-                && entry.path().extension().map_or(false, |e| e == "json")
+            if entry.file_type()?.is_file() && entry.path().extension().is_some_and(|e| e == "json")
             {
                 stats.total_entries += 1;
 
@@ -537,15 +553,15 @@ mod tests {
 
         // Store entry
         cache
-            .set(
-                CacheType::Refactor,
+            .set(CacheSetParams {
+                cache_type: CacheType::Refactor,
                 file_path,
                 content,
-                "xai",
-                "grok-beta",
-                result.clone(),
-                Some(100),
-            )
+                provider: "xai",
+                model: "grok-beta",
+                result: result.clone(),
+                tokens_used: Some(100),
+            })
             .unwrap();
 
         // Should be a hit now
@@ -570,15 +586,15 @@ mod tests {
 
         // Store with content1
         cache
-            .set(
-                CacheType::Refactor,
+            .set(CacheSetParams {
+                cache_type: CacheType::Refactor,
                 file_path,
-                content1,
-                "xai",
-                "grok-beta",
-                result,
-                Some(100),
-            )
+                content: content1,
+                provider: "xai",
+                model: "grok-beta",
+                result: result.clone(),
+                tokens_used: Some(100),
+            })
             .unwrap();
 
         // Should hit with same content
@@ -601,27 +617,27 @@ mod tests {
 
         // Add some entries
         cache
-            .set(
-                CacheType::Refactor,
-                "src/main.rs",
-                "fn main() {}",
-                "xai",
-                "grok-beta",
-                serde_json::json!({"score": 95}),
-                Some(100),
-            )
+            .set(CacheSetParams {
+                cache_type: CacheType::Refactor,
+                file_path: "src/main.rs",
+                content: "fn main() {}",
+                provider: "xai",
+                model: "grok-beta",
+                result: serde_json::json!({"score": 95}),
+                tokens_used: Some(100),
+            })
             .unwrap();
 
         cache
-            .set(
-                CacheType::Docs,
-                "src/lib.rs",
-                "pub fn test() {}",
-                "xai",
-                "grok-beta",
-                serde_json::json!({"docs": "test"}),
-                Some(50),
-            )
+            .set(CacheSetParams {
+                cache_type: CacheType::Docs,
+                file_path: "src/lib.rs",
+                content: "pub fn test() {}",
+                provider: "xai",
+                model: "grok-beta",
+                result: serde_json::json!({"docs": "test"}),
+                tokens_used: Some(50),
+            })
             .unwrap();
 
         // Clear refactor cache
@@ -644,15 +660,15 @@ mod tests {
 
         // Add entry
         cache
-            .set(
-                CacheType::Refactor,
-                "src/main.rs",
-                "fn main() {}",
-                "xai",
-                "grok-beta",
-                serde_json::json!({"score": 95}),
-                Some(100),
-            )
+            .set(CacheSetParams {
+                cache_type: CacheType::Refactor,
+                file_path: "src/main.rs",
+                content: "fn main() {}",
+                provider: "xai",
+                model: "grok-beta",
+                result: serde_json::json!({"score": 95}),
+                tokens_used: Some(100),
+            })
             .unwrap();
 
         // Check stats

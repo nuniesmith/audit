@@ -14,7 +14,7 @@ use rustassistant::db::{
     self, create_note, get_next_task, get_stats, list_notes, list_repositories, list_tasks,
     search_notes, update_task_status,
 };
-use rustassistant::repo_cache::{CacheType, RepoCache};
+use rustassistant::repo_cache::{CacheSetParams, CacheType, RepoCache};
 
 // ============================================================================
 // CLI Structure
@@ -658,15 +658,15 @@ async fn handle_refactor_action(
 
                     // Cache the result
                     let result_json = serde_json::to_value(&analysis)?;
-                    cache.set(
-                        CacheType::Refactor,
-                        &file,
-                        &file_content,
-                        "xai",       // TODO: get from config
-                        "grok-beta", // TODO: get from config
-                        result_json,
-                        None, // TODO: track tokens
-                    )?;
+                    cache.set(CacheSetParams {
+                        cache_type: CacheType::Refactor,
+                        file_path: &file,
+                        content: &file_content,
+                        provider: "xai",    // TODO: get from config
+                        model: "grok-beta", // TODO: get from config
+                        result: result_json,
+                        tokens_used: None, // TODO: track tokens
+                    })?;
                     println!("💾 Analysis cached\n");
 
                     analysis
@@ -808,15 +808,15 @@ async fn handle_docs_action(pool: &sqlx::SqlitePool, action: DocsAction) -> anyh
 
                 // Cache the result
                 let result_json = serde_json::to_value(&doc)?;
-                cache.set(
-                    CacheType::Docs,
-                    &file,
-                    &file_content,
-                    "xai",       // TODO: get from config
-                    "grok-beta", // TODO: get from config
-                    result_json,
-                    None, // TODO: track tokens
-                )?;
+                cache.set(CacheSetParams {
+                    cache_type: CacheType::Docs,
+                    file_path: &file,
+                    content: &file_content,
+                    provider: "xai",    // TODO: get from config
+                    model: "grok-beta", // TODO: get from config
+                    result: result_json,
+                    tokens_used: None, // TODO: track tokens
+                })?;
                 println!("💾 Documentation cached\n");
 
                 doc
