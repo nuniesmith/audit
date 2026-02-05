@@ -815,7 +815,7 @@ mod tests {
 /// Backward-compatible Database wrapper
 #[derive(Clone)]
 pub struct Database {
-    pool: SqlitePool,
+    pub pool: SqlitePool,
 }
 
 impl Database {

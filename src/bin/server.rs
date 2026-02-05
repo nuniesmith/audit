@@ -1,7 +1,9 @@
 //! Rustassistant Server
 //!
 //! A clean REST API for notes, repositories, and tasks.
+//! Includes integrated Web UI for repository and queue management.
 
+use axum::response::Html;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -15,10 +17,13 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 // Import from our crate
+use rustassistant::auto_scanner::{AutoScanner, AutoScannerConfig};
 use rustassistant::db::{
     self, create_note, get_next_task, get_stats, list_notes, list_repositories, list_tasks,
-    search_notes, update_note_status, update_task_status,
+    search_notes, update_note_status, update_task_status, Database,
 };
+use rustassistant::web_ui::{create_router as create_web_ui_router, WebAppState};
+use std::sync::Arc;
 
 // ============================================================================
 // Application State
@@ -125,6 +130,120 @@ async fn health_check() -> impl IntoResponse {
         "service": "rustassistant",
         "version": env!("CARGO_PKG_VERSION")
     }))
+}
+
+// Root page - Simple status page
+#[allow(dead_code)]
+async fn root_handler() -> impl IntoResponse {
+    Html(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RustAssistant</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 { color: #2563eb; }
+        .status {
+            background: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .endpoints {
+            background: #f3f4f6;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        code {
+            background: #e5e7eb;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .endpoint {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🦀 RustAssistant API</h1>
+    <div class="status">✓ Online</div>
+
+    <p>Welcome to the RustAssistant REST API server.</p>
+
+    <div class="endpoints">
+        <h2>Available Endpoints</h2>
+
+        <div class="endpoint">
+            <strong>GET</strong> <code>/health</code> - Health check
+        </div>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/api/stats</code> - Get statistics
+        </div>
+
+        <h3>Notes</h3>
+        <div class="endpoint">
+            <strong>POST</strong> <code>/api/notes</code> - Create note
+        </div>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/api/notes</code> - List notes
+        </div>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/api/notes/search?q=query</code> - Search notes
+        </div>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/api/notes/:id</code> - Get note
+        </div>
+        <div class="endpoint">
+            <strong>PUT</strong> <code>/api/notes/:id</code> - Update note
+        </div>
+        <div class="endpoint">
+            <strong>DELETE</strong> <code>/api/notes/:id</code> - Delete note
+        </div>
+
+        <h3>Repositories</h3>
+        <div class="endpoint">
+            <strong>POST</strong> <code>/api/repos</code> - Add repository
+        </div>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/api/repos</code> - List repositories
+        </div>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/api/repos/:id</code> - Get repository
+        </div>
+        <div class="endpoint">
+            <strong>DELETE</strong> <code>/api/repos/:id</code> - Delete repository
+        </div>
+
+        <h3>Tasks</h3>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/api/tasks</code> - List tasks
+        </div>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/api/tasks/next</code> - Get next task
+        </div>
+        <div class="endpoint">
+            <strong>PUT</strong> <code>/api/tasks/:id</code> - Update task
+        </div>
+    </div>
+
+    <p style="margin-top: 30px; color: #6b7280;">
+        <strong>Note:</strong> The web UI is currently being updated for the new schema.
+        Use the REST API endpoints above or the CLI tool for now.
+    </p>
+</body>
+</html>"#,
+    )
 }
 
 // Stats
@@ -323,14 +442,14 @@ async fn update_task_handler(
 // Router
 // ============================================================================
 
-fn create_router(state: AppState) -> Router {
+fn create_api_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
     Router::new()
-        // Health & Stats
+        // Health check (root kept minimal for API)
         .route("/health", get(health_check))
         .route("/api/stats", get(get_statistics))
         // Notes
@@ -381,11 +500,50 @@ async fn main() -> anyhow::Result<()> {
     info!("Initializing database at {}", database_url);
     let db = db::init_db(&database_url).await?;
 
-    // Create app state
-    let state = AppState { db };
+    // Create app state for API
+    let api_state = AppState { db: db.clone() };
 
-    // Build router
-    let app = create_router(state);
+    // Create app state for Web UI
+    let web_state = WebAppState::new(Database::from_pool(db.clone()));
+
+    // Build combined router with Web UI at root and API at /api
+    let api_router = create_api_router(api_state);
+    let web_router = create_web_ui_router(web_state);
+
+    // Merge routers: Web UI gets root paths, API gets /api/* and /health
+    let app = Router::new().merge(web_router).merge(api_router);
+
+    // Start auto-scanner in background if enabled
+    let scanner_config = AutoScannerConfig {
+        enabled: std::env::var("AUTO_SCAN_ENABLED")
+            .unwrap_or_else(|_| "true".into())
+            .parse()
+            .unwrap_or(true),
+        default_interval_minutes: std::env::var("AUTO_SCAN_INTERVAL")
+            .unwrap_or_else(|_| "60".into())
+            .parse()
+            .unwrap_or(60),
+        max_concurrent_scans: std::env::var("AUTO_SCAN_MAX_CONCURRENT")
+            .unwrap_or_else(|_| "2".into())
+            .parse()
+            .unwrap_or(2),
+    };
+
+    if scanner_config.enabled {
+        info!(
+            "🔍 Starting auto-scanner (interval: {} minutes)",
+            scanner_config.default_interval_minutes
+        );
+        let scanner = Arc::new(AutoScanner::new(scanner_config, db.clone()));
+        let scanner_clone = scanner.clone();
+        tokio::spawn(async move {
+            if let Err(e) = scanner_clone.start().await {
+                tracing::error!("Auto-scanner error: {}", e);
+            }
+        });
+    } else {
+        info!("Auto-scanner is disabled");
+    }
 
     // Start server
     info!("🚀 Rustassistant server starting on http://{}", addr);

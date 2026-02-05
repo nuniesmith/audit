@@ -6,9 +6,32 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 
+**✨ Now with Web UI!** Manage repositories, queue, and auto-scanning from your browser at `http://localhost:3001`
+
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Docker - Recommended)
+
+```bash
+# Start services (just 2 containers: rustassistant + redis)
+docker compose up -d
+
+# Access Web UI
+open http://localhost:3001
+
+# Check status
+docker compose ps
+```
+
+**What you get:**
+- 🌐 Web UI at http://localhost:3001 (dashboard, repos, queue)
+- 🔌 REST API at http://localhost:3001/api/*
+- 🔄 Auto-scanner running in background
+- 💾 Redis caching for LLM responses
+
+See [docs/user/SIMPLIFIED_SETUP.md](./docs/user/SIMPLIFIED_SETUP.md) for migration from old 3-container setup.
+
+## 🚀 Quick Start (Local Build)
 
 ```bash
 # Clone and setup
@@ -18,19 +41,16 @@ cd rustassistant
 # Or build locally
 cargo build --release
 
+# Start the server (serves Web UI + API)
+./target/release/rustassistant-server
+
+# Access Web UI
+open http://localhost:3001
+
 # Use the CLI
 ./target/release/rustassistant note add "My first note!" --tags milestone
 ./target/release/rustassistant stats
-
-# Start the API server
-./target/release/rustassistant-server
 ```
-
-**That's it!** The setup script handles everything:
-- Creates `.env` with secure secrets
-- Asks for your XAI API key (optional)
-- Sets up the database
-- Builds and starts services
 
 ---
 
@@ -47,8 +67,10 @@ cargo build --release
 
 ### Developer Experience
 - 🎨 **Beautiful CLI** - Colored output with emoji icons
-- 🌐 **REST API** - Full CRUD operations for all resources
-- 🐳 **Docker Ready** - Production-ready containers
+- 🌐 **Web UI** - Modern dashboard for repository and queue management
+- 🔌 **REST API** - Full CRUD operations for all resources
+- 🤖 **Auto-Scanner** - Background monitoring of repositories
+- 🐳 **Docker Ready** - Simplified 2-container deployment
 - 🔒 **Secure** - Encrypted secrets, secure defaults
 - 🧪 **Well Tested** - Comprehensive test coverage
 - 📖 **Complete Docs** - Everything you need to contribute
@@ -86,21 +108,31 @@ rustassistant ask "find my notes about authentication"
 rustassistant costs today  # View API spending
 ```
 
+### Use the Web UI
+```bash
+# Access the Web UI
+open http://localhost:3001
+
+# Features:
+# - Dashboard with real-time stats
+# - Repository management (add, remove, toggle auto-scan)
+# - Queue management (view tasks, copy to IDE)
+# - Auto-scanner control
+```
+
 ### Use the API
 ```bash
-# Start the server
-rustassistant-server
-
+# Server runs on port 3001 (both Web UI and API)
 # Create a note via API
-curl -X POST http://localhost:3000/api/notes \
+curl -X POST http://localhost:3001/api/notes \
   -H "Content-Type: application/json" \
   -d '{"content":"Created via API!","tags":"api,test"}'
 
 # Get statistics
-curl http://localhost:3000/api/stats
+curl http://localhost:3001/api/stats
 
 # Health check
-curl http://localhost:3000/health
+curl http://localhost:3001/health
 ```
 
 ---
@@ -299,19 +331,21 @@ rustassistant/
 ## 📚 Documentation
 
 ### Getting Started
-- **[Quick Start Phase 1](docs/QUICK_START_PHASE1.md)** - Start implementing today (1-2 days)
-- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Complete development documentation
-- **[Integration Guide](docs/integration/QUICK_START.md)** - 5-minute getting started
+- **[Documentation Index](docs/INDEX.md)** - Complete documentation hub
+- **[Quick Start](docs/user/QUICKSTART.md)** - 5-minute setup guide
+- **[Web UI Quick Start](docs/user/WEB_UI_QUICKSTART.md)** - Get the UI running
+- **[Developer Guide](docs/developer/DEVELOPER_GUIDE.md)** - Contributing guide
 
-### Implementation
-- **[Implementation Roadmap](docs/IMPLEMENTATION_ROADMAP.md)** - Complete 4-6 week plan
-- **[TODO Analysis](docs/TODO_ANALYSIS_SUMMARY.md)** - Strategic decisions and insights
-- **[Progress Checklist](docs/PROGRESS_CHECKLIST.md)** - Track implementation progress
+### User Guides
+- **[Web UI Status](docs/user/WEB_UI_STATUS.md)** - Complete feature list
+- **[Auto-Scanner Setup](docs/user/AUTO_SCANNER_SETUP.md)** - Configure scanning
+- **[Simplified Setup](docs/user/SIMPLIFIED_SETUP.md)** - 2-container deployment
+- **[CLI Cheatsheet](docs/user/CLI_CHEATSHEET.md)** - Command reference
 
 ### Reference
-- **[CLI Cheatsheet](docs/CLI_CHEATSHEET.md)** - Common commands
-- **[Docker Deployment](docs/DOCKER_DEPLOYMENT.md)** - Production deployment
-- **[Advanced Features](docs/ADVANCED_FEATURES_GUIDE.md)** - Deep dives
+- **[Docker Quick Start](docs/DOCKER_QUICK_START.md)** - Docker deployment
+- **[API Reference](docs/developer/API_REFERENCE.md)** - REST API endpoints
+- **[Advanced Features](docs/ADVANCED_FEATURES_GUIDE.md)** - Power user features
 
 ---
 
@@ -501,4 +535,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built with ❤️ and 🦀 for solo developers who want AI-powered workflows without breaking the bank**
 
-*Last updated: February 2, 2025*
+---
+
+## 📦 Current Status
+
+- **Version**: 0.2.0
+- **Deployment**: 2 containers (rustassistant + redis)
+- **Web UI**: ✅ Fully functional
+- **Auto-Scanner**: ✅ Background monitoring active
+- **Documentation**: 📚 Reorganized and comprehensive
+
+*Last updated: January 15, 2024*

@@ -66,8 +66,7 @@ pub mod todo_scanner;
 pub mod token_budget;
 pub mod tree_state;
 pub mod types;
-// Temporarily disabled - needs updates for new schema
-// pub mod web_ui;
+pub mod web_ui;
 
 pub use cache::{AuditCache, CacheEntry, CacheStats};
 pub use cache_migrate::{CacheMigrator, MigrationFailure, MigrationProgress, MigrationResult};

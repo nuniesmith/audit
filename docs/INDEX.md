@@ -1,292 +1,220 @@
-# Rustassistant Documentation Index
+# RustAssistant Documentation Index
 
-**Last Updated:** February 2, 2025  
-**Version:** 0.1.0
-
-Welcome to the Rustassistant documentation! This index will help you find what you need quickly.
+Welcome to the RustAssistant documentation! This guide will help you find what you need quickly.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Quick Start
 
-Start here if you're new to Rustassistant:
+New to RustAssistant? Start here:
 
-| Document | Description | Time |
-|----------|-------------|------|
-| [Quick Start Phase 1](QUICK_START_PHASE1.md) | Step-by-step implementation guide | 1-2 days |
-| [Developer Guide](DEVELOPER_GUIDE.md) | Complete development documentation | 30 min read |
-| [Integration Quick Start](integration/QUICK_START.md) | Get started in 5 minutes | 5 min |
+1. **[Getting Started](user/GETTING_STARTED.md)** - First-time setup and basics
+2. **[Quick Start Guide](user/QUICKSTART.md)** - 5-minute setup
+3. **[Web UI Quick Start](user/WEB_UI_QUICKSTART.md)** - Get the UI running in minutes
 
 ---
 
-## 📋 Implementation & Planning
+## 📚 Documentation by Category
 
-Core planning documents for building Rustassistant:
+### For Users
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| [Implementation Roadmap](IMPLEMENTATION_ROADMAP.md) | Complete 4-6 week implementation plan | Developers |
-| [TODO Analysis Summary](TODO_ANALYSIS_SUMMARY.md) | Strategic decisions and insights from RAG article | Technical leads |
-| [Progress Checklist](PROGRESS_CHECKLIST.md) | Track implementation progress | Project managers |
+Essential guides for using RustAssistant:
 
-### Current Status
-- **Phase 0:** ✅ Complete (Core MVP)
-- **Phase 1:** 🔄 In Progress (Query Intelligence)
-- **Phase 2:** 📅 Planned (Smart Context Stuffing)
-- **Phase 3:** 📅 Optional (Semantic Caching)
+- **[Web UI Status](user/WEB_UI_STATUS.md)** - Complete feature list and capabilities
+- **[Web UI Quick Reference](user/WEB_UI_QUICK_REFERENCE.md)** - Command cheat sheet
+- **[Simplified Setup Guide](user/SIMPLIFIED_SETUP.md)** - Migrate to 2-container deployment
+- **[Auto-Scanner Setup](user/AUTO_SCANNER_SETUP.md)** - Configure automatic repository scanning
+- **[CLI Cheat Sheet](user/CLI_CHEATSHEET.md)** - Command-line reference
 
----
+### For Developers
 
-## 🎯 Key Concepts
+Contributing to RustAssistant:
 
-### Query Intelligence
-Rustassistant uses smart query routing to minimize LLM API costs:
-- 60-80% of queries bypass expensive API calls
-- Intent classification (greetings, searches, analysis)
-- Response caching for identical queries
-- Context stuffing leverages Grok's 2M token window
+- **[Developer Guide](developer/DEVELOPER_GUIDE.md)** - How to contribute
+- **[API Reference](developer/API_REFERENCE.md)** - REST API endpoints
+- **[Code Review Guidelines](developer/CODE_REVIEW.md)** - Standards and best practices
+- **[Testing Guide](developer/TESTING.md)** - Running and writing tests
+- **[CI/CD Review](developer/CICD_REVIEW.md)** - Continuous integration setup
 
-**Documents:**
-- [Implementation Roadmap - Phase 1](IMPLEMENTATION_ROADMAP.md#phase-1-query-intelligence-week-5-6)
-- [TODO Analysis - Query Router](TODO_ANALYSIS_SUMMARY.md#query-router-intelligence)
+### Reference Documentation
 
-### Cost Optimization
-Real-time monitoring and budget management:
-- Track every API call
-- Budget alerts at 80% threshold
-- ROI analysis from caching
-- Target: <$5/month
+Advanced topics and technical details:
 
-**Documents:**
-- [Cost Optimization Results](COST_OPTIMIZATION_RESULTS.md)
-- [Implementation Roadmap - Cost Tracker](IMPLEMENTATION_ROADMAP.md#12-cost-tracker)
+- **[Docker Quick Start](DOCKER_QUICK_START.md)** - Docker deployment guide
+- **[Raspberry Pi Guide](RASPBERRY_PI_GUIDE.md)** - ARM64 deployment
+- **[Grok 4.1 Migration](GROK_4.1_MIGRATION.md)** - LLM API migration guide
+- **[Advanced Features](ADVANCED_FEATURES_GUIDE.md)** - Power user features
+- **[Batch Operations](BATCH_OPERATIONS.md)** - Bulk processing guide
+- **[Repository Cache Design](REPO_CACHE_DESIGN.md)** - Caching architecture
+- **[Research Guide](RESEARCH_GUIDE.md)** - Research workflow
+- **[Research Topics](RESEARCH_TOPICS.md)** - Areas of exploration
 
 ---
 
-## 📚 Reference Guides
+## 🎯 Common Tasks
 
-### User Guides
-| Document | Description |
-|----------|-------------|
-| [CLI Cheatsheet](CLI_CHEATSHEET.md) | Common commands quick reference |
-| [Getting Started](GETTING_STARTED.md) | First-time user guide |
-| [Advanced Features Guide](ADVANCED_FEATURES_GUIDE.md) | Deep dives into features |
+### Setup & Installation
+- [Install with Docker](DOCKER_QUICK_START.md)
+- [Set up auto-scanning](user/AUTO_SCANNER_SETUP.md)
+- [Configure the Web UI](user/WEB_UI_QUICKSTART.md)
 
-### Developer Guides
-| Document | Description |
-|----------|-------------|
-| [Developer Guide](DEVELOPER_GUIDE.md) | Complete development documentation |
-| [Code Review](CODE_REVIEW.md) | Code review guidelines |
-| [Research Guide](RESEARCH_GUIDE.md) | Research and experimentation |
-| [Testing Results](TESTING_RESULTS.md) | Test coverage and results |
+### Daily Workflow
+- [Use the Web UI](user/WEB_UI_STATUS.md)
+- [Manage repositories](user/WEB_UI_STATUS.md#repository-management)
+- [Work with the queue](user/WEB_UI_STATUS.md#queue-management)
+- [CLI commands](user/CLI_CHEATSHEET.md)
 
-### Operational Guides
-| Document | Description |
-|----------|-------------|
-| [Docker Deployment](DOCKER_DEPLOYMENT.md) | Production Docker setup |
-| [Docker Quick Start](DOCKER_QUICK_START.md) | Fast Docker setup |
-| [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) | Pre-deployment verification |
-| [System Verification](SYSTEM_VERIFICATION.md) | Health checks |
+### Integration
+- [Copy issues to IDE](user/WEB_UI_QUICK_REFERENCE.md#copy-issue-to-ide)
+- [API endpoints](developer/API_REFERENCE.md)
+- [Batch operations](BATCH_OPERATIONS.md)
+
+### Troubleshooting
+- [Simplified Setup FAQ](user/SIMPLIFIED_SETUP.md#troubleshooting)
+- [Web UI troubleshooting](user/WEB_UI_QUICKSTART.md#troubleshooting)
+- [Docker issues](DOCKER_QUICK_START.md)
 
 ---
 
-## 🏗️ Architecture & Design
+## 📦 Deployment Guides
 
-| Document | Description |
-|----------|-------------|
-| [Implementation Roadmap](IMPLEMENTATION_ROADMAP.md) | System architecture and phases |
-| [Grok 4.1 Migration](GROK_4.1_MIGRATION.md) | LLM integration details |
-| [Batch Operations](BATCH_OPERATIONS.md) | Bulk processing design |
-| [Refactoring Summary](REFACTORING_SUMMARY.md) | Code refactoring history |
+### Quick Deployments
+```bash
+# Standard Docker setup (2 containers)
+docker compose up -d
+open http://localhost:3001
+```
 
----
+See:
+- [Simplified Setup Guide](user/SIMPLIFIED_SETUP.md) - Two-container deployment
+- [Docker Quick Start](DOCKER_QUICK_START.md) - Docker details
 
-## 🎨 Features
+### Production Deployment
+```bash
+# Production with pre-built images
+docker compose -f docker-compose.prod.yml up -d
+```
 
-### Core Features (Implemented)
-- ✅ Note Management with tags and projects
-- ✅ Repository tracking
-- ✅ Task management
-- ✅ REST API
-- ✅ CLI tool
-- ✅ Docker deployment
-- ✅ CI/CD pipeline
-
-### Phase 1 Features (In Progress)
-- 🔄 Query router with intent classification
-- 🔄 Cost tracker with budget alerts
-- 🔄 Content deduplication
-- 🔄 Smart caching
-
-### Future Features
-- 📅 Semantic caching (Phase 3)
-- 📅 Query templates
-- 📅 Context stuffing optimization
-- 📅 Full RAG (only if needed)
+See archived migration guides in `archive/migrations/` for historical context.
 
 ---
 
-## 📊 Project Status
+## 🏗️ Architecture Overview
 
-### Latest Updates
-| Document | Description |
-|----------|-------------|
-| [Latest Update](LATEST_UPDATE.md) | Most recent changes |
-| [Progress Update](PROGRESS_UPDATE.md) | Development progress |
-| [Project Status](PROJECT_STATUS.md) | Overall project status |
-| [Status](STATUS.md) | Current sprint status |
+RustAssistant consists of:
 
-### Roadmaps
-| Document | Description |
-|----------|-------------|
-| [Roadmap](ROADMAP.md) | Overall project roadmap |
-| [Next Priorities](NEXT_PRIORITIES.md) | Upcoming work items |
-| [Quick Decision Guide](QUICK_DECISION_GUIDE.md) | Decision framework |
+1. **Unified Server** (Port 3001)
+   - Web UI (dashboard, repos, queue)
+   - REST API endpoints
+   - Auto-scanner background task
+   
+2. **Redis Cache** (Port 6379)
+   - LLM response caching
+   - Performance optimization
+
+See [Repository Cache Design](REPO_CACHE_DESIGN.md) for technical details.
 
 ---
 
-## 🐳 Docker & Deployment
+## 📂 Directory Structure
 
-| Document | Description |
-|----------|-------------|
-| [Docker Deployment](DOCKER_DEPLOYMENT.md) | Full deployment guide |
-| [Docker Quick Start](DOCKER_QUICK_START.md) | Fast setup |
-| [Docker Setup Complete](DOCKER_SETUP_COMPLETE.md) | Setup verification |
-| [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) | Pre-deployment tasks |
-
----
-
-## 🧪 Testing & Quality
-
-| Document | Description |
-|----------|-------------|
-| [Testing Results](TESTING_RESULTS.md) | Test coverage report |
-| [Test Generation](TEST_GENERATION.md) | Automated test generation |
-| [System Verification](SYSTEM_VERIFICATION.md) | System health checks |
-| [CI/CD Review](CICD_REVIEW.md) | Pipeline documentation |
-
----
-
-## 🌐 Web UI (Legacy)
-
-| Document | Description |
-|----------|-------------|
-| [Web UI Guide](WEB_UI_GUIDE.md) | Web interface documentation |
-| [Web UI Completion](WEB_UI_COMPLETION.md) | Completion report |
-| [Web UI Progress](WEB_UI_PROGRESS.md) | Development progress |
-| [Web UI Dark Mode](WEB_UI_UPDATE_DARKMODE.md) | Dark mode implementation |
-
-**Note:** Web UI is currently disabled in favor of CLI and API.
+```
+docs/
+├── INDEX.md (this file)         # Documentation hub
+│
+├── user/                         # End-user guides
+│   ├── GETTING_STARTED.md       # First-time setup
+│   ├── QUICKSTART.md            # 5-minute guide
+│   ├── WEB_UI_*.md              # Web UI documentation
+│   ├── AUTO_SCANNER_SETUP.md    # Scanner config
+│   └── CLI_CHEATSHEET.md        # Command reference
+│
+├── developer/                    # Contributor docs
+│   ├── DEVELOPER_GUIDE.md       # Contributing
+│   ├── API_REFERENCE.md         # API docs
+│   ├── CODE_REVIEW.md           # Standards
+│   └── TESTING.md               # Test guide
+│
+├── archive/                      # Historical docs
+│   ├── sessions/                # Session summaries
+│   ├── migrations/              # Old migration guides
+│   └── deprecated/              # Obsolete docs
+│
+└── *.md                         # Reference documentation
+```
 
 ---
 
-## 📦 Integration
-
-Documents in the `integration/` folder:
-
-| Document | Description |
-|----------|-------------|
-| [Success Report](integration/SUCCESS.md) | Integration completion |
-| [Integration Complete](integration/INTEGRATION_COMPLETE.md) | Final integration status |
-| [Merge Summary](integration/MERGE_SUMMARY.md) | Code merge documentation |
-| [Quick Start](integration/QUICK_START.md) | 5-minute start guide |
-
----
-
-## 📜 Archive
-
-Historical documents in `archive/`:
-- [Organization Complete](archive/ORGANIZATION_COMPLETE.md)
-- Previous session documentation
-- Deprecated guides
-
----
-
-## 🎯 Quick Navigation
+## 🔍 Finding What You Need
 
 ### I want to...
 
-**Start developing immediately:**
-→ [Quick Start Phase 1](QUICK_START_PHASE1.md)
+**Get started quickly**
+→ [Quick Start Guide](user/QUICKSTART.md)
 
-**Understand the architecture:**
-→ [Implementation Roadmap](IMPLEMENTATION_ROADMAP.md)
+**Use the Web UI**
+→ [Web UI Quick Start](user/WEB_UI_QUICKSTART.md)
 
-**Deploy to production:**
-→ [Docker Deployment](DOCKER_DEPLOYMENT.md)
+**Set up auto-scanning**
+→ [Auto-Scanner Setup](user/AUTO_SCANNER_SETUP.md)
 
-**Learn common commands:**
-→ [CLI Cheatsheet](CLI_CHEATSHEET.md)
+**Learn CLI commands**
+→ [CLI Cheat Sheet](user/CLI_CHEATSHEET.md)
 
-**Track my progress:**
-→ [Progress Checklist](PROGRESS_CHECKLIST.md)
+**Contribute code**
+→ [Developer Guide](developer/DEVELOPER_GUIDE.md)
 
-**Understand costs:**
-→ [TODO Analysis Summary](TODO_ANALYSIS_SUMMARY.md#cost-projections)
+**Deploy to production**
+→ [Docker Quick Start](DOCKER_QUICK_START.md)
 
-**Set up CI/CD:**
-→ [CI/CD Review](CICD_REVIEW.md)
+**Deploy to Raspberry Pi**
+→ [Raspberry Pi Guide](RASPBERRY_PI_GUIDE.md)
 
-**Contribute code:**
-→ [Developer Guide](DEVELOPER_GUIDE.md)
+**Use the API**
+→ [API Reference](developer/API_REFERENCE.md)
 
----
+**Troubleshoot issues**
+→ [Simplified Setup FAQ](user/SIMPLIFIED_SETUP.md#troubleshooting)
 
-## 📊 Documentation Statistics
-
-- **Total Documents:** 35+ guides
-- **Getting Started:** 3 guides
-- **Implementation:** 3 major plans
-- **Reference:** 10+ guides
-- **Deployment:** 4 guides
-- **Testing:** 3 guides
+**Learn advanced features**
+→ [Advanced Features Guide](ADVANCED_FEATURES_GUIDE.md)
 
 ---
 
-## 🔄 Document Freshness
+## 📖 Documentation Status
 
-| Category | Last Updated | Status |
-|----------|--------------|--------|
-| Implementation Roadmap | Feb 2, 2025 | ✅ Current |
-| Quick Start Phase 1 | Feb 2, 2025 | ✅ Current |
-| TODO Analysis | Feb 2, 2025 | ✅ Current |
-| Developer Guide | Feb 2, 2025 | ✅ Current |
-| Docker Guides | Jan 2025 | ⚠️ Review needed |
-| Web UI Docs | Legacy | ⚠️ Deprecated |
+| Category | Files | Status |
+|----------|-------|--------|
+| User Guides | 13 | ✅ Current |
+| Developer Docs | 5 | ✅ Current |
+| Reference | 10 | ✅ Current |
+| Archived | 59 | 📦 Historical |
 
----
-
-## 💡 Tips for Using This Documentation
-
-1. **Start with Quick Start Phase 1** if you're implementing features
-2. **Read TODO Analysis Summary** for strategic context
-3. **Use Progress Checklist** to track your work
-4. **Refer to CLI Cheatsheet** for daily commands
-5. **Check Implementation Roadmap** for the big picture
+Last updated: 2024-01-15
 
 ---
 
-## 🤝 Contributing to Documentation
+## 🆘 Getting Help
 
-Found an issue or want to improve these docs?
-
-1. All docs are in Markdown format
-2. Follow the existing structure
-3. Update this index when adding new docs
-4. Keep documents focused and actionable
-5. Include examples and code snippets
+1. **Check the docs** - Start with the index above
+2. **Review examples** - See guides for common tasks
+3. **Check archived docs** - `archive/` has historical context
+4. **Open an issue** - GitHub issues for bugs/features
 
 ---
 
-## 📞 Support
+## 📝 Contributing to Docs
 
-- **New to Rustassistant?** Start with [Quick Start](integration/QUICK_START.md)
-- **Technical questions?** See [Developer Guide](DEVELOPER_GUIDE.md)
-- **Deployment issues?** Check [Docker Deployment](DOCKER_DEPLOYMENT.md)
-- **Still stuck?** Open an issue on GitHub
+Found an error or want to improve the documentation?
+
+1. See [Developer Guide](developer/DEVELOPER_GUIDE.md)
+2. Edit the relevant .md file
+3. Submit a pull request
+
+All documentation is written in Markdown and stored in the `docs/` directory.
 
 ---
 
-**Happy coding! 🚀**
-
-*This index is automatically maintained. Last review: February 2, 2025*
+**Current Version**: 0.2.0  
+**Documentation Structure**: Reorganized 2024-01-15  
+**Archived Docs**: Available in `archive/` for historical reference
