@@ -6,12 +6,18 @@
 # Cargo.lock for libraries (keep for binaries)
 # Cargo.lock
 
-# Database files
+# Database files - NEVER commit these
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite3
 data/*.db
 data/*.db-*
+
+# Backups
+/backups/
+data/backups/
 
 # Environment files
 .env
@@ -54,3 +60,4 @@ target/doc/
 
 # Cache directories
 .cache/
+.rustassistant/

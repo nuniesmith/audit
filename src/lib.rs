@@ -59,6 +59,7 @@ pub mod scoring;
 pub mod server;
 pub mod tag_schema;
 pub mod tags;
+pub mod task;
 pub mod tasks;
 pub mod test_generator;
 pub mod tests_runner;
@@ -71,8 +72,8 @@ pub mod web_ui;
 pub use cache::{AuditCache, CacheEntry, CacheStats};
 pub use cache_migrate::{CacheMigrator, MigrationFailure, MigrationProgress, MigrationResult};
 pub use cli::{
-    handle_queue_command, handle_report_command, handle_scan_command, QueueCommands,
-    ReportCommands, ScanCommands,
+    handle_queue_command, handle_report_command, handle_scan_command, handle_task_command,
+    QueueCommands, ReportCommands, ScanCommands, TaskCommands,
 };
 pub use code_review::{
     CodeReview, CodeReviewer, FileReview, IssueSeverity, ReviewIssue, ReviewStats,
