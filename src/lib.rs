@@ -23,6 +23,7 @@
 //! - RESTful API and CLI interface
 
 pub mod auto_scanner;
+pub mod backup;
 pub mod cache;
 pub mod cache_migrate;
 pub mod cli;
