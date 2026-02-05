@@ -67,6 +67,21 @@ pub enum QueryIntent {
     /// Direct factual question (can be answered without LLM)
     DirectAnswer,
 
+    /// GitHub issues query
+    GitHubIssues,
+
+    /// GitHub pull requests query
+    GitHubPRs,
+
+    /// GitHub repositories query
+    GitHubRepos,
+
+    /// GitHub commits query
+    GitHubCommits,
+
+    /// GitHub search query
+    GitHubSearch,
+
     /// Generic query requiring LLM
     Generic,
 }
@@ -207,6 +222,36 @@ impl QueryRouter {
                 Ok(Action::CallGrokMinimal(query.to_string()))
             }
 
+            QueryIntent::GitHubIssues => {
+                self.stats.database_searches += 1;
+                self.stats.cost_saved_usd += 0.005; // Estimated LLM cost saved
+                Ok(Action::SearchDatabase(query.to_string()))
+            }
+
+            QueryIntent::GitHubPRs => {
+                self.stats.database_searches += 1;
+                self.stats.cost_saved_usd += 0.005;
+                Ok(Action::SearchDatabase(query.to_string()))
+            }
+
+            QueryIntent::GitHubRepos => {
+                self.stats.database_searches += 1;
+                self.stats.cost_saved_usd += 0.005;
+                Ok(Action::SearchDatabase(query.to_string()))
+            }
+
+            QueryIntent::GitHubCommits => {
+                self.stats.database_searches += 1;
+                self.stats.cost_saved_usd += 0.005;
+                Ok(Action::SearchDatabase(query.to_string()))
+            }
+
+            QueryIntent::GitHubSearch => {
+                self.stats.database_searches += 1;
+                self.stats.cost_saved_usd += 0.005;
+                Ok(Action::SearchDatabase(query.to_string()))
+            }
+
             QueryIntent::Generic => {
                 self.stats.grok_calls += 1;
                 let context = self.build_generic_context(query, user_context).await?;
@@ -223,6 +268,27 @@ impl QueryRouter {
         // Greeting patterns
         if self.is_greeting(&lower, &words) {
             return QueryIntent::Greeting;
+        }
+
+        // GitHub patterns (check before note search)
+        if self.is_github_issues(&lower, &words) {
+            return QueryIntent::GitHubIssues;
+        }
+
+        if self.is_github_prs(&lower, &words) {
+            return QueryIntent::GitHubPRs;
+        }
+
+        if self.is_github_repos(&lower, &words) {
+            return QueryIntent::GitHubRepos;
+        }
+
+        if self.is_github_commits(&lower, &words) {
+            return QueryIntent::GitHubCommits;
+        }
+
+        if self.is_github_search(&lower, &words) {
+            return QueryIntent::GitHubSearch;
         }
 
         // Note search patterns
@@ -330,6 +396,56 @@ impl QueryRouter {
         ];
 
         faq_patterns.iter().any(|pattern| query.contains(pattern))
+    }
+
+    fn is_github_issues(&self, _query: &str, words: &[&str]) -> bool {
+        let issue_keywords = ["issue", "issues", "bug", "bugs"];
+        let github_keywords = ["github", "gh"];
+
+        let has_issue = words.iter().any(|w| issue_keywords.contains(w));
+        let has_github = words.iter().any(|w| github_keywords.contains(w));
+
+        has_issue || (has_github && has_issue)
+    }
+
+    fn is_github_prs(&self, _query: &str, words: &[&str]) -> bool {
+        let pr_keywords = ["pr", "prs", "pull", "merge"];
+        let github_keywords = ["github", "gh", "request", "requests"];
+
+        let has_pr = words.iter().any(|w| pr_keywords.contains(w));
+        let has_github = words.iter().any(|w| github_keywords.contains(w));
+
+        has_pr || (has_github && has_pr)
+    }
+
+    fn is_github_repos(&self, query: &str, words: &[&str]) -> bool {
+        let repo_keywords = ["repository", "repositories", "repos"];
+        let github_keywords = ["github", "gh"];
+
+        let has_repo = words.iter().any(|w| repo_keywords.contains(w));
+        let has_github = words.iter().any(|w| github_keywords.contains(w));
+
+        (has_repo && has_github) || query.contains("github repo")
+    }
+
+    fn is_github_commits(&self, _query: &str, words: &[&str]) -> bool {
+        let commit_keywords = ["commit", "commits", "committed"];
+        let github_keywords = ["github", "gh"];
+
+        let has_commit = words.iter().any(|w| commit_keywords.contains(w));
+        let has_github = words.iter().any(|w| github_keywords.contains(w));
+
+        has_commit && has_github
+    }
+
+    fn is_github_search(&self, query: &str, words: &[&str]) -> bool {
+        let search_keywords = ["search", "find"];
+        let github_keywords = ["github", "gh"];
+
+        let has_search = words.iter().any(|w| search_keywords.contains(w));
+        let has_github = words.iter().any(|w| github_keywords.contains(w));
+
+        (has_search && has_github) || query.contains("search github")
     }
 
     // Cache operations

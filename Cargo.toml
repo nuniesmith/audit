@@ -103,6 +103,8 @@ chrono = { version = "0.4", features = ["serde"] }
 # Cryptography (for hashing)
 # ---------------------------------------------------------------------------
 sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
 
 # ---------------------------------------------------------------------------
 # Async Runtime
@@ -125,6 +127,7 @@ async-trait = "0.1"
 md5 = "0.7"
 dirs = "5.0"
 zstd = "0.13"
+open = "5.0"
 
 # ---------------------------------------------------------------------------
 # Clipboard (optional)
@@ -135,6 +138,7 @@ clipboard = { version = "0.5", optional = true }
 # URL Parsing (for SSRF prevention)
 # ---------------------------------------------------------------------------
 url = "2.5"
+urlencoding = "2.1"
 
 [dev-dependencies]
 tempfile = "3.8"

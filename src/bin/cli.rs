@@ -9,8 +9,8 @@ use std::path::PathBuf;
 
 // Import from our crate
 use rustassistant::cli::{
-    handle_queue_command, handle_report_command, handle_scan_command, QueueCommands,
-    ReportCommands, ScanCommands,
+    handle_github_command, handle_queue_command, handle_report_command, handle_scan_command,
+    GithubCommands, QueueCommands, ReportCommands, ScanCommands,
 };
 use rustassistant::db::{
     self, create_note, get_next_task, get_stats, list_notes, list_repositories, list_tasks,
@@ -95,6 +95,12 @@ enum Commands {
     Cache {
         #[command(subcommand)]
         action: CacheAction,
+    },
+
+    /// GitHub integration
+    Github {
+        #[command(subcommand)]
+        action: GithubCommands,
     },
 }
 
@@ -343,6 +349,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Docs { action } => handle_docs_action(&pool, action).await?,
         Commands::Refactor { action } => handle_refactor_action(&pool, action).await?,
         Commands::Cache { action } => handle_cache_action(action).await?,
+        Commands::Github { action } => handle_github_command(action, &pool).await?,
     }
 
     Ok(())

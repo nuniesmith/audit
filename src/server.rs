@@ -14,7 +14,7 @@ use crate::tags::TagScanner;
 use crate::tasks::TaskGenerator;
 use crate::types::{AuditReport, AuditRequest, AuditTag, Task};
 use axum::{
-    extract::{Json, Path, State},
+    extract::{Json, Path, Query, State},
     http::{header, Method, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -121,6 +121,12 @@ pub async fn run_server(config: Config) -> Result<()> {
         .route("/api/repos", get(list_repos))
         .route("/api/repos/scan", post(scan_repos))
         .route("/api/queue/status", get(queue_status))
+        .route("/api/github/stats", get(github_stats))
+        .route("/api/github/repos", get(github_repos))
+        .route("/api/github/issues", get(github_issues))
+        .route("/api/github/prs", get(github_prs))
+        .route("/api/github/search", get(github_search))
+        .route("/api/github/sync", post(github_sync))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -575,4 +581,279 @@ async fn queue_status(State(state): State<AppState>) -> Result<Json<QueueStats>>
         .map_err(|e| AuditError::other(format!("Failed to get queue stats: {}", e)))?;
 
     Ok(Json(stats))
+}
+
+// ============================================================================
+// GitHub Integration Endpoints
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+struct GitHubStatsResponse {
+    repositories: i64,
+    issues: i64,
+    pull_requests: i64,
+    commits: i64,
+    events: i64,
+    last_sync: Option<String>,
+    top_repos: Vec<TopRepo>,
+}
+
+#[derive(Debug, Serialize)]
+struct TopRepo {
+    name: String,
+    stars: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubSearchQuery {
+    q: String,
+    #[serde(default = "default_limit")]
+    limit: i32,
+}
+
+fn default_limit() -> i32 {
+    20
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubIssuesQuery {
+    repo: Option<String>,
+    state: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubPrsQuery {
+    repo: Option<String>,
+    state: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubReposQuery {
+    language: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubSyncRequest {
+    full: Option<bool>,
+    repo: Option<String>,
+}
+
+/// Get GitHub integration statistics
+async fn github_stats(State(state): State<AppState>) -> Result<Json<GitHubStatsResponse>> {
+    let stats: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            (SELECT COUNT(*) FROM github_repositories) as repos,
+            (SELECT COUNT(*) FROM github_issues) as issues,
+            (SELECT COUNT(*) FROM github_pull_requests) as prs,
+            (SELECT COUNT(*) FROM github_commits) as commits,
+            (SELECT COUNT(*) FROM github_events) as events
+        "#,
+    )
+    .fetch_one(&state.db_pool)
+    .await
+    .map_err(|e| AuditError::other(format!("Failed to get GitHub stats: {}", e)))?;
+
+    let last_sync: Option<String> = sqlx::query_scalar(
+        "SELECT MAX(last_synced_at) FROM github_repositories WHERE last_synced_at IS NOT NULL",
+    )
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| AuditError::other(format!("Failed to get last sync time: {}", e)))?;
+
+    let top_repos: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT full_name, stargazers_count FROM github_repositories
+         ORDER BY stargazers_count DESC LIMIT 5",
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| AuditError::other(format!("Failed to get top repos: {}", e)))?;
+
+    Ok(Json(GitHubStatsResponse {
+        repositories: stats.0,
+        issues: stats.1,
+        pull_requests: stats.2,
+        commits: stats.3,
+        events: stats.4,
+        last_sync,
+        top_repos: top_repos
+            .into_iter()
+            .map(|(name, stars)| TopRepo { name, stars })
+            .collect(),
+    }))
+}
+
+/// Search GitHub repositories
+async fn github_repos(
+    State(state): State<AppState>,
+    Query(params): Query<GitHubReposQuery>,
+) -> Result<Json<Vec<crate::github::search::SearchResult>>> {
+    use crate::github::search::{GitHubSearcher, SearchQuery, SearchType};
+
+    let searcher = GitHubSearcher::new(state.db_pool.clone());
+    let mut query = SearchQuery::new("")
+        .with_type(SearchType::Repositories)
+        .limit(params.limit);
+
+    if let Some(lang) = params.language {
+        query = query.with_language(lang);
+    }
+
+    let results = searcher
+        .search(query)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to search repositories: {}", e)))?;
+
+    Ok(Json(results))
+}
+
+/// Get GitHub issues
+async fn github_issues(
+    State(state): State<AppState>,
+    Query(params): Query<GitHubIssuesQuery>,
+) -> Result<Json<Vec<crate::github::search::SearchResult>>> {
+    use crate::github::search::{GitHubSearcher, SearchQuery, SearchType};
+
+    let searcher = GitHubSearcher::new(state.db_pool.clone());
+    let mut query = SearchQuery::new("")
+        .with_type(SearchType::Issues)
+        .limit(params.limit);
+
+    let state_param = params.state.as_deref().unwrap_or("open");
+    if state_param == "open" {
+        query = query.only_open();
+    } else if state_param == "closed" {
+        query = query.only_closed();
+    }
+
+    if let Some(repo) = params.repo {
+        query = query.in_repo(repo);
+    }
+
+    let results = searcher
+        .search(query)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to search issues: {}", e)))?;
+
+    Ok(Json(results))
+}
+
+/// Get GitHub pull requests
+async fn github_prs(
+    State(state): State<AppState>,
+    Query(params): Query<GitHubPrsQuery>,
+) -> Result<Json<Vec<crate::github::search::SearchResult>>> {
+    use crate::github::search::{GitHubSearcher, SearchQuery, SearchType};
+
+    let searcher = GitHubSearcher::new(state.db_pool.clone());
+    let mut query = SearchQuery::new("")
+        .with_type(SearchType::PullRequests)
+        .limit(params.limit);
+
+    let state_param = params.state.as_deref().unwrap_or("open");
+    if state_param == "open" {
+        query = query.only_open();
+    } else if state_param == "closed" {
+        query = query.only_closed();
+    }
+
+    if let Some(repo) = params.repo {
+        query = query.in_repo(repo);
+    }
+
+    let results = searcher
+        .search(query)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to search pull requests: {}", e)))?;
+
+    Ok(Json(results))
+}
+
+/// Search GitHub data
+async fn github_search(
+    State(state): State<AppState>,
+    Query(params): Query<GitHubSearchQuery>,
+) -> Result<Json<serde_json::Value>> {
+    use crate::github::search::{GitHubSearcher, SearchQuery, SearchType};
+
+    let searcher = GitHubSearcher::new(state.db_pool.clone());
+
+    // Search all types and return combined results
+    let repos_query = SearchQuery::new(&params.q)
+        .with_type(SearchType::Repositories)
+        .limit(5);
+    let repos = searcher
+        .search(repos_query)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to search repositories: {}", e)))?;
+
+    let issues_query = SearchQuery::new(&params.q)
+        .with_type(SearchType::Issues)
+        .limit(5);
+    let issues = searcher
+        .search(issues_query)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to search issues: {}", e)))?;
+
+    let prs_query = SearchQuery::new(&params.q)
+        .with_type(SearchType::PullRequests)
+        .limit(5);
+    let prs = searcher
+        .search(prs_query)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to search pull requests: {}", e)))?;
+
+    Ok(Json(serde_json::json!({
+        "repositories": repos,
+        "issues": issues,
+        "pull_requests": prs,
+    })))
+}
+
+/// Trigger GitHub sync
+async fn github_sync(
+    State(state): State<AppState>,
+    Json(params): Json<GitHubSyncRequest>,
+) -> Result<Json<serde_json::Value>> {
+    use crate::github::{GitHubClient, SyncEngine, SyncOptions};
+    use std::env;
+
+    let token = env::var("GITHUB_TOKEN")
+        .map_err(|_| AuditError::other("GITHUB_TOKEN environment variable not set"))?;
+
+    let client = GitHubClient::new(token)
+        .map_err(|e| AuditError::other(format!("Failed to create GitHub client: {}", e)))?;
+
+    let sync_engine = SyncEngine::new(client.clone(), state.db_pool.clone());
+
+    let options = if params.full.unwrap_or(false) {
+        SyncOptions::default().force_full()
+    } else {
+        SyncOptions::default()
+    };
+
+    let options = if let Some(repo) = params.repo {
+        options.with_repos(vec![repo])
+    } else {
+        options
+    };
+
+    let result = sync_engine
+        .sync_with_options(options)
+        .await
+        .map_err(|e| AuditError::other(format!("Failed to sync: {}", e)))?;
+
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "repositories": result.repos_synced,
+        "issues": result.issues_synced,
+        "pull_requests": result.prs_synced,
+        "duration_secs": result.duration_secs
+    })))
 }

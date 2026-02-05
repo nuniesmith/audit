@@ -39,6 +39,7 @@ pub mod enhanced_scanner;
 pub mod error;
 pub mod formatter;
 pub mod git;
+pub mod github;
 pub mod grok_client;
 pub mod grok_reasoning;
 pub mod llm;
