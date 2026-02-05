@@ -8,7 +8,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use tracing::{info, warn};
+use tracing::info;
 
 // ============================================================================
 // Configuration
@@ -244,15 +244,15 @@ RUSTASSISTANT_DB_PATH
     Path to the SQLite database file.
     Default (Linux): ~/.local/share/rustassistant/rustassistant.db
     Default (dev):   ./data/rustassistant.db
-    
+
 RUSTASSISTANT_AUTO_MIGRATE
     Run migrations on startup. Values: true, false, 1, 0
     Default: true
-    
+
 RUSTASSISTANT_DB_MAX_CONN
     Maximum database connections in pool.
     Default: 5
-    
+
 RUSTASSISTANT_ENV
     Environment mode. Values: development, dev, production, prod
     Default: development (debug builds), production (release builds)
@@ -269,7 +269,7 @@ Production (systemd):
     [Service]
     Environment="RUSTASSISTANT_DB_PATH=/var/lib/rustassistant/rustassistant.db"
     Environment="RUSTASSISTANT_ENV=production"
-    
+
 GitHub Actions:
     - name: Setup database
       run: |
@@ -307,7 +307,9 @@ pub async fn backup_database(pool: &SqlitePool, backup_path: &Path) -> Result<()
 pub fn get_backup_path(config: &DatabaseConfig) -> PathBuf {
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
     let data_dir = get_data_dir(config);
-    data_dir.join("backups").join(format!("rustassistant_{}.db", timestamp))
+    data_dir
+        .join("backups")
+        .join(format!("rustassistant_{}.db", timestamp))
 }
 
 // ============================================================================

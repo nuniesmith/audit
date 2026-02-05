@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
-use std::collections::HashMap;
+
 use uuid::Uuid;
 
 // ============================================================================
@@ -16,22 +16,22 @@ use uuid::Uuid;
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 pub enum TaskStatus {
     #[default]
-    Pending,     // Not yet processed by LLM
-    Processing,  // LLM currently working on it
-    Review,      // Needs human review before IDE handoff
-    Ready,       // Ready to send to IDE agent
-    Done,        // Completed
-    Failed,      // Processing failed, may retry
+    Pending, // Not yet processed by LLM
+    Processing, // LLM currently working on it
+    Review,     // Needs human review before IDE handoff
+    Ready,      // Ready to send to IDE agent
+    Done,       // Completed
+    Failed,     // Processing failed, may retry
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, Default)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 pub enum TaskSource {
     #[default]
-    Manual,      // Manually added task
-    Todo,        // TODO/FIXME comment from code
-    Scan,        // Found during repo scan
-    Idea,        // Random thought/idea capture
+    Manual, // Manually added task
+    Todo, // TODO/FIXME comment from code
+    Scan, // Found during repo scan
+    Idea, // Random thought/idea capture
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
@@ -55,33 +55,33 @@ pub enum TaskCategory {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Task {
     pub id: String,
-    
+
     // Content
     pub content: String,
     pub context: Option<String>,
     pub llm_suggestion: Option<String>,
-    
+
     // Source tracking
     pub source_type: String,
     pub source_repo: Option<String>,
     pub source_file: Option<String>,
     pub source_line: Option<i32>,
     pub content_hash: Option<String>,
-    
+
     // Status & Priority
     pub status: String,
     pub priority: i32,
     pub category: Option<String>,
-    
+
     // Grouping
     pub group_id: Option<String>,
     pub group_reason: Option<String>,
-    
+
     // Processing metadata
     pub retry_count: i32,
     pub last_error: Option<String>,
     pub tokens_used: Option<i32>,
-    
+
     // Timestamps
     pub created_at: i64,
     pub updated_at: i64,
@@ -93,7 +93,7 @@ impl Task {
     pub fn new(content: impl Into<String>, source: TaskSource) -> Self {
         let content = content.into();
         let hash = Self::hash_content(&content);
-        
+
         Self {
             id: Uuid::new_v4().to_string(),
             content,
@@ -118,36 +118,41 @@ impl Task {
             completed_at: None,
         }
     }
-    
+
     pub fn with_context(mut self, context: impl Into<String>) -> Self {
         self.context = Some(context.into());
         self
     }
-    
-    pub fn with_source_file(mut self, repo: impl Into<String>, file: impl Into<String>, line: Option<i32>) -> Self {
+
+    pub fn with_source_file(
+        mut self,
+        repo: impl Into<String>,
+        file: impl Into<String>,
+        line: Option<i32>,
+    ) -> Self {
         self.source_repo = Some(repo.into());
         self.source_file = Some(file.into());
         self.source_line = line;
         self
     }
-    
+
     pub fn with_priority(mut self, priority: i32) -> Self {
         self.priority = priority.clamp(1, 10);
         self
     }
-    
+
     pub fn with_category(mut self, category: TaskCategory) -> Self {
         self.category = Some(format!("{:?}", category).to_lowercase());
         self
     }
-    
+
     fn hash_content(content: &str) -> String {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         content.hash(&mut hasher);
         format!("{:016x}", hasher.finish())
     }
-    
+
     pub fn status_enum(&self) -> TaskStatus {
         match self.status.as_str() {
             "pending" => TaskStatus::Pending,
@@ -172,7 +177,7 @@ pub struct TaskGroup {
     pub description: Option<String>,
     pub tasks: Vec<Task>,
     pub combined_priority: i32,
-    pub group_key: String,  // What they're grouped by (file, category, etc.)
+    pub group_key: String, // What they're grouped by (file, category, etc.)
 }
 
 impl TaskGroup {
@@ -180,13 +185,14 @@ impl TaskGroup {
         let key = key.into();
         let combined_priority = tasks.iter().map(|t| t.priority).max().unwrap_or(5);
         let name = if tasks.iter().any(|t| t.source_file.is_some()) {
-            tasks.iter()
+            tasks
+                .iter()
                 .find_map(|t| t.source_file.clone())
                 .unwrap_or_else(|| key.clone())
         } else {
             key.clone()
         };
-        
+
         Self {
             id: Uuid::new_v4().to_string(),
             name: format!("{} ({} tasks)", name, tasks.len()),
@@ -196,20 +202,20 @@ impl TaskGroup {
             group_key: key,
         }
     }
-    
+
     /// Format for Zed IDE chat paste
     pub fn format_for_zed(&self) -> String {
         let mut output = String::new();
-        
+
         output.push_str(&format!(
             "=== {} | Priority: {} ===\n\n",
             self.name, self.combined_priority
         ));
-        
+
         if let Some(desc) = &self.description {
             output.push_str(&format!("Summary: {}\n\n", desc));
         }
-        
+
         output.push_str("Tasks:\n");
         for (i, task) in self.tasks.iter().enumerate() {
             let location = match (&task.source_file, task.source_line) {
@@ -217,54 +223,61 @@ impl TaskGroup {
                 (Some(file), None) => format!(" [{}]", file),
                 _ => String::new(),
             };
-            
+
             let category = task.category.as_deref().unwrap_or("task");
             output.push_str(&format!(
                 "{}. [{}] {}{}\n",
-                i + 1, category.to_uppercase(), task.content, location
+                i + 1,
+                category.to_uppercase(),
+                task.content,
+                location
             ));
-            
+
             if let Some(suggestion) = &task.llm_suggestion {
                 output.push_str(&format!("   Suggestion: {}\n", suggestion));
             }
         }
-        
+
         // Add context files
-        let files: Vec<_> = self.tasks
+        let files: Vec<String> = self
+            .tasks
             .iter()
             .filter_map(|t| t.source_file.as_ref())
+            .cloned()
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();
-        
+
         if !files.is_empty() {
             output.push_str(&format!("\nRelevant files: {}\n", files.join(", ")));
         }
-        
+
         output
     }
-    
+
     /// Format as markdown for documentation
     pub fn format_as_markdown(&self) -> String {
         let mut output = String::new();
-        
+
         output.push_str(&format!("## {}\n\n", self.name));
         output.push_str(&format!("**Priority:** {}/10\n\n", self.combined_priority));
-        
+
         if let Some(desc) = &self.description {
             output.push_str(&format!("{}\n\n", desc));
         }
-        
+
         output.push_str("### Tasks\n\n");
         for task in &self.tasks {
             let checkbox = if task.status == "done" { "[x]" } else { "[ ]" };
-            let location = task.source_file.as_ref()
+            let location = task
+                .source_file
+                .as_ref()
                 .map(|f| format!(" (`{}`)", f))
                 .unwrap_or_default();
-            
+
             output.push_str(&format!("- {} {}{}\n", checkbox, task.content, location));
         }
-        
+
         output
     }
 }
@@ -274,7 +287,8 @@ impl TaskGroup {
 // ============================================================================
 
 pub async fn create_task(pool: &SqlitePool, task: &Task) -> anyhow::Result<()> {
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         INSERT INTO tasks (
             id, content, context, llm_suggestion,
             source_type, source_repo, source_file, source_line, content_hash,
@@ -290,7 +304,8 @@ pub async fn create_task(pool: &SqlitePool, task: &Task) -> anyhow::Result<()> {
             ?15, ?16, ?17,
             ?18, ?19
         )
-    "#)
+    "#,
+    )
     .bind(&task.id)
     .bind(&task.content)
     .bind(&task.context)
@@ -312,7 +327,7 @@ pub async fn create_task(pool: &SqlitePool, task: &Task) -> anyhow::Result<()> {
     .bind(&task.updated_at)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
@@ -334,9 +349,13 @@ pub async fn get_pending_tasks(pool: &SqlitePool, limit: i32) -> anyhow::Result<
     Ok(tasks)
 }
 
-pub async fn get_tasks_by_status(pool: &SqlitePool, status: &str, limit: i32) -> anyhow::Result<Vec<Task>> {
+pub async fn get_tasks_by_status(
+    pool: &SqlitePool,
+    status: &str,
+    limit: i32,
+) -> anyhow::Result<Vec<Task>> {
     let tasks = sqlx::query_as::<_, Task>(
-        "SELECT * FROM tasks WHERE status = ? ORDER BY priority DESC, created_at ASC LIMIT ?"
+        "SELECT * FROM tasks WHERE status = ? ORDER BY priority DESC, created_at ASC LIMIT ?",
     )
     .bind(status)
     .bind(limit)
@@ -345,18 +364,22 @@ pub async fn get_tasks_by_status(pool: &SqlitePool, status: &str, limit: i32) ->
     Ok(tasks)
 }
 
-pub async fn update_task_status(pool: &SqlitePool, id: &str, status: TaskStatus) -> anyhow::Result<()> {
+pub async fn update_task_status(
+    pool: &SqlitePool,
+    id: &str,
+    status: TaskStatus,
+) -> anyhow::Result<()> {
     let status_str = format!("{:?}", status).to_lowercase();
     let now = chrono::Utc::now().timestamp();
-    
+
     let mut query = String::from("UPDATE tasks SET status = ?, updated_at = ?");
-    
+
     if matches!(status, TaskStatus::Done) {
         query.push_str(", completed_at = ?");
     }
-    
+
     query.push_str(" WHERE id = ?");
-    
+
     if matches!(status, TaskStatus::Done) {
         sqlx::query(&query)
             .bind(&status_str)
@@ -373,20 +396,20 @@ pub async fn update_task_status(pool: &SqlitePool, id: &str, status: TaskStatus)
             .execute(pool)
             .await?;
     }
-    
+
     Ok(())
 }
 
 pub async fn update_task_analysis(
-    pool: &SqlitePool, 
-    id: &str, 
+    pool: &SqlitePool,
+    id: &str,
     priority: i32,
     category: &str,
     suggestion: Option<&str>,
     tokens: Option<i32>,
 ) -> anyhow::Result<()> {
     let now = chrono::Utc::now().timestamp();
-    
+
     sqlx::query(
         "UPDATE tasks SET priority = ?, category = ?, llm_suggestion = ?, tokens_used = ?, status = 'review', processed_at = ?, updated_at = ? WHERE id = ?"
     )
@@ -399,13 +422,13 @@ pub async fn update_task_analysis(
     .bind(id)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
 pub async fn mark_task_failed(pool: &SqlitePool, id: &str, error: &str) -> anyhow::Result<()> {
     let now = chrono::Utc::now().timestamp();
-    
+
     sqlx::query(
         "UPDATE tasks SET status = 'failed', last_error = ?, retry_count = retry_count + 1, updated_at = ? WHERE id = ?"
     )
@@ -414,32 +437,34 @@ pub async fn mark_task_failed(pool: &SqlitePool, id: &str, error: &str) -> anyho
     .bind(id)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
 pub async fn check_duplicate(pool: &SqlitePool, content_hash: &str) -> anyhow::Result<bool> {
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM tasks WHERE content_hash = ? AND status != 'done'"
-    )
-    .bind(content_hash)
-    .fetch_one(pool)
-    .await?;
-    
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM tasks WHERE content_hash = ? AND status != 'done'")
+            .bind(content_hash)
+            .fetch_one(pool)
+            .await?;
+
     Ok(count.0 > 0)
 }
 
-pub async fn assign_group(pool: &SqlitePool, task_id: &str, group_id: &str, reason: &str) -> anyhow::Result<()> {
-    sqlx::query(
-        "UPDATE tasks SET group_id = ?, group_reason = ?, updated_at = ? WHERE id = ?"
-    )
-    .bind(group_id)
-    .bind(reason)
-    .bind(chrono::Utc::now().timestamp())
-    .bind(task_id)
-    .execute(pool)
-    .await?;
-    
+pub async fn assign_group(
+    pool: &SqlitePool,
+    task_id: &str,
+    group_id: &str,
+    reason: &str,
+) -> anyhow::Result<()> {
+    sqlx::query("UPDATE tasks SET group_id = ?, group_reason = ?, updated_at = ? WHERE id = ?")
+        .bind(group_id)
+        .bind(reason)
+        .bind(chrono::Utc::now().timestamp())
+        .bind(task_id)
+        .execute(pool)
+        .await?;
+
     Ok(())
 }
 
@@ -459,12 +484,11 @@ pub struct TaskStats {
 }
 
 pub async fn get_task_stats(pool: &SqlitePool) -> anyhow::Result<TaskStats> {
-    let stats = sqlx::query_as::<_, (String, i64)>(
-        "SELECT status, COUNT(*) FROM tasks GROUP BY status"
-    )
-    .fetch_all(pool)
-    .await?;
-    
+    let stats =
+        sqlx::query_as::<_, (String, i64)>("SELECT status, COUNT(*) FROM tasks GROUP BY status")
+            .fetch_all(pool)
+            .await?;
+
     let mut result = TaskStats::default();
     for (status, count) in stats {
         match status.as_str() {
@@ -477,13 +501,11 @@ pub async fn get_task_stats(pool: &SqlitePool) -> anyhow::Result<TaskStats> {
             _ => {}
         }
     }
-    
-    let tokens: (i64,) = sqlx::query_as(
-        "SELECT COALESCE(SUM(tokens_used), 0) FROM tasks"
-    )
-    .fetch_one(pool)
-    .await?;
+
+    let tokens: (i64,) = sqlx::query_as("SELECT COALESCE(SUM(tokens_used), 0) FROM tasks")
+        .fetch_one(pool)
+        .await?;
     result.total_tokens = tokens.0;
-    
+
     Ok(result)
 }

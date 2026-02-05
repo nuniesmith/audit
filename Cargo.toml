@@ -24,6 +24,10 @@ repository = "https://github.com/nuniesmith/rustassistant"
 keywords = ["developer-tools", "workflow", "llm", "code-analysis", "productivity"]
 categories = ["development-tools", "command-line-utilities"]
 
+[features]
+default = []
+clipboard = ["dep:clipboard"]
+
 [dependencies]
 # ---------------------------------------------------------------------------
 # Web Framework
@@ -121,6 +125,11 @@ async-trait = "0.1"
 md5 = "0.7"
 dirs = "5.0"
 zstd = "0.13"
+
+# ---------------------------------------------------------------------------
+# Clipboard (optional)
+# ---------------------------------------------------------------------------
+clipboard = { version = "0.5", optional = true }
 
 # ---------------------------------------------------------------------------
 # URL Parsing (for SSRF prevention)

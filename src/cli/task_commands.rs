@@ -2,12 +2,12 @@
 //!
 //! Commands for managing tasks, grouping, and exporting to IDE.
 
-use crate::db::task::{
-    create_task, get_pending_tasks, get_task_stats, get_tasks_by_status,
-    update_task_status, Task, TaskSource, TaskStatus,
-};
 use crate::task::grouping::{
     filter_by_priority, filter_ready_groups, get_next_group, group_tasks, GroupingStrategy,
+};
+use crate::task::{
+    create_task, get_pending_tasks, get_task_stats, get_tasks_by_status, update_task_status, Task,
+    TaskSource, TaskStatus,
 };
 use anyhow::Result;
 use clap::Subcommand;
@@ -325,7 +325,11 @@ pub async fn handle_task_command(pool: &SqlitePool, cmd: TaskCommands) -> Result
             };
 
             update_task_status(pool, &task_id, TaskStatus::Done).await?;
-            println!("{} Task {} marked as done", "✓".green(), task_id[..8].dimmed());
+            println!(
+                "{} Task {} marked as done",
+                "✓".green(),
+                task_id[..8].dimmed()
+            );
         }
 
         TaskCommands::Ready { id } => {

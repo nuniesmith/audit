@@ -3,14 +3,14 @@
 //! Handles parallel research execution. Each worker investigates
 //! a subtopic and reports findings back for aggregation.
 
-use super::{ResearchRequest, WorkerResult, save_worker_result};
-use crate::llm::grok::GrokClient;
+use super::{save_worker_result, ResearchRequest, WorkerResult};
+use crate::llm::GrokClient;
 use anyhow::Result;
 use futures::future::join_all;
 use sqlx::SqlitePool;
-use tokio::sync::Semaphore;
-use tracing::{info, warn, error};
 use std::sync::Arc;
+use tokio::sync::Semaphore;
+use tracing::{error, info};
 
 // ============================================================================
 // Worker Configuration
@@ -60,18 +60,21 @@ impl ResearchOrchestrator {
             semaphore,
         }
     }
-    
+
     /// Execute a research request with parallel workers
     pub async fn execute(&self, request: &ResearchRequest) -> Result<Vec<WorkerResult>> {
-        info!("Starting research: {} with {} workers", request.topic, request.worker_count);
-        
+        info!(
+            "Starting research: {} with {} workers",
+            request.topic, request.worker_count
+        );
+
         // Step 1: Generate subtopics using LLM
         let subtopics = self.generate_subtopics(request).await?;
         info!("Generated {} subtopics", subtopics.len());
-        
+
         // Step 2: Spawn workers for each subtopic
         let mut handles = Vec::new();
-        
+
         for (index, subtopic) in subtopics.into_iter().enumerate() {
             let pool = self.pool.clone();
             let llm = self.llm.clone();
@@ -80,13 +83,13 @@ impl ResearchOrchestrator {
             let topic = request.topic.clone();
             let context = request.repo_context.clone();
             let config = self.config.clone();
-            
+
             let handle = tokio::spawn(async move {
                 // Acquire semaphore to limit concurrency
                 let _permit = semaphore.acquire().await.unwrap();
-                
+
                 let mut result = WorkerResult::new(&research_id, index as i32, &subtopic);
-                
+
                 match Self::run_worker(&llm, &topic, &subtopic, context.as_deref(), &config).await {
                     Ok((findings, sources, tokens)) => {
                         result.findings = findings;
@@ -102,33 +105,34 @@ impl ResearchOrchestrator {
                         result.error = Some(e.to_string());
                     }
                 }
-                
+
                 // Save result to database
                 if let Err(e) = save_worker_result(&pool, &result).await {
                     error!("Failed to save worker result: {}", e);
                 }
-                
+
                 result
             });
-            
+
             handles.push(handle);
         }
-        
+
         // Step 3: Collect all results
         let results: Vec<WorkerResult> = join_all(handles)
             .await
             .into_iter()
             .filter_map(|r| r.ok())
             .collect();
-        
-        info!("Research complete: {}/{} workers succeeded", 
+
+        info!(
+            "Research complete: {}/{} workers succeeded",
             results.iter().filter(|r| r.status == "completed").count(),
             results.len()
         );
-        
+
         Ok(results)
     }
-    
+
     /// Generate subtopics for parallel research
     async fn generate_subtopics(&self, request: &ResearchRequest) -> Result<Vec<String>> {
         let prompt = format!(
@@ -150,13 +154,15 @@ Subtopics should be:
             topic = request.topic,
             description = request.description.as_deref().unwrap_or(""),
             research_type = request.research_type,
-            context = request.repo_context.as_ref()
+            context = request
+                .repo_context
+                .as_ref()
                 .map(|c| format!("Code context: {}", c))
                 .unwrap_or_default(),
         );
-        
+
         let response = self.llm.generate(&prompt, 1024).await?;
-        
+
         // Parse JSON array from response
         let subtopics: Vec<String> = serde_json::from_str(&response)
             .or_else(|_| {
@@ -167,16 +173,21 @@ Subtopics should be:
             })
             .unwrap_or_else(|_| {
                 // Fallback: split by newlines
-                response.lines()
+                response
+                    .lines()
                     .filter(|l| !l.trim().is_empty())
-                    .map(|l| l.trim().trim_matches(|c| c == '"' || c == '-' || c == '*').to_string())
+                    .map(|l| {
+                        l.trim()
+                            .trim_matches(|c| c == '"' || c == '-' || c == '*')
+                            .to_string()
+                    })
                     .take(request.worker_count as usize)
                     .collect()
             });
-        
+
         Ok(subtopics)
     }
-    
+
     /// Run a single worker to research a subtopic
     async fn run_worker(
         llm: &GrokClient,
@@ -201,31 +212,42 @@ Provide:
 Be thorough but focused on this specific subtopic."#,
             main_topic = main_topic,
             subtopic = subtopic,
-            context = context.map(|c| format!("Context:\n{}", c)).unwrap_or_default(),
+            context = context
+                .map(|c| format!("Context:\n{}", c))
+                .unwrap_or_default(),
         );
-        
+
         let response = llm.generate(&prompt, config.max_tokens).await?;
         let tokens = response.len() / 4; // Rough estimate
-        
+
         // For now, sources are empty (would come from RAG)
         let sources: Vec<String> = vec![];
-        
+
         Ok((response, sources, tokens))
     }
-    
+
     /// Calculate confidence score based on result quality
     fn calculate_confidence(result: &WorkerResult) -> i32 {
         let mut score = 5; // Base score
-        
+
         // Longer findings = more thorough
-        if result.findings.len() > 1000 { score += 2; }
-        if result.findings.len() > 2000 { score += 1; }
-        
-        // Has sources
-        if result.sources.as_ref().map(|s| s.len() > 10).unwrap_or(false) {
+        if result.findings.len() > 1000 {
             score += 2;
         }
-        
+        if result.findings.len() > 2000 {
+            score += 1;
+        }
+
+        // Has sources
+        if result
+            .sources
+            .as_ref()
+            .map(|s| s.len() > 10)
+            .unwrap_or(false)
+        {
+            score += 2;
+        }
+
         score.min(10)
     }
 }
@@ -262,13 +284,14 @@ pub fn enhance_prompt_with_rag(prompt: &str, rag_results: &[RagResult]) -> Strin
     if rag_results.is_empty() {
         return prompt.to_string();
     }
-    
-    let context: String = rag_results.iter()
+
+    let context: String = rag_results
+        .iter()
         .enumerate()
         .map(|(i, r)| format!("[{}] {}\nSource: {}", i + 1, r.content, r.source))
         .collect::<Vec<_>>()
         .join("\n\n");
-    
+
     format!(
         "Relevant context from knowledge base:\n\n{}\n\n---\n\n{}",
         context, prompt

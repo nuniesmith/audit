@@ -23,8 +23,8 @@ pub struct ResearchRequest {
     /// Type of research: "general", "code", "idea", "comparison"
     pub research_type: String,
 
-    /// Scope: how deep to go
-    pub depth: ResearchDepth,
+    /// Scope: how deep to go (stored as string: "quick", "standard", "deep")
+    pub depth: String,
 
     /// Related repository (for code research)
     pub repo_context: Option<String>,
@@ -73,16 +73,17 @@ impl ResearchDepth {
 impl ResearchRequest {
     pub fn new(topic: impl Into<String>, research_type: impl Into<String>) -> Self {
         let depth = ResearchDepth::default();
+        let worker_count = depth.worker_count();
         Self {
             id: Uuid::new_v4().to_string(),
             topic: topic.into(),
             description: None,
             research_type: research_type.into(),
-            depth,
+            depth: format!("{:?}", depth).to_lowercase(),
             repo_context: None,
             file_context: None,
             status: "pending".to_string(),
-            worker_count: depth.worker_count(),
+            worker_count,
             report: None,
             total_tokens: 0,
             created_at: chrono::Utc::now().timestamp(),
@@ -91,9 +92,18 @@ impl ResearchRequest {
     }
 
     pub fn with_depth(mut self, depth: ResearchDepth) -> Self {
-        self.depth = depth;
         self.worker_count = depth.worker_count();
+        self.depth = format!("{:?}", depth).to_lowercase();
         self
+    }
+
+    /// Get the depth as an enum
+    pub fn depth_enum(&self) -> ResearchDepth {
+        match self.depth.as_str() {
+            "quick" => ResearchDepth::Quick,
+            "deep" => ResearchDepth::Deep,
+            _ => ResearchDepth::Standard,
+        }
     }
 
     pub fn with_context(mut self, repo: Option<String>, files: Option<String>) -> Self {
@@ -232,7 +242,7 @@ pub async fn save_research_request(pool: &SqlitePool, req: &ResearchRequest) -> 
     .bind(&req.topic)
     .bind(&req.description)
     .bind(&req.research_type)
-    .bind(format!("{:?}", req.depth).to_lowercase())
+    .bind(&req.depth)
     .bind(&req.repo_context)
     .bind(&req.file_context)
     .bind(&req.status)

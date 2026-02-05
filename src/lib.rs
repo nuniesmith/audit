@@ -137,7 +137,7 @@ pub use repo_cache_sql::{
     CacheEntry as RepoCacheEntrySql, CacheStats as RepoCacheStatsSql, CacheTypeStats,
     EvictionPolicy, ModelStats, RepoCacheSql,
 };
-pub use research::{ResearchBreakdown, ResearchTask};
+
 pub use response_cache::{CacheStats as ResponseCacheStats, CachedResponse, ResponseCache};
 pub use scanner::{
     build_dir_tree, fetch_user_repos, get_dir_tree, get_unanalyzed_files, save_dir_tree,
@@ -219,7 +219,6 @@ pub mod prelude {
         DetectedTodo, GitHubRepo, ScanResult, Scanner, TreeNode as ScannerTreeNode,
     };
 
-    pub use crate::research::{ResearchBreakdown, ResearchTask};
     pub use crate::tag_schema::{
         CodeAge, CodeStatus, Complexity, DirectoryNode, IssuesSummary, NodeStats, NodeType,
         Priority, SimpleIssueDetector, TagCategory, TagSchema, TagValidation,

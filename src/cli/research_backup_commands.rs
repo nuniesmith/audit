@@ -5,8 +5,7 @@ use crate::llm::GrokClient;
 use crate::research::aggregator::Aggregator;
 use crate::research::worker::{ResearchOrchestrator, WorkerConfig};
 use crate::research::{
-    create_research_tables, get_research_with_results, list_research, save_research_request,
-    ResearchDepth, ResearchRequest,
+    get_research_with_results, list_research, save_research_request, ResearchDepth, ResearchRequest,
 };
 use anyhow::Result;
 use clap::Subcommand;
@@ -70,9 +69,6 @@ pub enum ResearchCommands {
 }
 
 pub async fn handle_research_command(pool: &SqlitePool, cmd: ResearchCommands) -> Result<()> {
-    // Ensure tables exist
-    create_research_tables(pool).await?;
-
     match cmd {
         ResearchCommands::Start {
             topic,

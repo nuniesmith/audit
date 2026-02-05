@@ -8,7 +8,7 @@ use crate::llm::LlmClient;
 use crate::queue::{get_queue_stats, QueueStats};
 use crate::scanner::github::sync_repos_to_db;
 // Neuromorphic mapper removed - feature not currently implemented
-use crate::research;
+
 use crate::scanner::Scanner;
 use crate::tags::TagScanner;
 use crate::tasks::TaskGenerator;
@@ -118,8 +118,6 @@ pub async fn run_server(config: Config) -> Result<()> {
         .route("/api/clone", post(clone_repository))
         .route("/api/scan/tags", post(scan_tags))
         .route("/api/scan/static", post(scan_static))
-        .route("/api/research/analyze", post(analyze_research))
-        .route("/api/research/file", post(analyze_research_file))
         .route("/api/repos", get(list_repos))
         .route("/api/repos/scan", post(scan_repos))
         .route("/api/queue/status", get(queue_status))
@@ -488,160 +486,6 @@ struct StaticAnalysisResponse {
     total_issues: usize,
     critical_files: usize,
     issues_by_severity: HashMap<crate::types::IssueSeverity, usize>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ResearchAnalyzeRequest {
-    content: String,
-    title: String,
-    #[serde(default)]
-    generate_tasks: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct ResearchFileRequest {
-    file_path: String,
-    #[serde(default)]
-    generate_tasks: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct ResearchAnalyzeResponse {
-    breakdown: research::ResearchBreakdown,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tasks: Option<Vec<research::ResearchTask>>,
-    breakdown_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tasks_path: Option<String>,
-}
-
-// ===== Research Endpoints =====
-
-/// Analyze research content (direct text input)
-async fn analyze_research(
-    State(state): State<AppState>,
-    Json(request): Json<ResearchAnalyzeRequest>,
-) -> Result<Json<ResearchAnalyzeResponse>> {
-    info!("Analyzing research content: {}", request.title);
-
-    // Check if LLM is available
-    let llm_client = state
-        .llm_client
-        .as_ref()
-        .ok_or_else(|| AuditError::config("LLM is not enabled. Set LLM_ENABLED=true"))?;
-
-    // Check if research is enabled
-    let research_config = state
-        .config
-        .research
-        .as_ref()
-        .ok_or_else(|| AuditError::config("Research pipeline is not configured"))?;
-
-    if !research_config.enabled {
-        return Err(AuditError::config("Research pipeline is disabled"));
-    }
-
-    // Analyze content
-    let breakdown =
-        research::analyze_content(&request.content, &request.title, llm_client, &state.config)
-            .await?;
-
-    // Save breakdown
-    let output_dir = std::path::PathBuf::from(&research_config.output_dir);
-    let breakdown_path = research::save_breakdown(&breakdown, &output_dir, None)?;
-
-    // Extract tasks if requested
-    let (tasks, tasks_path) = if request.generate_tasks {
-        info!("Extracting tasks from research content");
-
-        let extracted_tasks =
-            research::extract_tasks(&breakdown.markdown_content, llm_client, &state.config).await?;
-
-        let task_file = breakdown_path.with_extension("tasks.json");
-        research::save_tasks(&extracted_tasks, &task_file)?;
-
-        (
-            Some(extracted_tasks),
-            Some(task_file.to_string_lossy().to_string()),
-        )
-    } else {
-        (None, None)
-    };
-
-    Ok(Json(ResearchAnalyzeResponse {
-        breakdown,
-        tasks,
-        breakdown_path: breakdown_path.to_string_lossy().to_string(),
-        tasks_path,
-    }))
-}
-
-/// Analyze research file (file path input)
-async fn analyze_research_file(
-    State(state): State<AppState>,
-    Json(request): Json<ResearchFileRequest>,
-) -> Result<Json<ResearchAnalyzeResponse>> {
-    info!("Analyzing research file: {}", request.file_path);
-
-    // Check if LLM is available
-    let llm_client = state
-        .llm_client
-        .as_ref()
-        .ok_or_else(|| AuditError::config("LLM is not enabled. Set LLM_ENABLED=true"))?;
-
-    // Check if research is enabled
-    let research_config = state
-        .config
-        .research
-        .as_ref()
-        .ok_or_else(|| AuditError::config("Research pipeline is not configured"))?;
-
-    if !research_config.enabled {
-        return Err(AuditError::config("Research pipeline is disabled"));
-    }
-
-    let file_path = std::path::PathBuf::from(&request.file_path);
-
-    // Verify file exists
-    if !file_path.exists() {
-        return Err(AuditError::FileNotFound(file_path));
-    }
-
-    // Analyze file
-    let breakdown = research::analyze_file(&file_path, llm_client, &state.config).await?;
-
-    // Save breakdown
-    let output_dir = std::path::PathBuf::from(&research_config.output_dir);
-    let file_stem = file_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("research");
-    let breakdown_path = research::save_breakdown(&breakdown, &output_dir, Some(file_stem))?;
-
-    // Extract tasks if requested
-    let (tasks, tasks_path) = if request.generate_tasks {
-        info!("Extracting tasks from research file");
-
-        let extracted_tasks =
-            research::extract_tasks(&breakdown.markdown_content, llm_client, &state.config).await?;
-
-        let task_file = breakdown_path.with_extension("tasks.json");
-        research::save_tasks(&extracted_tasks, &task_file)?;
-
-        (
-            Some(extracted_tasks),
-            Some(task_file.to_string_lossy().to_string()),
-        )
-    } else {
-        (None, None)
-    };
-
-    Ok(Json(ResearchAnalyzeResponse {
-        breakdown,
-        tasks,
-        breakdown_path: breakdown_path.to_string_lossy().to_string(),
-        tasks_path,
-    }))
 }
 
 // ===== Visualization Endpoints =====
