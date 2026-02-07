@@ -24,7 +24,7 @@ use axum::{
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, warn};
+use tracing::warn;
 
 use crate::repo_cache_sql::RepoCacheSql;
 use crate::web_ui::WebAppState;
@@ -46,6 +46,7 @@ pub fn create_cache_viewer_router(state: Arc<WebAppState>) -> Router {
 // Shared Helpers (same pattern as web_ui_extensions.rs)
 // ============================================================================
 
+#[allow(dead_code)]
 fn format_timestamp(ts: i64) -> String {
     chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
@@ -200,6 +201,7 @@ fn page_style() -> &'static str {
 // ============================================================================
 
 /// Row from cache_entries
+#[allow(dead_code)]
 struct CacheRow {
     file_path: String,
     cache_type: String,
@@ -404,7 +406,7 @@ pub async fn cache_overview_handler(State(state): State<Arc<WebAppState>>) -> im
                 0.0
             };
 
-            let coverage_pct = if stats.total_entries > 0 {
+            let _coverage_pct = if stats.total_entries > 0 {
                 "partial"
             } else {
                 "none"

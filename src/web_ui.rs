@@ -1223,13 +1223,18 @@ pub async fn force_scan_handler(
     State(state): State<Arc<WebAppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match sqlx::query("UPDATE repositories SET last_scanned_at = NULL WHERE id = ?")
-        .bind(&id)
-        .execute(&state.db.pool)
-        .await
+    match sqlx::query(
+        "UPDATE repositories SET last_scanned_at = NULL, last_commit_hash = NULL WHERE id = ?",
+    )
+    .bind(&id)
+    .execute(&state.db.pool)
+    .await
     {
         Ok(_) => {
-            info!("Forced scan for repo {}", id);
+            info!(
+                "Forced full rescan for repo {} (cleared commit hash + scan time)",
+                id
+            );
             (StatusCode::SEE_OTHER, [("Location", "/scanner")], "OK")
         }
         Err(e) => {

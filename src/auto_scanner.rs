@@ -743,7 +743,8 @@ impl AutoScanner {
 
         for (idx, file) in analyzable_files.iter().enumerate() {
             // Check cost budget before each file (using actual accumulated cost)
-            if self.config.scan_cost_budget > 0.0 && cumulative_cost >= self.config.scan_cost_budget {
+            if self.config.scan_cost_budget > 0.0 && cumulative_cost >= self.config.scan_cost_budget
+            {
                 warn!(
                     "⚠️  Scan cost budget reached (${:.4} >= ${:.2} limit). \
                      Stopping analysis with {} files remaining.",
@@ -1043,12 +1044,13 @@ pub async fn disable_auto_scan(pool: &sqlx::SqlitePool, repo_id: &str) -> Result
     Ok(())
 }
 
-/// Force a scan check for a repository (reset last_scanned_at)
+/// Force a full rescan for a repository (reset both timing AND commit hash)
 pub async fn force_scan(pool: &sqlx::SqlitePool, repo_id: &str) -> Result<()> {
     sqlx::query(
         r#"
         UPDATE repositories
-        SET last_scanned_at = NULL
+        SET last_scanned_at = NULL,
+            last_commit_hash = NULL
         WHERE id = ?
         "#,
     )
@@ -1056,7 +1058,10 @@ pub async fn force_scan(pool: &sqlx::SqlitePool, repo_id: &str) -> Result<()> {
     .execute(pool)
     .await?;
 
-    info!("Forced scan check for repo {}", repo_id);
+    info!(
+        "Forced full rescan for repo {} (cleared commit hash + scan time)",
+        repo_id
+    );
 
     Ok(())
 }
@@ -1071,7 +1076,7 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.default_interval_minutes, 60);
         assert_eq!(config.max_concurrent_scans, 2);
-        assert!((config.scan_cost_budget - 0.50).abs() < f64::EPSILON);
+        assert!((config.scan_cost_budget - 3.00).abs() < f64::EPSILON);
     }
 
     #[test]

@@ -409,11 +409,13 @@ async fn main() -> anyhow::Result<()> {
     let api_router = create_api_router(api_state);
     let web_router = create_web_ui_router(web_state.clone());
     let extension_router = create_extension_router(web_state.clone());
+    let cache_viewer_router = create_cache_viewer_router(Arc::new(web_state.clone()));
 
-    // Merge routers: Web UI gets root paths, extensions add new pages, API gets /api/* and /health
+    // Merge routers: Web UI gets root paths, extensions add new pages, cache viewer, API gets /api/* and /health
     let app = Router::new()
         .merge(web_router)
         .merge(extension_router)
+        .merge(cache_viewer_router)
         .merge(api_router);
 
     // Start auto-scanner in background if enabled
@@ -431,9 +433,9 @@ async fn main() -> anyhow::Result<()> {
             .parse()
             .unwrap_or(2),
         scan_cost_budget: std::env::var("AUTO_SCAN_COST_BUDGET")
-            .unwrap_or_else(|_| "0.50".into())
+            .unwrap_or_else(|_| "3.00".into())
             .parse()
-            .unwrap_or(0.50),
+            .unwrap_or(3.00),
     };
 
     if scanner_config.enabled {
