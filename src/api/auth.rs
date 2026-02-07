@@ -39,9 +39,10 @@ impl Default for AuthConfig {
 impl AuthConfig {
     /// Create new auth config with API keys
     pub fn new(api_keys: Vec<String>) -> Self {
+        let require_auth = !api_keys.is_empty();
         Self {
             api_keys: api_keys.into_iter().map(|key| hash_api_key(&key)).collect(),
-            require_auth: !api_keys.is_empty(),
+            require_auth,
             allow_anonymous_read: false,
         }
     }

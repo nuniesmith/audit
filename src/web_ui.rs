@@ -18,7 +18,7 @@ use tracing::{error, info};
 
 /// Returns the shared timezone JavaScript that should be included in every page.
 /// Handles timezone selection, localStorage persistence, and client-side timestamp conversion.
-fn timezone_js() -> &'static str {
+pub fn timezone_js() -> &'static str {
     r#"<script>
     (function() {
         const TIMEZONE_KEY = 'rustassistant_timezone';
@@ -80,7 +80,7 @@ fn timezone_js() -> &'static str {
 }
 
 /// Returns the HTML for the timezone selector dropdown, styled for the nav bar.
-fn timezone_selector_html() -> &'static str {
+pub fn timezone_selector_html() -> &'static str {
     r#"<div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
         <label for="tz-select" style="color: #94a3b8; font-size: 0.85rem;">🕐</label>
         <select id="tz-select" style="background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 4px; padding: 0.3rem 0.5rem; font-size: 0.85rem; cursor: pointer;">
@@ -276,6 +276,9 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
                 <a href="/dashboard" class="active">Dashboard</a>
                 <a href="/repos">Repositories</a>
                 <a href="/queue">Queue</a>
+                <a href="/ideas">Ideas</a>
+                <a href="/docs">Docs</a>
+                <a href="/activity">Activity</a>
                 <a href="/scanner">Auto-Scanner</a>
                 {}
             </nav>
@@ -439,6 +442,9 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos" class="active">Repositories</a>
                 <a href="/queue">Queue</a>
+                <a href="/ideas">Ideas</a>
+                <a href="/docs">Docs</a>
+                <a href="/activity">Activity</a>
                 <a href="/scanner">Auto-Scanner</a>
                 {tz_selector}
             </nav>
@@ -520,6 +526,9 @@ fn render_add_repo_page() -> String {
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repositories</a>
                 <a href="/queue">Queue</a>
+                <a href="/ideas">Ideas</a>
+                <a href="/docs">Docs</a>
+                <a href="/activity">Activity</a>
                 <a href="/scanner">Auto-Scanner</a>
                 {tz_selector}
             </nav>
@@ -678,6 +687,9 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repositories</a>
                 <a href="/queue" class="active">Queue</a>
+                <a href="/ideas">Ideas</a>
+                <a href="/docs">Docs</a>
+                <a href="/activity">Activity</a>
                 <a href="/scanner">Auto-Scanner</a>
                 {}
             </nav>
@@ -1387,6 +1399,9 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repositories</a>
                 <a href="/queue">Queue</a>
+                <a href="/ideas">Ideas</a>
+                <a href="/docs">Docs</a>
+                <a href="/activity">Activity</a>
                 <a href="/scanner" class="active">Auto-Scanner</a>
                 {tz_selector}
             </nav>
@@ -1526,6 +1541,9 @@ pub async fn notes_handler(State(state): State<Arc<WebAppState>>) -> impl IntoRe
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repositories</a>
                 <a href="/queue">Queue</a>
+                <a href="/ideas">Ideas</a>
+                <a href="/docs">Docs</a>
+                <a href="/activity">Activity</a>
                 <a href="/scanner">Scanner</a>
                 <a href="/notes" class="active">Notes</a>
                 {tz_selector}

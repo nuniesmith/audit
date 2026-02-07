@@ -240,7 +240,7 @@ impl TenantManager {
         quota: TenantQuota,
     ) -> Result<Tenant> {
         let id = uuid::Uuid::new_v4().to_string();
-        let created_at = Utc::now();
+        let created_at = Utc::now().timestamp();
 
         sqlx::query(
             r#"
@@ -288,19 +288,22 @@ impl TenantManager {
 
     /// Get tenant by ID
     pub async fn get_tenant(&self, tenant_id: &str) -> Result<Option<Tenant>> {
-        let row = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            i64,
-            i64,
-            i64,
-            i32,
-            i32,
-            bool,
-            String,
-            Option<String>,
-        )>(
+        let row = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                i64,
+                i64,
+                i64,
+                i32,
+                i32,
+                bool,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT id, name, slug, max_documents, max_storage_mb, max_searches_per_day,
                    max_api_keys, max_webhooks, enabled, created_at, custom_domain
@@ -348,12 +351,10 @@ impl TenantManager {
 
     /// Get tenant by slug
     pub async fn get_tenant_by_slug(&self, slug: &str) -> Result<Option<Tenant>> {
-        let row = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM organizations WHERE slug = ?",
-        )
-        .bind(slug)
-        .fetch_optional(&self.db_pool)
-        .await?;
+        let row = sqlx::query_scalar::<_, String>("SELECT id FROM organizations WHERE slug = ?")
+            .bind(slug)
+            .fetch_optional(&self.db_pool)
+            .await?;
 
         if let Some(id) = row {
             self.get_tenant(&id).await
@@ -364,12 +365,11 @@ impl TenantManager {
 
     /// Get tenant by API key
     pub async fn get_tenant_by_key(&self, api_key_hash: &str) -> Result<Option<Tenant>> {
-        let tenant_id = sqlx::query_scalar::<_, String>(
-            "SELECT tenant_id FROM api_keys WHERE key_hash = ?",
-        )
-        .bind(api_key_hash)
-        .fetch_optional(&self.db_pool)
-        .await?;
+        let tenant_id =
+            sqlx::query_scalar::<_, String>("SELECT tenant_id FROM api_keys WHERE key_hash = ?")
+                .bind(api_key_hash)
+                .fetch_optional(&self.db_pool)
+                .await?;
 
         if let Some(id) = tenant_id {
             self.get_tenant(&id).await
@@ -562,19 +562,22 @@ impl TenantManager {
 
     /// List all tenants
     pub async fn list_tenants(&self) -> Result<Vec<Tenant>> {
-        let rows = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            i64,
-            i64,
-            i64,
-            i32,
-            i32,
-            bool,
-            String,
-            Option<String>,
-        )>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                i64,
+                i64,
+                i64,
+                i32,
+                i32,
+                bool,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT id, name, slug, max_documents, max_storage_mb, max_searches_per_day,
                    max_api_keys, max_webhooks, enabled, created_at, custom_domain
@@ -586,7 +589,20 @@ impl TenantManager {
         .await?;
 
         let mut tenants = Vec::new();
-        for (id, name, slug, max_docs, max_storage, max_searches, max_keys, max_hooks, enabled, created, domain) in rows {
+        for (
+            id,
+            name,
+            slug,
+            max_docs,
+            max_storage,
+            max_searches,
+            max_keys,
+            max_hooks,
+            enabled,
+            created,
+            domain,
+        ) in rows
+        {
             tenants.push(Tenant {
                 id,
                 name,

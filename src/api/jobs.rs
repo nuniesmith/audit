@@ -30,7 +30,7 @@ pub enum JobStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexJob {
     pub id: String,
-    pub document_ids: Vec<i64>,
+    pub document_ids: Vec<String>,
     pub status: JobStatus,
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
@@ -47,7 +47,7 @@ pub struct JobProgress {
     pub total: usize,
     pub completed: usize,
     pub failed: usize,
-    pub current_document_id: Option<i64>,
+    pub current_document_id: Option<String>,
 }
 
 impl JobProgress {
@@ -74,7 +74,7 @@ impl JobProgress {
 }
 
 impl IndexJob {
-    pub fn new(document_ids: Vec<i64>, force_reindex: bool) -> Self {
+    pub fn new(document_ids: Vec<String>, force_reindex: bool) -> Self {
         let total = document_ids.len();
         Self {
             id: Uuid::new_v4().to_string(),
@@ -292,26 +292,24 @@ impl JobQueue {
     async fn index_documents(
         &self,
         job_id: String,
-        document_ids: Vec<i64>,
+        document_ids: Vec<String>,
         _force_reindex: bool,
     ) -> Result<(), String> {
-        let indexer = DocumentIndexer::new(
-            self.db_pool.clone(),
-            self.embedding_generator.clone(),
-            self.indexing_config.clone(),
-        );
+        let indexer = DocumentIndexer::new(self.indexing_config.clone())
+            .await
+            .map_err(|e| format!("Failed to create indexer: {}", e))?;
 
         for (idx, doc_id) in document_ids.iter().enumerate() {
             // Update progress
             {
                 let mut jobs = self.jobs.write().await;
                 if let Some(job) = jobs.get_mut(&job_id) {
-                    job.progress.current_document_id = Some(*doc_id);
+                    job.progress.current_document_id = Some(doc_id.clone());
                 }
             }
 
             // Index document
-            match indexer.index_document(*doc_id).await {
+            match indexer.index_document(&self.db_pool, doc_id).await {
                 Ok(_) => {
                     let mut jobs = self.jobs.write().await;
                     if let Some(job) = jobs.get_mut(&job_id) {

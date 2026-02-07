@@ -23,6 +23,7 @@ use rustassistant::db::{
     search_notes, update_note_status, update_task_status, Database,
 };
 use rustassistant::web_ui::{create_router as create_web_ui_router, WebAppState};
+use rustassistant::web_ui_extensions::create_extension_router;
 use std::sync::Arc;
 
 // ============================================================================
@@ -512,10 +513,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Build combined router with Web UI at root and API at /api
     let api_router = create_api_router(api_state);
-    let web_router = create_web_ui_router(web_state);
+    let web_router = create_web_ui_router(web_state.clone());
+    let extension_router = create_extension_router(web_state.clone());
 
-    // Merge routers: Web UI gets root paths, API gets /api/* and /health
-    let app = Router::new().merge(web_router).merge(api_router);
+    // Merge routers: Web UI gets root paths, extensions add new pages, API gets /api/* and /health
+    let app = Router::new()
+        .merge(web_router)
+        .merge(extension_router)
+        .merge(api_router);
 
     // Start auto-scanner in background if enabled
     let scanner_config = AutoScannerConfig {

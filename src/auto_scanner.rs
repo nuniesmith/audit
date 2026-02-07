@@ -11,6 +11,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
+use crate::db::scan_events;
 use crate::db::{Database, Repository};
 
 use crate::refactor_assistant::RefactorAssistant;
@@ -188,6 +189,18 @@ impl AutoScanner {
         // Track scan start time for duration calculation
         let scan_start = std::time::Instant::now();
 
+        // Log scan start event
+        if let Err(e) = scan_events::log_info(
+            &self.pool,
+            Some(&repo.id),
+            "scan_start",
+            &format!("Starting scan of {}", repo.name),
+        )
+        .await
+        {
+            warn!("Failed to log scan start event: {}", e);
+        }
+
         // Ensure the repo exists locally — clone from git_url if missing
         let repo_path = PathBuf::from(&repo.path);
         let repo_path = if !repo_path.exists() || !repo_path.join(".git").exists() {
@@ -205,10 +218,37 @@ impl AutoScanner {
                             error!("Failed to update repo path in DB: {}", e);
                         }
                         info!("Cloned {} to {}", repo.name, cloned_path.display());
+
+                        // Log clone event
+                        if let Err(e) = scan_events::log_info(
+                            &self.pool,
+                            Some(&repo.id),
+                            "repo_cloned",
+                            &format!("Cloned repository to {}", cloned_path.display()),
+                        )
+                        .await
+                        {
+                            warn!("Failed to log clone event: {}", e);
+                        }
+
                         cloned_path
                     }
                     Err(e) => {
                         error!("Failed to clone {} from {}: {}", repo.name, git_url, e);
+
+                        // Log clone error event
+                        if let Err(err) = scan_events::log_error(
+                            &self.pool,
+                            Some(&repo.id),
+                            "clone_error",
+                            &format!("Failed to clone {}", repo.name),
+                            &e.to_string(),
+                        )
+                        .await
+                        {
+                            warn!("Failed to log clone error event: {}", err);
+                        }
+
                         return Ok(());
                     }
                 }
@@ -226,8 +266,23 @@ impl AutoScanner {
 
         // Update repository if it exists (git pull)
         if let Some(ref git_url) = repo.git_url {
-            if let Err(e) = self.clone_or_update_repo(git_url, &repo.name) {
-                warn!("Failed to update {}: {}", repo.name, e);
+            match self.clone_or_update_repo(git_url, &repo.name) {
+                Ok(_) => {
+                    // Log successful update
+                    if let Err(e) = scan_events::log_info(
+                        &self.pool,
+                        Some(&repo.id),
+                        "git_update",
+                        &format!("Updated repository {}", repo.name),
+                    )
+                    .await
+                    {
+                        warn!("Failed to log git update event: {}", e);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to update {}: {}", repo.name, e);
+                }
             }
         }
 
@@ -264,6 +319,13 @@ impl AutoScanner {
             error!("Failed to start scan progress tracking: {}", e);
         }
 
+        // Log scan progress event
+        if let Err(e) =
+            scan_events::mark_scan_started(&self.pool, &repo.id, total_files as i32).await
+        {
+            warn!("Failed to mark scan as started: {}", e);
+        }
+
         // Analyze changed files with progress tracking
         let result = self
             .analyze_changed_files_with_progress(&repo.id, &repo_path, &changed_files)
@@ -287,6 +349,19 @@ impl AutoScanner {
                     error!("Failed to complete scan progress tracking: {}", e);
                 }
 
+                // Log scan completion event
+                if let Err(e) = scan_events::mark_scan_complete(
+                    &self.pool,
+                    &repo.id,
+                    files_analyzed as i32,
+                    issues_found as i32,
+                    duration_ms,
+                )
+                .await
+                {
+                    warn!("Failed to mark scan as complete: {}", e);
+                }
+
                 info!(
                     "Scan completed for {}: {} files, {} issues in {}ms",
                     repo.name, files_analyzed, issues_found, duration_ms
@@ -305,6 +380,14 @@ impl AutoScanner {
                 {
                     error!("Failed to mark scan as failed: {}", err);
                 }
+
+                // Log scan error event
+                if let Err(err) =
+                    scan_events::mark_scan_error(&self.pool, &repo.id, &e.to_string()).await
+                {
+                    warn!("Failed to log scan error: {}", err);
+                }
+
                 return Err(e);
             }
         }

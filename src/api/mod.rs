@@ -7,7 +7,7 @@
 //! - Authentication and rate limiting
 //! - System statistics and health checks
 
-pub mod admin;
+// pub mod admin; // TODO: Fix - accessing non-existent ApiState fields
 pub mod auth;
 pub mod handlers;
 pub mod jobs;

@@ -264,11 +264,12 @@ struct HNSWIndex {
 
 impl HNSWIndex {
     fn new(config: IndexConfig) -> Self {
+        let layer_multiplier = 1.0 / (config.m as f64).ln();
         Self {
             config,
             nodes: HashMap::new(),
             entry_point: None,
-            layer_multiplier: 1.0 / (config.m as f64).ln(),
+            layer_multiplier,
         }
     }
 

@@ -6,6 +6,8 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use super::{DbError, DbResult, Document, DocumentChunk, DocumentEmbedding};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 // ============================================================================
 // Document CRUD Operations
@@ -666,6 +668,262 @@ pub async fn get_unindexed_documents(pool: &SqlitePool, limit: i64) -> DbResult<
             source_type: row.source_type.unwrap_or_else(|| "manual".to_string()),
             source_url: row.source_url,
             doc_type: row.doc_type.unwrap_or_else(|| "reference".to_string()),
+            tags: row.tags,
+            repo_id: row.repo_id,
+            file_path: row.file_path,
+            word_count: row.word_count.unwrap_or(0),
+            char_count: row.char_count.unwrap_or(0),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            indexed_at: row.indexed_at,
+        })
+        .collect())
+}
+
+// ============================================================================
+// Ideas - Quick thought capture with tagging
+// ============================================================================
+
+/// Idea model matching the database schema
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Idea {
+    pub id: String,
+    pub content: String,
+    pub tags: Option<String>,
+    pub project: Option<String>,
+    pub repo_id: Option<String>,
+    pub priority: i64,
+    pub status: String,
+    pub category: Option<String>,
+    pub linked_doc_id: Option<String>,
+    pub linked_task_id: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// Tag model for tag registry
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Tag {
+    pub id: i64,
+    pub name: String,
+    pub color: Option<String>,
+    pub usage_count: i64,
+    pub created_at: i64,
+}
+
+/// Create a new idea
+pub async fn create_idea(
+    pool: &SqlitePool,
+    content: &str,
+    tags: Option<&str>,
+    project: Option<&str>,
+    repo_id: Option<&str>,
+    priority: i64,
+    status: &str,
+    category: Option<&str>,
+) -> DbResult<String> {
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        INSERT INTO ideas (id, content, tags, project, repo_id, priority, status, category, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind(&id)
+    .bind(content)
+    .bind(tags)
+    .bind(project)
+    .bind(repo_id)
+    .bind(priority)
+    .bind(status)
+    .bind(category)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(id)
+}
+
+/// List ideas with optional filters
+pub async fn list_ideas(
+    pool: &SqlitePool,
+    limit: i64,
+    status: Option<&str>,
+    category: Option<&str>,
+    tag: Option<&str>,
+    project: Option<&str>,
+) -> DbResult<Vec<Idea>> {
+    let mut query = String::from(
+        r#"
+        SELECT id, content, tags, project, repo_id, priority, status, category,
+               linked_doc_id, linked_task_id, created_at, updated_at
+        FROM ideas
+        WHERE 1=1
+        "#,
+    );
+
+    if status.is_some() {
+        query.push_str(" AND status = ?1");
+    }
+    if category.is_some() {
+        query.push_str(" AND category = ?2");
+    }
+    if tag.is_some() {
+        query.push_str(" AND (tags LIKE '%' || ?3 || '%')");
+    }
+    if project.is_some() {
+        query.push_str(" AND project = ?4");
+    }
+
+    query.push_str(" ORDER BY created_at DESC LIMIT ?5");
+
+    let mut q = sqlx::query_as::<_, Idea>(&query);
+
+    if let Some(s) = status {
+        q = q.bind(s);
+    }
+    if let Some(c) = category {
+        q = q.bind(c);
+    }
+    if let Some(t) = tag {
+        q = q.bind(t);
+    }
+    if let Some(p) = project {
+        q = q.bind(p);
+    }
+    q = q.bind(limit);
+
+    Ok(q.fetch_all(pool).await?)
+}
+
+/// Update idea status
+pub async fn update_idea_status(pool: &SqlitePool, id: &str, status: &str) -> DbResult<()> {
+    let now = chrono::Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        UPDATE ideas
+        SET status = ?1, updated_at = ?2
+        WHERE id = ?3
+        "#,
+    )
+    .bind(status)
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Delete an idea
+pub async fn delete_idea(pool: &SqlitePool, id: &str) -> DbResult<()> {
+    sqlx::query("DELETE FROM ideas WHERE id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Count total ideas
+pub async fn count_ideas(pool: &SqlitePool) -> DbResult<i64> {
+    let row = sqlx::query("SELECT COUNT(*) as count FROM ideas")
+        .fetch_one(pool)
+        .await?;
+
+    Ok(row.get("count"))
+}
+
+// ============================================================================
+// Tags - Tag registry and search
+// ============================================================================
+
+/// List tags ordered by usage count
+pub async fn list_tags(pool: &SqlitePool, limit: i64) -> DbResult<Vec<Tag>> {
+    Ok(sqlx::query_as::<_, Tag>(
+        r#"
+        SELECT id, name, color, usage_count, created_at
+        FROM tags
+        ORDER BY usage_count DESC
+        LIMIT ?1
+        "#,
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?)
+}
+
+/// Search tags by name
+pub async fn search_tags(pool: &SqlitePool, query: &str) -> DbResult<Vec<Tag>> {
+    Ok(sqlx::query_as::<_, Tag>(
+        r#"
+        SELECT id, name, color, usage_count, created_at
+        FROM tags
+        WHERE name LIKE '%' || ?1 || '%'
+        ORDER BY usage_count DESC
+        LIMIT 50
+        "#,
+    )
+    .bind(query)
+    .fetch_all(pool)
+    .await?)
+}
+
+// ============================================================================
+// Document Full-Text Search (FTS5)
+// ============================================================================
+
+/// Search documents using FTS5 full-text search
+pub async fn search_documents(pool: &SqlitePool, query: &str) -> DbResult<Vec<Document>> {
+    #[derive(FromRow)]
+    struct DocumentRow {
+        id: String,
+        title: String,
+        content: String,
+        content_type: String,
+        source_type: String,
+        source_url: Option<String>,
+        doc_type: String,
+        tags: Option<String>,
+        repo_id: Option<String>,
+        file_path: Option<String>,
+        word_count: Option<i64>,
+        char_count: Option<i64>,
+        created_at: i64,
+        updated_at: i64,
+        indexed_at: Option<i64>,
+    }
+
+    let rows = sqlx::query_as::<_, DocumentRow>(
+        r#"
+        SELECT d.id, d.title, d.content, d.content_type, d.source_type, d.source_url,
+               d.doc_type, d.tags, d.repo_id, d.file_path, d.word_count, d.char_count,
+               d.created_at, d.updated_at, d.indexed_at
+        FROM documents d
+        JOIN documents_fts fts ON d.rowid = fts.rowid
+        WHERE documents_fts MATCH ?1
+        ORDER BY rank
+        LIMIT 50
+        "#,
+    )
+    .bind(query)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| Document {
+            id: row.id,
+            title: row.title,
+            content: row.content,
+            content_type: row.content_type,
+            source_type: row.source_type,
+            source_url: row.source_url,
+            doc_type: row.doc_type,
             tags: row.tags,
             repo_id: row.repo_id,
             file_path: row.file_path,

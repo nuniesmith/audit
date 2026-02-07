@@ -139,8 +139,8 @@ pub struct AnalyticsStats {
     pub avg_execution_time_ms: f64,
     pub avg_results_per_query: f64,
     pub search_type_distribution: HashMap<String, i64>,
-    pub period_start: DateTime<Utc>,
-    pub period_end: DateTime<Utc>,
+    pub period_start: i64,
+    pub period_end: i64,
 }
 
 // ============================================================================
@@ -264,7 +264,7 @@ impl QueryAnalytics {
         .bind(result_count)
         .bind(execution_time_ms)
         .bind(user_id)
-        .bind(Utc::now())
+        .bind(Utc::now().timestamp())
         .fetch_one(&self.db_pool)
         .await
         .context("Failed to track search")?;
@@ -311,7 +311,7 @@ impl QueryAnalytics {
         .bind(execution_time_ms)
         .bind(user_id)
         .bind(filters_json)
-        .bind(Utc::now())
+        .bind(Utc::now().timestamp())
         .fetch_one(&self.db_pool)
         .await
         .context("Failed to track search with filters")?;
@@ -521,8 +521,8 @@ impl QueryAnalytics {
         )
         .bind(interval_hours)
         .bind(interval_hours)
-        .bind(start)
-        .bind(end)
+        .bind(start.timestamp())
+        .bind(end.timestamp())
         .fetch_all(&self.db_pool)
         .await
         .context("Failed to fetch time series")?;
@@ -542,8 +542,8 @@ impl QueryAnalytics {
 
     /// Get overall analytics statistics
     pub async fn get_stats(&self, days: i64) -> Result<AnalyticsStats> {
-        let start = Utc::now() - Duration::days(days);
-        let end = Utc::now();
+        let start = (Utc::now() - Duration::days(days)).timestamp();
+        let end = Utc::now().timestamp();
 
         let row = sqlx::query_as::<_, (i64, i64, i64, f64, f64)>(
             r#"
@@ -597,7 +597,7 @@ impl QueryAnalytics {
 
     /// Cleanup old analytics data
     pub async fn cleanup_old_data(&self) -> Result<u64> {
-        let cutoff = Utc::now() - Duration::days(self.config.retention_days);
+        let cutoff = (Utc::now() - Duration::days(self.config.retention_days)).timestamp();
 
         let result = sqlx::query(
             r#"
@@ -622,7 +622,7 @@ impl QueryAnalytics {
             loop {
                 interval.tick().await;
 
-                let cutoff = Utc::now() - Duration::days(retention_days);
+                let cutoff = (Utc::now() - Duration::days(retention_days)).timestamp();
                 let _ = sqlx::query(
                     r#"
                     DELETE FROM search_analytics
@@ -650,8 +650,8 @@ impl QueryAnalytics {
             ORDER BY timestamp
             "#,
         )
-        .bind(start)
-        .bind(end)
+        .bind(start.timestamp())
+        .bind(end.timestamp())
         .fetch_all(&self.db_pool)
         .await?;
 

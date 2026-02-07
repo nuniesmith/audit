@@ -6,6 +6,7 @@ pub mod config;
 pub mod core;
 pub mod documents;
 pub mod queue;
+pub mod scan_events;
 
 // Re-export configuration types and functions
 pub use config::{
@@ -24,9 +25,36 @@ pub use queue::{
 
 // Re-export document types and functions
 pub use documents::{
-    count_documents, count_documents_by_type, create_chunks, create_document, delete_document,
-    delete_document_chunks, delete_document_embeddings, get_all_embeddings, get_document,
-    get_document_chunks, get_document_embeddings, get_document_tags, get_unindexed_documents,
-    list_documents, mark_document_indexed, search_documents_by_tags, search_documents_by_title,
-    store_embedding, update_document,
+    count_documents,
+    count_documents_by_type,
+    // Ideas functions
+    count_ideas,
+    create_chunks,
+    create_document,
+    create_idea,
+    delete_document,
+    delete_document_chunks,
+    delete_document_embeddings,
+    delete_idea,
+    get_all_embeddings,
+    get_document,
+    get_document_chunks,
+    get_document_embeddings,
+    get_document_tags,
+    get_unindexed_documents,
+    list_documents,
+    list_ideas,
+    // Tags functions
+    list_tags,
+    mark_document_indexed,
+    // FTS5 search
+    search_documents,
+    search_documents_by_tags,
+    search_documents_by_title,
+    search_tags,
+    store_embedding,
+    update_document,
+    update_idea_status,
+    Idea,
+    Tag,
 };

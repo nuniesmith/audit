@@ -171,13 +171,16 @@ impl<K: Clone + Eq + Hash, V> LRUCache<K, V> {
     }
 
     fn get(&mut self, key: &K) -> Option<&V> {
-        if let Some(entry) = self.map.get_mut(key) {
-            if entry.is_expired() {
-                self.map.remove(key);
-                self.access_order.retain(|k| k != key);
-                return None;
-            }
+        // Check expiry first without holding a mutable borrow
+        let is_expired = self.map.get(key).map(|e| e.is_expired()).unwrap_or(false);
 
+        if is_expired {
+            self.map.remove(key);
+            self.access_order.retain(|k| k != key);
+            return None;
+        }
+
+        if let Some(entry) = self.map.get_mut(key) {
             // Update access order
             self.access_order.retain(|k| k != key);
             self.access_order.push(key.clone());
@@ -317,7 +320,10 @@ impl CacheLayer {
     }
 
     /// Get a value from cache
-    pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
+    pub async fn get<T: DeserializeOwned + serde::Serialize>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>> {
         // Try memory cache first
         let mut memory = self.memory_cache.write().await;
         if let Some(bytes) = memory.get(&key.to_string()) {
