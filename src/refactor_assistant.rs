@@ -393,13 +393,15 @@ For each smell, provide:
             content
         );
 
-        let response = self
+        let tracked = self
             .grok_client
-            .ask(&prompt, Some(content))
+            .ask_tracked(&prompt, Some(content), "refactor_analysis")
             .await
             .context("Failed to analyze code for refactoring")?;
 
-        self.parse_refactoring_response(&response, file_path)
+        let mut analysis = self.parse_refactoring_response(&tracked.content, file_path)?;
+        analysis.tokens_used = Some(tracked.total_tokens as usize);
+        Ok(analysis)
     }
 
     /// Generate a refactoring plan for multiple files
@@ -554,10 +556,23 @@ Suggest:
                                     severity: self.parse_severity(cs["severity"].as_str()?),
                                     description: cs["description"].as_str()?.to_string(),
                                     location: cs["location"].as_object().map(|loc| CodeLocation {
-                                        file: loc["file"].as_str().unwrap_or("").to_string(),
-                                        line_start: loc["line_start"].as_u64().map(|n| n as usize),
-                                        line_end: loc["line_end"].as_u64().map(|n| n as usize),
-                                        item_name: loc["item_name"].as_str().map(String::from),
+                                        file: loc
+                                            .get("file")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        line_start: loc
+                                            .get("line_start")
+                                            .and_then(|v| v.as_u64())
+                                            .map(|n| n as usize),
+                                        line_end: loc
+                                            .get("line_end")
+                                            .and_then(|v| v.as_u64())
+                                            .map(|n| n as usize),
+                                        item_name: loc
+                                            .get("item_name")
+                                            .and_then(|v| v.as_str())
+                                            .map(String::from),
                                     }),
                                     impact: cs["impact"].as_str()?.to_string(),
                                 })

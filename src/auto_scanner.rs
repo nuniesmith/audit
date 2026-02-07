@@ -90,6 +90,14 @@ pub enum FileStatus {
     Untracked,
 }
 
+/// Result of analyzing a single file
+struct FileAnalysisResult {
+    issues_found: i64,
+    cost_usd: f64,
+    tokens_used: Option<usize>,
+    was_cache_hit: bool,
+}
+
 /// Repository scan state
 #[derive(Debug, Clone)]
 pub struct RepoScanState {
@@ -413,6 +421,57 @@ impl AutoScanner {
                 // the next scan cycle will re-diff, hit cache on already-analyzed
                 // files (free), and continue analyzing remaining files.
                 if !budget_halted {
+                    // === Phase C: Final Project Review ===
+                    // All files analyzed — run a project-wide review to synthesize
+                    // individual analyses into a prioritized, grouped task list.
+                    info!(
+                        "📊 All {} files analyzed for {}. Starting final project review...",
+                        files_analyzed, repo.name
+                    );
+
+                    match self
+                        .generate_project_review(&repo.id, &repo.name, &repo_path)
+                        .await
+                    {
+                        Ok(task_count) => {
+                            info!(
+                                "📋 Final review complete for {}: {} tasks generated → queue",
+                                repo.name, task_count
+                            );
+
+                            // Log review event
+                            if let Err(e) = scan_events::log_info(
+                                &self.pool,
+                                Some(&repo.id),
+                                "project_review_complete",
+                                &format!(
+                                    "Project review generated {} tasks from {} file analyses",
+                                    task_count, files_analyzed
+                                ),
+                            )
+                            .await
+                            {
+                                warn!("Failed to log review event: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Final project review failed for {}: {}", repo.name, e);
+
+                            if let Err(err) = scan_events::log_error(
+                                &self.pool,
+                                Some(&repo.id),
+                                "project_review_error",
+                                "Final project review failed",
+                                &e.to_string(),
+                            )
+                            .await
+                            {
+                                warn!("Failed to log review error event: {}", err);
+                            }
+                            // Non-fatal — scan data is still valid, just no review tasks
+                        }
+                    }
+
                     if let Some(ref hash) = current_head {
                         self.update_last_commit_hash(&repo.id, hash).await?;
                     }
@@ -708,6 +767,7 @@ impl AutoScanner {
         let mut files_analyzed = 0i64;
         let mut issues_found = 0i64;
         let mut cumulative_cost = 0.0f64;
+        let mut cache_hits = 0i64;
         let mut budget_halted = false;
         let progress_update_interval = 5; // Update progress every N files
 
@@ -741,13 +801,43 @@ impl AutoScanner {
             );
         }
 
+        // --- Checkpoint resume: check for existing checkpoint ---
+        let checkpoint = self.load_scan_checkpoint(repo_id, filtered_count).await;
+        let start_index = if let Some(ref cp) = checkpoint {
+            info!(
+                "📍 Resuming scan from checkpoint: [{}/{}] (${:.4} spent, {} cached so far)",
+                cp.last_completed_index + 1,
+                filtered_count,
+                cp.cumulative_cost,
+                cp.files_cached,
+            );
+            cumulative_cost = cp.cumulative_cost;
+            files_analyzed = cp.files_analyzed;
+            cache_hits = cp.files_cached;
+            (cp.last_completed_index + 1) as usize
+        } else {
+            0
+        };
+
+        info!(
+            "🔍 Starting scan: {} files to analyze (starting at index {})",
+            filtered_count, start_index
+        );
+
         for (idx, file) in analyzable_files.iter().enumerate() {
+            // Skip files before checkpoint
+            if idx < start_index {
+                continue;
+            }
+
             // Check cost budget before each file (using actual accumulated cost)
             if self.config.scan_cost_budget > 0.0 && cumulative_cost >= self.config.scan_cost_budget
             {
                 warn!(
-                    "⚠️  Scan cost budget reached (${:.4} >= ${:.2} limit). \
+                    "[{}/{}] ⚠️  Scan cost budget reached (${:.4} >= ${:.2} limit). \
                      Stopping analysis with {} files remaining.",
+                    idx + 1,
+                    filtered_count,
                     cumulative_cost,
                     self.config.scan_cost_budget,
                     filtered_count - idx
@@ -756,19 +846,19 @@ impl AutoScanner {
                 break;
             }
 
+            let rel_path = file
+                .strip_prefix(repo_path)
+                .unwrap_or(file)
+                .to_string_lossy()
+                .to_string();
+
             // Update progress periodically
             if idx % progress_update_interval == 0 || idx == filtered_count - 1 {
-                let current_file = file
-                    .strip_prefix(repo_path)
-                    .unwrap_or(file)
-                    .to_string_lossy()
-                    .to_string();
-
                 if let Err(e) = crate::db::core::update_scan_progress(
                     &self.pool,
                     repo_id,
                     idx as i64,
-                    Some(&current_file),
+                    Some(&rel_path),
                 )
                 .await
                 {
@@ -776,55 +866,102 @@ impl AutoScanner {
                 }
             }
 
-            match self.analyze_file(repo_path, file, &cache).await {
-                Ok((found_issues, file_cost)) => {
+            match self
+                .analyze_file(repo_path, file, &cache, idx, filtered_count)
+                .await
+            {
+                Ok(file_result) => {
                     files_analyzed += 1;
-                    issues_found += found_issues;
-                    cumulative_cost += file_cost;
+                    issues_found += file_result.issues_found;
+                    cumulative_cost += file_result.cost_usd;
+                    if file_result.was_cache_hit {
+                        cache_hits += 1;
+                    }
 
                     // Log cost milestone every $0.50
                     if cumulative_cost > 0.0
                         && (cumulative_cost * 2.0) as i64
-                            > ((cumulative_cost - file_cost) * 2.0) as i64
+                            > ((cumulative_cost - file_result.cost_usd) * 2.0) as i64
                     {
                         info!(
-                            "💰 Scan cost: ${:.4} / ${:.2} budget ({} files analyzed)",
+                            "💰 Scan cost milestone: ${:.4} / ${:.2} budget ({} files analyzed)",
                             cumulative_cost, self.config.scan_cost_budget, files_analyzed
                         );
                     }
+
+                    // Persist checkpoint after every successful file
+                    if let Err(e) = self
+                        .save_scan_checkpoint(
+                            repo_id,
+                            idx,
+                            &rel_path,
+                            files_analyzed,
+                            cache_hits,
+                            cumulative_cost,
+                            filtered_count,
+                        )
+                        .await
+                    {
+                        warn!("Failed to save scan checkpoint: {}", e);
+                    }
                 }
                 Err(e) => {
-                    error!("Failed to analyze {}: {}", file.display(), e);
+                    error!(
+                        "[{}/{}] ❌ Failed to analyze {}: {}",
+                        idx + 1,
+                        filtered_count,
+                        file.display(),
+                        e
+                    );
                 }
             }
         }
 
         info!(
-            "Scan summary: analyzed={}, issues={}, actual_cost=${:.4}, budget_halted={}",
-            files_analyzed, issues_found, cumulative_cost, budget_halted
+            "📊 Scan summary: analyzed={}, cache_hits={}, issues={}, actual_cost=${:.4}, budget_halted={}",
+            files_analyzed, cache_hits, issues_found, cumulative_cost, budget_halted
         );
+
+        // Clear checkpoint on successful completion (not budget halt)
+        if !budget_halted {
+            if let Err(e) = self.clear_scan_checkpoint(repo_id).await {
+                warn!("Failed to clear scan checkpoint: {}", e);
+            }
+        }
 
         Ok((files_analyzed, issues_found, budget_halted))
     }
 
-    /// Analyze a single file.
-    /// Returns (issues_found, actual_cost_usd). Cache hits cost $0.
+    /// Analyze a single file with progress-aware logging.
+    /// Returns `FileAnalysisResult` with issues, cost, tokens, and cache-hit flag.
     async fn analyze_file(
         &self,
         repo_path: &Path,
         file_path: &Path,
         cache: &RepoCacheSql,
-    ) -> Result<(i64, f64)> {
+        progress_idx: usize,
+        progress_total: usize,
+    ) -> Result<FileAnalysisResult> {
         let rel_path = file_path
             .strip_prefix(repo_path)
             .unwrap_or(file_path)
             .to_string_lossy()
             .to_string();
 
+        let progress_tag = format!("[{}/{}]", progress_idx + 1, progress_total);
+
         // Skip non-existent files (deleted between diff and analysis)
         if !file_path.exists() {
-            debug!("Skipping {} - file no longer exists on disk", rel_path);
-            return Ok((0, 0.0));
+            debug!(
+                "{} ⏭️  Skipping {} — file no longer exists",
+                progress_tag, rel_path
+            );
+            return Ok(FileAnalysisResult {
+                issues_found: 0,
+                cost_usd: 0.0,
+                tokens_used: None,
+                was_cache_hit: false,
+            });
         }
 
         // Check file size before reading
@@ -833,25 +970,44 @@ impl AutoScanner {
 
         if file_size > MAX_ANALYSIS_FILE_SIZE {
             info!(
-                "Skipping {} - file too large ({} KB > {} KB limit)",
+                "{} ⏭️  Skipping {} — too large ({} KB > {} KB limit)",
+                progress_tag,
                 rel_path,
                 file_size / 1024,
                 MAX_ANALYSIS_FILE_SIZE / 1024
             );
-            return Ok((0, 0.0));
+            return Ok(FileAnalysisResult {
+                issues_found: 0,
+                cost_usd: 0.0,
+                tokens_used: None,
+                was_cache_hit: false,
+            });
         }
 
         if file_size == 0 {
-            debug!("Skipping {} - empty file", rel_path);
-            return Ok((0, 0.0));
+            debug!("{} ⏭️  Skipping {} — empty file", progress_tag, rel_path);
+            return Ok(FileAnalysisResult {
+                issues_found: 0,
+                cost_usd: 0.0,
+                tokens_used: None,
+                was_cache_hit: false,
+            });
         }
 
         // Read file content
         let content = match tokio::fs::read_to_string(file_path).await {
             Ok(c) => c,
             Err(e) => {
-                warn!("Cannot read {}: {} (possibly binary)", rel_path, e);
-                return Ok((0, 0.0));
+                warn!(
+                    "{} ⏭️  Cannot read {} (possibly binary): {}",
+                    progress_tag, rel_path, e
+                );
+                return Ok(FileAnalysisResult {
+                    issues_found: 0,
+                    cost_usd: 0.0,
+                    tokens_used: None,
+                    was_cache_hit: false,
+                });
             }
         };
 
@@ -862,10 +1018,15 @@ impl AutoScanner {
         let avg_line_len = content.len() / line_count;
         if avg_line_len > 500 && line_count < 50 {
             info!(
-                "Skipping {} - likely minified (avg line: {} chars, {} lines)",
-                rel_path, avg_line_len, line_count
+                "{} ⏭️  Skipping {} — likely minified (avg line: {} chars, {} lines)",
+                progress_tag, rel_path, avg_line_len, line_count
             );
-            return Ok((0, 0.0));
+            return Ok(FileAnalysisResult {
+                issues_found: 0,
+                cost_usd: 0.0,
+                tokens_used: None,
+                was_cache_hit: false,
+            });
         }
 
         // Check cache first
@@ -882,11 +1043,16 @@ impl AutoScanner {
             .await?
             .is_some()
         {
-            debug!("Cache hit for {}", rel_path);
-            return Ok((0, 0.0));
+            debug!("{} 📦 CACHE  {}", progress_tag, rel_path);
+            return Ok(FileAnalysisResult {
+                issues_found: 0,
+                cost_usd: 0.0,
+                tokens_used: None,
+                was_cache_hit: true,
+            });
         }
 
-        info!("Analyzing {}", rel_path);
+        info!("{} 🔍 API    Analyzing {}", progress_tag, rel_path);
 
         // Create RefactorAssistant for analysis
         let db = Database::from_pool(self.pool.clone());
@@ -908,6 +1074,8 @@ impl AutoScanner {
             0.0
         };
 
+        let issues_count = analysis.code_smells.len() as i64 + analysis.suggestions.len() as i64;
+
         // Cache the result
         let result_json = serde_json::to_value(&analysis)?;
         cache
@@ -925,14 +1093,21 @@ impl AutoScanner {
             })
             .await?;
 
-        debug!(
-            "Cached analysis for {} (cost: ${:.4}, tokens: {:?})",
-            rel_path, actual_cost, analysis.tokens_used
+        info!(
+            "{} ✅ Cached {} (cost: ${:.4}, tokens: {}, issues: {})",
+            progress_tag,
+            rel_path,
+            actual_cost,
+            analysis.tokens_used.unwrap_or(0),
+            issues_count,
         );
 
-        // For now, count any analysis as 1 issue found
-        // TODO: Parse analysis.suggestions to count actual issues
-        Ok((1, actual_cost))
+        Ok(FileAnalysisResult {
+            issues_found: issues_count,
+            cost_usd: actual_cost,
+            tokens_used: analysis.tokens_used,
+            was_cache_hit: false,
+        })
     }
 
     /// Update last_scan_check timestamp
@@ -996,6 +1171,417 @@ impl AutoScanner {
             repo_manager: self.repo_manager.clone(),
         }
     }
+
+    // ========================================================================
+    // Final Project Review
+    // ========================================================================
+
+    /// After all files have been individually analyzed, collect all cached
+    /// analyses and send them as one context to Grok to generate a prioritized,
+    /// grouped task list for the queue. Returns the number of tasks created.
+    async fn generate_project_review(
+        &self,
+        repo_id: &str,
+        repo_name: &str,
+        repo_path: &Path,
+    ) -> Result<usize> {
+        let cache = RepoCacheSql::new_for_repo(repo_path).await?;
+        let all_entries = cache.get_all_entries().await?;
+
+        if all_entries.is_empty() {
+            info!("No cached analyses found for project review — skipping");
+            return Ok(0);
+        }
+
+        // Build a condensed project summary from all cached analyses
+        let mut project_context = String::new();
+        let mut total_issues = 0usize;
+        let mut files_with_issues = 0usize;
+
+        for entry in &all_entries {
+            if entry.cache_type != "refactor" {
+                continue;
+            }
+
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&entry.result_json) {
+                let smells = parsed["code_smells"]
+                    .as_array()
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let suggestions = parsed["suggestions"]
+                    .as_array()
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let complexity = parsed["complexity_score"].as_f64().unwrap_or(50.0);
+
+                total_issues += smells + suggestions;
+
+                // Only include files with issues or high complexity in the review prompt
+                // to stay within context limits
+                if smells > 0 || suggestions > 0 || complexity > 70.0 {
+                    files_with_issues += 1;
+
+                    // Truncate per-file analysis to keep total context manageable
+                    let analysis_text = &entry.result_json;
+                    let truncated = if analysis_text.len() > 2000 {
+                        &analysis_text[..2000]
+                    } else {
+                        analysis_text
+                    };
+
+                    project_context.push_str(&format!(
+                        "\n## {}\n- Complexity: {:.0}\n- Issues: {}\n- Analysis: {}\n",
+                        entry.file_path,
+                        complexity,
+                        smells + suggestions,
+                        truncated
+                    ));
+                }
+            }
+        }
+
+        info!(
+            "📊 Project review context: {} total files, {} with issues, {} total issues",
+            all_entries.len(),
+            files_with_issues,
+            total_issues
+        );
+
+        if files_with_issues == 0 {
+            info!("No files with issues found — skipping project review");
+            return Ok(0);
+        }
+
+        // Build the final review prompt
+        let prompt = format!(
+            r#"You are reviewing a complete codebase analysis for the "{repo_name}" project.
+
+{file_count} files were analyzed. {issue_count} total issues were found across {issue_files} files.
+
+Below is a summary of every file that had issues. Your job is to:
+
+1. Identify CROSS-CUTTING CONCERNS — patterns that appear across multiple files
+   (e.g., "error handling is inconsistent across 12 service files")
+2. Identify DEPENDENCY CHAINS — where fixing file A should happen before file B
+3. Group related issues into ACTIONABLE TASKS that can each be completed in 1-4 hours
+4. Prioritize by: Critical (security/crashes) > High (correctness) > Medium (quality) > Low (style)
+5. For each task, specify:
+   - Title (clear, actionable)
+   - Description (what to do, not what's wrong)
+   - Files affected (list)
+   - Priority (critical/high/medium/low)
+   - Estimated effort (small/medium/large)
+   - Dependencies (which task titles must complete first)
+   - Category
+
+Respond in ONLY valid JSON (no markdown fences):
+{{
+  "summary": "Brief overview of project health",
+  "cross_cutting_concerns": ["..."],
+  "tasks": [
+    {{
+      "title": "...",
+      "description": "...",
+      "files": ["..."],
+      "priority": "critical|high|medium|low",
+      "effort": "small|medium|large",
+      "dependencies": [],
+      "category": "security|error-handling|performance|testing|refactoring|documentation"
+    }}
+  ]
+}}
+
+=== FILE ANALYSES ===
+{project_context}"#,
+            repo_name = repo_name,
+            file_count = all_entries.len(),
+            issue_count = total_issues,
+            issue_files = files_with_issues,
+            project_context = project_context
+        );
+
+        // Call Grok with the full project context
+        let db = Database::from_pool(self.pool.clone());
+        let grok = crate::grok_client::GrokClient::from_env(db).await?;
+
+        let tracked = grok
+            .ask_tracked(&prompt, None, "project_review")
+            .await
+            .context("Failed to generate project review")?;
+
+        info!(
+            "📊 Project review API call: {} tokens, ${:.4}",
+            tracked.total_tokens, tracked.cost_usd
+        );
+
+        // Parse the response and insert tasks into the queue
+        let task_count = self
+            .parse_review_into_tasks(&tracked.content, repo_id, repo_name)
+            .await?;
+
+        Ok(task_count)
+    }
+
+    /// Parse the Grok project review JSON response and insert tasks into the DB queue.
+    /// Returns the number of tasks inserted.
+    async fn parse_review_into_tasks(
+        &self,
+        response: &str,
+        repo_id: &str,
+        repo_name: &str,
+    ) -> Result<usize> {
+        // Try to extract JSON from response (may be wrapped in markdown fences)
+        let json_str = Self::extract_json_from_response(response);
+
+        let json: serde_json::Value = serde_json::from_str(&json_str)
+            .context("Failed to parse project review response as JSON")?;
+
+        // Log the summary if present
+        if let Some(summary) = json["summary"].as_str() {
+            info!("📋 Project review summary: {}", summary);
+        }
+
+        // Log cross-cutting concerns
+        if let Some(concerns) = json["cross_cutting_concerns"].as_array() {
+            for concern in concerns {
+                if let Some(c) = concern.as_str() {
+                    info!("  🔄 Cross-cutting: {}", c);
+                }
+            }
+        }
+
+        let mut task_count = 0usize;
+
+        if let Some(task_array) = json["tasks"].as_array() {
+            for t in task_array {
+                let title = t["title"].as_str().unwrap_or("Untitled review task");
+                let description = t["description"].as_str().unwrap_or("");
+                let priority_str = t["priority"].as_str().unwrap_or("medium");
+                let category = t["category"].as_str().unwrap_or("refactoring");
+                let effort = t["effort"].as_str().unwrap_or("medium");
+
+                // Map priority string to numeric value
+                let priority = match priority_str {
+                    "critical" => 1,
+                    "high" => 2,
+                    "medium" => 3,
+                    "low" => 4,
+                    _ => 3,
+                };
+
+                // Build a rich description including metadata
+                let files_list = t["files"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|f| f.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+
+                let deps_list = t["dependencies"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|d| d.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+
+                let full_description =
+                    format!(
+                    "{}\n\n**Category:** {}\n**Effort:** {}\n**Files:** {}\n**Dependencies:** {}",
+                    description,
+                    category,
+                    effort,
+                    if files_list.is_empty() { "N/A" } else { &files_list },
+                    if deps_list.is_empty() { "None" } else { &deps_list },
+                );
+
+                // Get first file path for the task
+                let first_file = t["files"]
+                    .as_array()
+                    .and_then(|arr| arr.first())
+                    .and_then(|f| f.as_str());
+
+                // Insert into the task queue
+                match crate::db::core::create_task(
+                    &self.pool,
+                    title,
+                    Some(&full_description),
+                    priority,
+                    "project_review",
+                    Some(repo_name),
+                    Some(repo_id),
+                    first_file,
+                    None,
+                )
+                .await
+                {
+                    Ok(task) => {
+                        info!(
+                            "  📌 Task created: [{}] {} (priority: {})",
+                            task.id, title, priority_str
+                        );
+                        task_count += 1;
+                    }
+                    Err(e) => {
+                        warn!("Failed to create task '{}': {}", title, e);
+                    }
+                }
+            }
+        }
+
+        info!(
+            "📋 Inserted {} tasks into queue from project review of {}",
+            task_count, repo_name
+        );
+
+        Ok(task_count)
+    }
+
+    /// Extract JSON from a response that might be wrapped in markdown code fences.
+    fn extract_json_from_response(response: &str) -> &str {
+        let trimmed = response.trim();
+
+        // Try to find JSON block in markdown fences
+        if let Some(start) = trimmed.find("```json") {
+            let json_start = start + 7; // skip ```json
+            if let Some(end) = trimmed[json_start..].find("```") {
+                return trimmed[json_start..json_start + end].trim();
+            }
+        }
+
+        // Try generic code fence
+        if let Some(start) = trimmed.find("```") {
+            let after_fence = start + 3;
+            // Skip optional language identifier on the same line
+            let json_start = trimmed[after_fence..]
+                .find('\n')
+                .map(|n| after_fence + n + 1)
+                .unwrap_or(after_fence);
+            if let Some(end) = trimmed[json_start..].find("```") {
+                return trimmed[json_start..json_start + end].trim();
+            }
+        }
+
+        // Try to find raw JSON object
+        if let Some(start) = trimmed.find('{') {
+            if let Some(end) = trimmed.rfind('}') {
+                return &trimmed[start..=end];
+            }
+        }
+
+        trimmed
+    }
+
+    // ========================================================================
+    // Scan Checkpoint Persistence
+    // ========================================================================
+
+    /// Load the most recent scan checkpoint for a repo.
+    /// Returns `None` if no checkpoint exists or if the file count has changed
+    /// (indicating the file list was modified since the last run).
+    async fn load_scan_checkpoint(
+        &self,
+        repo_id: &str,
+        current_total_files: usize,
+    ) -> Option<ScanCheckpoint> {
+        let row = sqlx::query_as::<_, (i64, String, i64, i64, f64, i64, i64)>(
+            r#"
+            SELECT last_completed_index, last_completed_file, files_analyzed,
+                   files_cached, cumulative_cost, total_files, updated_at
+            FROM scan_checkpoints
+            WHERE repo_id = ?
+            "#,
+        )
+        .bind(repo_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten()?;
+
+        let checkpoint = ScanCheckpoint {
+            last_completed_index: row.0 as usize,
+            last_completed_file: row.1,
+            files_analyzed: row.2,
+            files_cached: row.3,
+            cumulative_cost: row.4,
+            total_files: row.5 as usize,
+        };
+
+        // Only use the checkpoint if the file count matches
+        if checkpoint.total_files == current_total_files {
+            Some(checkpoint)
+        } else {
+            info!(
+                "⚠️  File list changed since last checkpoint ({} -> {}), restarting scan",
+                checkpoint.total_files, current_total_files
+            );
+            // Clear stale checkpoint
+            let _ = self.clear_scan_checkpoint(repo_id).await;
+            None
+        }
+    }
+
+    /// Persist a scan checkpoint after each successfully analyzed file.
+    async fn save_scan_checkpoint(
+        &self,
+        repo_id: &str,
+        last_completed_index: usize,
+        last_completed_file: &str,
+        files_analyzed: i64,
+        files_cached: i64,
+        cumulative_cost: f64,
+        total_files: usize,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO scan_checkpoints
+                (repo_id, last_completed_index, last_completed_file,
+                 files_analyzed, files_cached, cumulative_cost, total_files, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(repo_id)
+        .bind(last_completed_index as i64)
+        .bind(last_completed_file)
+        .bind(files_analyzed)
+        .bind(files_cached)
+        .bind(cumulative_cost)
+        .bind(total_files as i64)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Clear the scan checkpoint for a repo (called on successful completion).
+    async fn clear_scan_checkpoint(&self, repo_id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM scan_checkpoints WHERE repo_id = ?")
+            .bind(repo_id)
+            .execute(&self.pool)
+            .await?;
+
+        debug!("Cleared scan checkpoint for repo {}", repo_id);
+        Ok(())
+    }
+}
+
+/// Checkpoint data loaded from the database
+struct ScanCheckpoint {
+    last_completed_index: usize,
+    #[allow(dead_code)]
+    last_completed_file: String,
+    files_analyzed: i64,
+    files_cached: i64,
+    cumulative_cost: f64,
+    total_files: usize,
 }
 
 /// Enable auto-scan for a repository

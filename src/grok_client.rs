@@ -103,11 +103,21 @@ struct Choice {
 }
 
 /// Token usage information
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct Usage {
     prompt_tokens: i64,
     completion_tokens: i64,
     total_tokens: i64,
+}
+
+/// Public response from ask_tracked() with cost/token info
+#[derive(Debug, Clone)]
+pub struct AskResponse {
+    pub content: String,
+    pub total_tokens: i64,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub cost_usd: f64,
 }
 
 /// File scoring result
@@ -355,6 +365,35 @@ Code:
             .context("Failed to ask Grok")?;
 
         Ok(response.content)
+    }
+
+    /// Ask a question and return the response with token/cost tracking info
+    pub async fn ask_tracked(
+        &self,
+        question: &str,
+        context: Option<&str>,
+        operation: &str,
+    ) -> Result<AskResponse> {
+        let prompt = if let Some(ctx) = context {
+            format!("Context:\n{}\n\nQuestion: {}", ctx, question)
+        } else {
+            question.to_string()
+        };
+
+        let response = self
+            .call_api(&prompt, operation, None)
+            .await
+            .context("Failed to ask Grok (tracked)")?;
+
+        let cost = self.calculate_cost(&response.usage);
+
+        Ok(AskResponse {
+            content: response.content,
+            total_tokens: response.usage.total_tokens,
+            prompt_tokens: response.usage.prompt_tokens,
+            completion_tokens: response.usage.completion_tokens,
+            cost_usd: cost,
+        })
     }
 
     /// Ask a question with full repository context

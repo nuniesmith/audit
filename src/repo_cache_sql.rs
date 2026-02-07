@@ -755,6 +755,73 @@ impl RepoCacheSql {
 
         Ok(entries)
     }
+
+    /// Get all cache entries (across all repos) for project-wide review.
+    /// Returns entries ordered by file_path for deterministic iteration.
+    pub async fn get_all_entries(&self) -> Result<Vec<CacheEntry>> {
+        let rows = sqlx::query_as::<
+            _,
+            (
+                i64,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                u32,
+                Vec<u8>,
+                Option<i64>,
+                i64,
+                String,
+                String,
+                i64,
+            ),
+        >(
+            r#"
+            SELECT
+                id, cache_type, repo_path, file_path, file_hash, cache_key,
+                provider, model, prompt_hash, schema_version, result_blob,
+                tokens_used, file_size, created_at, last_accessed, access_count
+            FROM cache_entries
+            ORDER BY file_path ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let entries = rows
+            .into_iter()
+            .map(|row| {
+                let result_json = Self::decompress_json(&row.10)
+                    .map(|v| serde_json::to_string(&v).unwrap_or_default())
+                    .unwrap_or_default();
+
+                CacheEntry {
+                    id: row.0,
+                    cache_type: row.1,
+                    repo_path: row.2,
+                    file_path: row.3,
+                    file_hash: row.4,
+                    cache_key: row.5,
+                    provider: row.6,
+                    model: row.7,
+                    prompt_hash: row.8,
+                    schema_version: row.9,
+                    result_json,
+                    tokens_used: row.11,
+                    file_size: row.12,
+                    created_at: row.13.parse().unwrap_or_else(|_| Utc::now()),
+                    last_accessed: row.14.parse().unwrap_or_else(|_| Utc::now()),
+                    access_count: row.15,
+                }
+            })
+            .collect();
+
+        Ok(entries)
+    }
 }
 
 #[cfg(test)]
