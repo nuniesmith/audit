@@ -192,13 +192,13 @@ impl ResearchReport {
         for finding in &self.key_findings {
             md.push_str(&format!("- {}\n", finding));
         }
-        md.push_str("\n");
+        md.push('\n');
 
         md.push_str("## Recommendations\n\n");
         for rec in &self.recommendations {
             md.push_str(&format!("- {}\n", rec));
         }
-        md.push_str("\n");
+        md.push('\n');
 
         md.push_str("## Detailed Sections\n\n");
         for section in &self.sections {
@@ -234,7 +234,7 @@ impl ResearchReport {
         for (i, finding) in self.key_findings.iter().enumerate() {
             output.push_str(&format!("{}. {}\n", i + 1, finding));
         }
-        output.push_str("\n");
+        output.push('\n');
 
         output.push_str("Next Steps:\n");
         for rec in &self.recommendations {

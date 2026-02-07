@@ -145,18 +145,17 @@ pub async fn sync_repos_to_db(pool: &SqlitePool, token: Option<&str>) -> Result<
         // Upsert repository
         sqlx::query(
             r#"
-            INSERT INTO repositories (id, path, name, status, metadata, created_at, updated_at)
-            VALUES (?, ?, ?, 'active', ?, ?, ?)
+            INSERT INTO repositories (id, url, name, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
-                metadata = excluded.metadata,
+                url = excluded.url,
                 updated_at = excluded.updated_at
         "#,
         )
         .bind(&id)
         .bind(&gh_repo.clone_url)
         .bind(&gh_repo.name)
-        .bind(serde_json::to_string(&gh_repo)?)
         .bind(now)
         .bind(now)
         .execute(pool)

@@ -160,12 +160,12 @@ cargo run --release
 
 ### Verify Features
 1. **Scan Progress:**
-   - Navigate to http://localhost:3001/repos
+   - Navigate to http://localhost:3000/repos
    - Trigger a scan
    - Verify progress bar animates
 
 2. **Notes Capture:**
-   - Navigate to http://localhost:3001/notes
+   - Navigate to http://localhost:3000/notes
    - Click "+ Quick Note"
    - Enter: `"Test #idea #test"`
    - Verify note created with tags

@@ -240,7 +240,7 @@ The `scan_events` table supports these event types:
    ```
 
 2. **Add a Repository:**
-   - Navigate to http://localhost:3001/repos
+   - Navigate to http://localhost:3000/repos
    - Click "Add Repository"
    - Add a repo with 20+ files
 
@@ -418,7 +418,7 @@ If you're upgrading from a version without progress tracking:
    ```
 
 4. **Verify:**
-   - Check repos page: http://localhost:3001/repos
+   - Check repos page: http://localhost:3000/repos
    - Trigger a scan
    - Verify progress appears
 

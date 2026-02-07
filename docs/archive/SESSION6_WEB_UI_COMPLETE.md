@@ -18,7 +18,7 @@ cd rustassistant
 cargo build --release --bin webui-server
 ./target/release/webui-server
 
-# Open browser to http://127.0.0.1:3001
+# Open browser to http://127.0.0.1:3000
 ```
 
 Then navigate to:
@@ -363,13 +363,13 @@ PORT=8080 DATABASE_PATH=custom.db ./target/release/webui-server
 
 ### Environment Variables
 ```bash
-PORT=3001                          # Server port (default: 3001)
+PORT=3000                          # Server port (default: 3000)
 DATABASE_PATH=data/rustassistant.db # Database location
 ```
 
 ### Access the UI
 Open browser to:
-- http://127.0.0.1:3001 (or your custom port)
+- http://127.0.0.1:3000 (or your custom port)
 
 ---
 

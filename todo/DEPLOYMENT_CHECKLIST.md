@@ -11,7 +11,7 @@
 ### Environment Verification
 - [ ] Docker and Docker Compose installed (v1.27+)
 - [ ] Git installed and configured
-- [ ] Required ports available (3001, 6379)
+- [ ] Required ports available (3000, 6379)
 - [ ] Minimum 1GB disk space available
 - [ ] API keys obtained (XAI_API_KEY)
 - [ ] GitHub token generated (GITHUB_TOKEN) - if using private repos
@@ -84,11 +84,11 @@
   ```
 - [ ] Health check passes:
   ```bash
-  curl http://localhost:3001/health
+  curl http://localhost:3000/health
   ```
 - [ ] Navigate to repos page:
   ```bash
-  open http://localhost:3001/repos
+  open http://localhost:3000/repos
   ```
 - [ ] Settings form visible in repo cards
 - [ ] Auto-scan checkbox works
@@ -260,7 +260,7 @@ rustassistant:
 ### Step 8: Verify Deployment
 - [ ] Health check passes:
   ```bash
-  curl http://localhost:3001/health
+  curl http://localhost:3000/health
   ```
 - [ ] Database accessible:
   ```bash
@@ -268,7 +268,7 @@ rustassistant:
   ```
 - [ ] Web UI loads:
   ```bash
-  open http://localhost:3001/repos
+  open http://localhost:3000/repos
   ```
 - [ ] Check repository sync status:
   ```bash
@@ -317,7 +317,7 @@ docker compose build
 docker compose up -d
 
 # Verify
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 ```
 
 ---
@@ -399,7 +399,7 @@ docker compose exec rustassistant ping -c 3 redis
 ## Success Criteria
 
 ### Priority 1 Success ✅
-- [ ] Web UI accessible at http://localhost:3001
+- [ ] Web UI accessible at http://localhost:3000
 - [ ] Settings form visible in repo cards
 - [ ] Auto-scan toggle works with toast notification
 - [ ] Scan interval saves with validation
@@ -460,7 +460,7 @@ docker compose exec rustassistant env | grep GITHUB_TOKEN
 **Solution:** Check database write permissions, verify API endpoint
 ```bash
 docker compose logs rustassistant | grep -i settings
-curl -X POST http://localhost:3001/repos/REPO-ID/settings -d "scan_interval_minutes=30"
+curl -X POST http://localhost:3000/repos/REPO-ID/settings -d "scan_interval_minutes=30"
 ```
 
 ---

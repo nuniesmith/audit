@@ -20,7 +20,7 @@
 - ✅ Set up persistent volumes
 
 **Services:**
-1. **rustassistant-web** - Web UI on port 3001
+1. **rustassistant-web** - Web UI on port 3000
 2. **rustassistant-redis** - Redis cache with 512MB limit, LRU eviction
 3. **rustassistant-cli** - CLI for batch jobs (on-demand)
 
@@ -93,7 +93,7 @@ echo "XAI_API_KEY=xai-your-key-here" > .env
 docker compose up -d
 
 # 3. Open browser
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 **That's it!** Web UI + Redis cache running together.
@@ -112,7 +112,7 @@ docker compose ps
 docker compose logs -f rustassistant-web
 
 # Test Web UI
-curl http://localhost:3001
+curl http://localhost:3000
 
 # Test Redis
 docker exec rustassistant-redis redis-cli ping
@@ -163,7 +163,7 @@ docker compose up -d
 
 # 6. Verify
 docker compose ps
-curl http://localhost:3001
+curl http://localhost:3000
 ```
 
 ### Performance Tips for Pi 4
@@ -196,7 +196,7 @@ redis:
 │         Host Machine / Raspberry Pi         │
 │                                             │
 │  ┌───────────────────────────────────────┐ │
-│  │   RustAssistant Web UI (Port 3001)    │ │
+│  │   RustAssistant Web UI (Port 3000)    │ │
 │  │   - Axum web server                   │ │
 │  │   - Askama templates                  │ │
 │  │   - HTMX frontend                     │ │
@@ -247,7 +247,7 @@ XAI_BASE_URL=https://api.x.ai/v1
 
 # Optional (defaults shown)
 HOST=0.0.0.0
-PORT=3001
+PORT=3000
 RUST_LOG=info,rustassistant=debug
 DATABASE_PATH=/app/data/rustassistant.db
 CACHE_DB_PATH=/app/data/rustassistant_cache.db
@@ -258,7 +258,7 @@ REDIS_URL=redis://redis:6379
 
 **Web UI:**
 - Image: Built from `docker/Dockerfile.web`
-- Port: 3001
+- Port: 3000
 - Volumes: `./data`, `./templates`, `./config`
 - Depends: Redis (with health check)
 
@@ -325,7 +325,7 @@ rustassistant/
 ### Local Development
 - ✅ Docker Compose configured
 - ✅ Redis caching enabled
-- ✅ Web UI on port 3001
+- ✅ Web UI on port 3000
 - ✅ CLI available on-demand
 - ✅ Health checks working
 - ✅ Auto-restart configured
@@ -354,7 +354,7 @@ rustassistant/
 ### Immediate (Now)
 1. **Create `.env` file** with your API key
 2. **Run `docker compose up -d`**
-3. **Open http://localhost:3001**
+3. **Open http://localhost:3000**
 4. **Verify services are healthy**
 
 ### First Day
@@ -393,13 +393,13 @@ docker compose logs
 docker compose ps
 ```
 
-### Port 3001 in use?
+### Port 3000 in use?
 ```bash
 # Check what's using it
-sudo lsof -i :3001
+sudo lsof -i :3000
 
 # Or change port
-# Edit docker-compose.yml: "8080:3001"
+# Edit docker-compose.yml: "8080:3000"
 ```
 
 ### Redis not connecting?
@@ -489,7 +489,7 @@ docker compose up -d
 ```
 
 **Status**: ✅ **READY FOR PRODUCTION**  
-**Next**: Run `docker compose up -d` and open http://localhost:3001  
+**Next**: Run `docker compose up -d` and open http://localhost:3000  
 **Support**: See troubleshooting section above  
 
 ---

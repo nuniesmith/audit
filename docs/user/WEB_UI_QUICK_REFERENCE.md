@@ -6,18 +6,18 @@
 docker compose up -d
 
 # Open Web UI
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 ## 📍 URLs
 | Service | URL |
 |---------|-----|
-| Web UI | http://localhost:3001 |
-| Dashboard | http://localhost:3001/dashboard |
-| Repositories | http://localhost:3001/repos |
-| Queue | http://localhost:3001/queue |
+| Web UI | http://localhost:3000 |
+| Dashboard | http://localhost:3000/dashboard |
+| Repositories | http://localhost:3000/repos |
+| Queue | http://localhost:3000/queue |
 | API | http://localhost:3000 |
-| Health Check | http://localhost:3001/health |
+| Health Check | http://localhost:3000/health |
 
 ## 🔧 Common Tasks
 
@@ -78,7 +78,7 @@ AUTO_SCAN_MAX_CONCURRENT=2
 
 # Server
 HOST=0.0.0.0
-PORT=3001
+PORT=3000
 DATABASE_URL=sqlite:/app/data/rustassistant.db
 ```
 
@@ -157,7 +157,7 @@ sqlite3 data/rustassistant.db \
 ```bash
 # Change port in docker-compose.yml
 ports:
-  - "3002:3001"  # Changed from 3001
+  - "3002:3000"  # Changed from 3000
 
 # Or in .env
 PORT=3002

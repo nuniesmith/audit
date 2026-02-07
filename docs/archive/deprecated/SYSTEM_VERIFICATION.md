@@ -371,7 +371,7 @@ git commit -m "Add system verification tests and analysis reports
 5. **View in Web UI** ✅
    ```bash
    webui-server
-   # Open http://127.0.0.1:3001
+   # Open http://127.0.0.1:3000
    ```
 
 6. **Track costs** ✅

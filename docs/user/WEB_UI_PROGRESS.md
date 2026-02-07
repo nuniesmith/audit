@@ -38,7 +38,7 @@ templates/
 
 ### 4. Web Server Binary Created
 - `src/bin/webui_server.rs` - Standalone web server (70 lines)
-- Configured to run on port 3001
+- Configured to run on port 3000
 - Static file serving
 - Tracing/logging setup
 
@@ -146,7 +146,7 @@ cargo build --release --bin webui-server
 # Run the server
 ./target/release/webui-server
 
-# Open browser to http://localhost:3001
+# Open browser to http://localhost:3000
 ```
 
 Test all pages:
@@ -225,7 +225,7 @@ POST   /api/cache/clear    - Clear cache
 1. Add the missing methods to `src/db.rs`
 2. Build: `cargo build --release --bin webui-server`
 3. Run: `./target/release/webui-server`
-4. Open: `http://localhost:3001`
+4. Open: `http://localhost:3000`
 
 ### Option 2: Simplify Web UI (Faster to Working State)
 
@@ -355,7 +355,7 @@ Web UI MVP is complete when:
 - [ ] Repos page shows tracked repositories
 - [ ] Costs page shows LLM spending
 - [ ] Can run from single command: `webui-server`
-- [ ] Accessible at `http://localhost:3001`
+- [ ] Accessible at `http://localhost:3000`
 
 **Then document:**
 - [ ] Update README with web UI instructions

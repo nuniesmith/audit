@@ -843,7 +843,7 @@ pub async fn update_repo_settings_handler(
 ) -> impl IntoResponse {
     // Validate scan interval
     if let Some(interval) = settings.scan_interval_minutes {
-        if interval < 5 || interval > 1440 {
+        if !(5..=1440).contains(&interval) {
             return (
                 StatusCode::BAD_REQUEST,
                 [("HX-Trigger", r#"{"showToast": {"message": "Scan interval must be between 5 and 1440 minutes", "type": "error"}}"#)],
@@ -1039,12 +1039,11 @@ async fn get_dashboard_stats(db: &Database) -> anyhow::Result<DashboardStats> {
     let total_repos = db.count_repositories().await.unwrap_or(0);
 
     // Count auto-scan enabled repos
-    let auto_scan_enabled = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM repositories WHERE auto_scan_enabled = 1",
-    )
-    .fetch_one(&db.pool)
-    .await
-    .unwrap_or(0);
+    let auto_scan_enabled =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM repositories WHERE auto_scan = 1")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap_or(0);
 
     // Get queue stats
     let queue_pending = sqlx::query_scalar::<_, i64>(
@@ -1084,13 +1083,11 @@ async fn get_dashboard_stats(db: &Database) -> anyhow::Result<DashboardStats> {
 }
 
 async fn toggle_repo_autoscan(db: &Database, id: &str) -> anyhow::Result<()> {
-    sqlx::query(
-        "UPDATE repositories SET auto_scan_enabled = NOT auto_scan_enabled, updated_at = ? WHERE id = ?",
-    )
-    .bind(chrono::Utc::now().timestamp())
-    .bind(id)
-    .execute(&db.pool)
-    .await?;
+    sqlx::query("UPDATE repositories SET auto_scan = NOT auto_scan, updated_at = ? WHERE id = ?")
+        .bind(chrono::Utc::now().timestamp())
+        .bind(id)
+        .execute(&db.pool)
+        .await?;
 
     Ok(())
 }
@@ -1105,12 +1102,12 @@ async fn update_repo_settings(
     let mut bindings: Vec<i64> = vec![chrono::Utc::now().timestamp()];
 
     if let Some(interval) = settings.scan_interval_minutes {
-        query_parts.push("scan_interval_minutes = ?".to_string());
+        query_parts.push("scan_interval_mins = ?".to_string());
         bindings.push(interval);
     }
 
     if let Some(enabled) = settings.auto_scan_enabled {
-        query_parts.push("auto_scan_enabled = ?".to_string());
+        query_parts.push("auto_scan = ?".to_string());
         bindings.push(if enabled { 1 } else { 0 });
     }
 
@@ -1226,7 +1223,7 @@ pub async fn force_scan_handler(
     State(state): State<Arc<WebAppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match sqlx::query("UPDATE repositories SET last_scan_check = NULL WHERE id = ?")
+    match sqlx::query("UPDATE repositories SET last_scanned_at = NULL WHERE id = ?")
         .bind(&id)
         .execute(&state.db.pool)
         .await
@@ -1689,7 +1686,6 @@ pub fn create_router(state: WebAppState) -> Router {
         .route("/repos/add", get(add_repo_form_handler))
         .route("/repos/add", post(add_repo_handler))
         .route("/repos/:id/toggle-scan", get(toggle_scan_handler))
-        .route("/repos/:id/settings", post(update_repo_settings_handler))
         .route("/repos/:id/progress", get(get_repo_progress_handler))
         .route("/repos/:id/delete", get(delete_repo_handler))
         .route("/notes", get(notes_handler))

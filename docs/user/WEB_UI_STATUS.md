@@ -153,12 +153,12 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### Accessing the Web UI
-- **Local**: http://localhost:3001
-- **Docker**: http://localhost:3001 (web container)
-- **Health Check**: http://localhost:3001/health
+- **Local**: http://localhost:3000
+- **Docker**: http://localhost:3000 (web container)
+- **Health Check**: http://localhost:3000/health
 
 ### Using Repository Management
-1. Navigate to http://localhost:3001/repos
+1. Navigate to http://localhost:3000/repos
 2. Click "Add Repository"
 3. Enter path (e.g., `/home/jordan/github/fks`)
 4. Enter name (e.g., `fks`)
@@ -168,7 +168,7 @@ docker compose -f docker-compose.prod.yml up -d
 8. Set custom interval via "Configure" (coming soon)
 
 ### Using Queue Management
-1. Navigate to http://localhost:3001/queue
+1. Navigate to http://localhost:3000/queue
 2. View all queued tasks and issues
 3. Click "📋 Copy for IDE" to copy content
 4. Paste into your IDE's AI agent
@@ -232,7 +232,7 @@ CREATE TABLE queue (
 ```bash
 # Server
 HOST=0.0.0.0
-PORT=3001
+PORT=3000
 DATABASE_URL=sqlite:/app/data/rustassistant.db
 
 # Auto-Scanner

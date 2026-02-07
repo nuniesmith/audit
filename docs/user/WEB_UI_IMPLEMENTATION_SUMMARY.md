@@ -198,9 +198,9 @@ docker compose up -d
 ```
 
 ### Access Points
-- **Web UI**: http://localhost:3001
+- **Web UI**: http://localhost:3000
 - **API**: http://localhost:3000
-- **Health**: http://localhost:3001/health
+- **Health**: http://localhost:3000/health
 
 ---
 
@@ -208,7 +208,7 @@ docker compose up -d
 
 ### Workflow 1: Setup Repository Auto-Scanning
 ```
-1. Open Web UI → http://localhost:3001
+1. Open Web UI → http://localhost:3000
 2. Navigate to "Repositories"
 3. Click "+ Add Repository"
 4. Enter path: /home/jordan/github/fks
@@ -498,10 +498,10 @@ docker compose up -d
 
 # 5. Verify health
 docker compose ps
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 
 # 6. Test Web UI
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 ---
@@ -536,7 +536,7 @@ open http://localhost:3001
 - Check `WEB_UI_QUICKSTART.md` for setup issues
 - Review `WEB_UI_STATUS.md` for feature documentation
 - Inspect logs: `docker compose logs web`
-- Check health: `curl http://localhost:3001/health`
+- Check health: `curl http://localhost:3000/health`
 
 ### Common Issues
 - Port already in use → Change PORT env var

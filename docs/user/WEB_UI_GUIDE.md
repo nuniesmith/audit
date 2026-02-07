@@ -51,14 +51,14 @@ cargo build --release --bin webui-server
 ./target/release/webui-server
 ```
 
-The server will start on `http://127.0.0.1:3001` by default.
+The server will start on `http://127.0.0.1:3000` by default.
 
 ### Configuration
 
 Set environment variables to customize the server:
 
 ```bash
-# Custom port (default: 3001)
+# Custom port (default: 3000)
 export PORT=8080
 
 # Custom database path (default: data/rustassistant.db)
@@ -71,11 +71,11 @@ export DATABASE_PATH=/path/to/your/database.db
 ### Accessing the Web UI
 
 Once started, open your browser to:
-- **Dashboard**: http://127.0.0.1:3001/
-- **Notes**: http://127.0.0.1:3001/notes
-- **Repositories**: http://127.0.0.1:3001/repos
-- **Costs**: http://127.0.0.1:3001/costs
-- **Analyze**: http://127.0.0.1:3001/analyze
+- **Dashboard**: http://127.0.0.1:3000/
+- **Notes**: http://127.0.0.1:3000/notes
+- **Repositories**: http://127.0.0.1:3000/repos
+- **Costs**: http://127.0.0.1:3000/costs
+- **Analyze**: http://127.0.0.1:3000/analyze
 
 ## Architecture
 
@@ -332,7 +332,7 @@ Askama templates are compiled at build time for zero-cost rendering.
 ### Server won't start
 ```bash
 # Check if port is in use
-lsof -i :3001
+lsof -i :3000
 
 # Try a different port
 PORT=8080 ./target/release/webui-server
@@ -402,7 +402,7 @@ Type=simple
 User=youruser
 WorkingDirectory=/path/to/rustassistant
 Environment=DATABASE_PATH=/path/to/data/rustassistant.db
-Environment=PORT=3001
+Environment=PORT=3000
 ExecStart=/path/to/rustassistant/target/release/webui-server
 Restart=always
 
@@ -429,7 +429,7 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 COPY --from=builder /app/target/release/webui-server /usr/local/bin/
 COPY --from=builder /app/templates /app/templates
 WORKDIR /app
-EXPOSE 3001
+EXPOSE 3000
 CMD ["webui-server"]
 ```
 

@@ -13,7 +13,7 @@ use super::types::*;
 use crate::embeddings::EmbeddingGenerator;
 use crate::indexing::IndexingConfig;
 use crate::search::{SearchConfig, SearchFilters, SearchQuery, SemanticSearcher};
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 
 // ============================================================================
 // Application State
@@ -278,9 +278,9 @@ pub async fn get_document(
                     .indexed_at
                     .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
                 created_at: chrono::DateTime::from_timestamp(row.created_at, 0)
-                    .unwrap_or_else(|| chrono::Utc::now()),
+                    .unwrap_or_else(chrono::Utc::now),
                 updated_at: chrono::DateTime::from_timestamp(row.updated_at, 0)
-                    .unwrap_or_else(|| chrono::Utc::now()),
+                    .unwrap_or_else(chrono::Utc::now),
                 chunk_count: row.chunk_count,
             };
 
@@ -308,17 +308,17 @@ pub async fn list_documents(
     Query(params): Query<ListDocumentsQuery>,
 ) -> impl IntoResponse {
     let limit = params.pagination.limit.min(100);
-    let offset = (params.pagination.page.saturating_sub(1)) * limit;
+    let _offset = (params.pagination.page.saturating_sub(1)) * limit;
 
     // Build WHERE clause
     let mut where_clauses = Vec::new();
-    let mut bind_values: Vec<Box<dyn sqlx::Encode<'_, sqlx::Sqlite> + Send>> = Vec::new();
+    let _bind_values: Vec<Box<dyn sqlx::Encode<'_, sqlx::Sqlite> + Send>> = Vec::new();
 
-    if let Some(doc_type) = params.doc_type {
+    if let Some(_doc_type) = params.doc_type {
         where_clauses.push("doc_type = ?");
     }
 
-    if let Some(repo_id) = params.repo_id {
+    if let Some(_repo_id) = params.repo_id {
         where_clauses.push("repo_id = ?");
     }
 

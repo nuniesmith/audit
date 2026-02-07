@@ -127,7 +127,7 @@ async fn main() {
     let app = Router::new()
         .route("/webhook/github", post(webhook_endpoint));
     
-    axum::Server::bind(&"0.0.0.0:3001".parse().unwrap())
+    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();

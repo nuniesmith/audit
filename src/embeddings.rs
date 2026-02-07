@@ -143,7 +143,7 @@ impl Embedding {
 
     /// Deserialize an embedding vector from bytes
     pub fn from_bytes(bytes: &[u8], model: String, dimension: usize) -> Result<Self> {
-        if bytes.len() % 4 != 0 {
+        if !bytes.len().is_multiple_of(4) {
             anyhow::bail!("Invalid embedding bytes: length must be multiple of 4");
         }
 
@@ -347,7 +347,7 @@ impl EmbeddingStats {
         self.total_embeddings += batch_size;
 
         // Update rolling average
-        let total_batches = (self.total_embeddings as f64 / self.avg_batch_size.max(1.0)) as f64;
+        let total_batches = self.total_embeddings as f64 / self.avg_batch_size.max(1.0);
         self.avg_batch_size =
             ((self.avg_batch_size * (total_batches - 1.0)) + batch_size as f64) / total_batches;
     }

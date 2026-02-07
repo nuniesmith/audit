@@ -3,7 +3,7 @@
 # ============================================================================
 # Build Arguments:
 #   SERVICE_TYPE: "api" or "web" (default: "web")
-#   PORT: Service port (default: 3001 for web, 3000 for api)
+#   PORT: Service port (default: 3000 for web, 3000 for api)
 #
 # Examples:
 #   docker build -f docker/Dockerfile --build-arg SERVICE_TYPE=api -t rustassistant:api .
@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     ca-certificates \
     git \
+    g++ \
+    libstdc++-12-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create build directory
@@ -62,7 +64,7 @@ FROM debian:bookworm-slim
 
 # Build arguments for service configuration
 ARG SERVICE_TYPE=web
-ARG SERVICE_PORT=3001
+ARG SERVICE_PORT=3000
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -114,7 +116,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD if [ "$SERVICE_TYPE" = "api" ]; then \
     curl -f http://localhost:${PORT:-3000}/health || exit 1; \
     else \
-    wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3001}/health || exit 1; \
+    wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1; \
     fi
 
 # Run the server

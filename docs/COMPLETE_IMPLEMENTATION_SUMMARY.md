@@ -23,7 +23,7 @@ RustAssistant now has a **fully functional Web UI** with **simplified two-contai
 **Benefits**:
 - 500MB RAM saved
 - 1 CPU core saved
-- Single port (3001) for both Web UI and API
+- Single port (3000) for both Web UI and API
 - Simpler configuration and monitoring
 - Faster deployments
 
@@ -92,7 +92,7 @@ Single rustassistant-server binary serves:
 ### Container Structure
 ```
 ┌──────────────────────────────────────┐
-│ rustassistant (Port 3001)            │
+│ rustassistant (Port 3000)            │
 │ ─────────────────────────────────    │
 │ • Web UI (server-side rendered)     │
 │ • REST API (JSON endpoints)         │
@@ -129,7 +129,7 @@ Single rustassistant-server binary serves:
 3. **src/bin/server.rs** - Integrated Web UI
    - Merged Web UI router with API router
    - Shared database pool
-   - Single server on port 3001
+   - Single server on port 3000
 
 4. **src/db/core.rs** - Made pool public
    - Changed `pool: SqlitePool` to `pub pool: SqlitePool`
@@ -209,21 +209,21 @@ cd /home/jordan/github/rustassistant
 docker compose up -d
 
 # Access Web UI
-open http://localhost:3001
+open http://localhost:3000
 
 # Check status
 docker compose ps
 ```
 
 ### What You Get
-- **Web UI**: http://localhost:3001
-- **API**: http://localhost:3001/api/*
-- **Health**: http://localhost:3001/health
+- **Web UI**: http://localhost:3000
+- **API**: http://localhost:3000/api/*
+- **Health**: http://localhost:3000/health
 
 ### Environment Variables
 ```bash
 # Server
-PORT=3001
+PORT=3000
 HOST=0.0.0.0
 RUST_LOG=info,rustassistant=debug
 
@@ -256,7 +256,7 @@ Developers using AI coding assistants (Cursor, GitHub Copilot, etc.) need to:
    ↓
 2. Issues added to queue automatically
    ↓
-3. Navigate to http://localhost:3001/queue
+3. Navigate to http://localhost:3000/queue
    ↓
 4. Click "📋 Copy for IDE" button
    ↓
@@ -270,7 +270,7 @@ Developers using AI coding assistants (Cursor, GitHub Copilot, etc.) need to:
 ### Example Usage
 ```bash
 # 1. Add your repository
-# Go to http://localhost:3001/repos/add
+# Go to http://localhost:3000/repos/add
 # Enter: /home/jordan/github/fks
 
 # 2. Enable auto-scan
@@ -280,7 +280,7 @@ Developers using AI coding assistants (Cursor, GitHub Copilot, etc.) need to:
 # Scanner runs every 60 minutes by default
 
 # 4. Check queue
-# Go to http://localhost:3001/queue
+# Go to http://localhost:3000/queue
 
 # 5. Copy issue to IDE
 # Click "📋 Copy for IDE" on any issue
@@ -392,7 +392,7 @@ rustassistant-web:   1GB RAM,   2 CPU
 rustassistant-redis: 256MB RAM, 0.5 CPU
 ────────────────────────────────────────
 Total:               1.75GB RAM, 3.5 CPU
-Ports:               3000, 3001, 6379
+Ports:               3000, 3000, 6379
 Containers:          3
 ```
 
@@ -402,7 +402,7 @@ rustassistant:       1GB RAM,   2 CPU
 rustassistant-redis: 256MB RAM, 0.5 CPU
 ────────────────────────────────────────
 Total:               1.25GB RAM, 2.5 CPU
-Ports:               3001, 6379
+Ports:               3000, 6379
 Containers:          2
 
 Savings:             500MB RAM, 1 CPU core, 1 container
@@ -512,11 +512,11 @@ docker compose up -d
 
 # 3. Verify
 docker compose ps
-curl http://localhost:3001/health
-open http://localhost:3001
+curl http://localhost:3000/health
+open http://localhost:3000
 
 # 4. Update scripts (if any)
-# Change: localhost:3000 → localhost:3001
+# Change: localhost:3000 → localhost:3000
 ```
 
 **That's it!** The new docker-compose.yml is already committed and ready to use.
@@ -527,7 +527,7 @@ open http://localhost:3001
 
 ### Dashboard
 ```
-Navigate to http://localhost:3001
+Navigate to http://localhost:3000
 
 See at a glance:
 • Total repositories: 3
@@ -545,7 +545,7 @@ Quick actions:
 
 ### Repository Management
 ```
-Navigate to http://localhost:3001/repos
+Navigate to http://localhost:3000/repos
 
 View all repositories with:
 • Name and path
@@ -563,7 +563,7 @@ Add new repository:
 
 ### Queue Management
 ```
-Navigate to http://localhost:3001/queue
+Navigate to http://localhost:3000/queue
 
 View all issues:
 • Priority badges (High, Medium, Low)
@@ -649,7 +649,7 @@ A **production-ready Web UI** for RustAssistant with complete repository managem
 ### Ready to Use
 ```bash
 docker compose up -d
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 **Status**: ✅ **COMPLETE AND PRODUCTION READY**

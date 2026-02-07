@@ -400,22 +400,14 @@ impl QueryRouter {
 
     fn is_github_issues(&self, _query: &str, words: &[&str]) -> bool {
         let issue_keywords = ["issue", "issues", "bug", "bugs"];
-        let github_keywords = ["github", "gh"];
 
-        let has_issue = words.iter().any(|w| issue_keywords.contains(w));
-        let has_github = words.iter().any(|w| github_keywords.contains(w));
-
-        has_issue || (has_github && has_issue)
+        words.iter().any(|w| issue_keywords.contains(w))
     }
 
     fn is_github_prs(&self, _query: &str, words: &[&str]) -> bool {
         let pr_keywords = ["pr", "prs", "pull", "merge"];
-        let github_keywords = ["github", "gh", "request", "requests"];
 
-        let has_pr = words.iter().any(|w| pr_keywords.contains(w));
-        let has_github = words.iter().any(|w| github_keywords.contains(w));
-
-        has_pr || (has_github && has_pr)
+        words.iter().any(|w| pr_keywords.contains(w))
     }
 
     fn is_github_repos(&self, query: &str, words: &[&str]) -> bool {

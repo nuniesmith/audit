@@ -286,7 +286,7 @@ Check if port 3000 is already in use:
 lsof -i :3000
 
 # Use a different port
-PORT=3001 cargo run --bin rustassistant-server
+PORT=3000 cargo run --bin rustassistant-server
 ```
 
 ---

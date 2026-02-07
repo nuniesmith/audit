@@ -202,13 +202,13 @@ cd rustassistant
 ```
 
 ### Test Dark Mode
-1. Open http://127.0.0.1:3001/
+1. Open http://127.0.0.1:3000/
 2. Notice dark background (#0f172a)
 3. Notice bright text (#f1f5f9)
 4. Check all pages for consistent theme
 
 ### Test 404 Fixes
-1. Go to http://127.0.0.1:3001/notes
+1. Go to http://127.0.0.1:3000/notes
 2. Click "New Note" button
 3. Should see "Coming Soon" page (not 404)
 4. Click "Go Back" to return to notes

@@ -110,7 +110,7 @@ if [ "$RESTART" = "y" ] || [ "$RESTART" = "Y" ]; then
     echo -e "${GREEN}✅ Done! XAI_API_KEY is now configured.${NC}"
     echo ""
     echo "Test the API:"
-    echo "  curl http://localhost:3001/health"
+    echo "  curl http://localhost:3000/health"
 else
     echo ""
     echo -e "${YELLOW}!${NC} Containers not restarted."

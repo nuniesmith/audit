@@ -394,7 +394,7 @@ impl GitHubSearcher {
                     forks: row.get(7),
                     open_issues: row.get(8),
                     updated_at: DateTime::from_timestamp(updated_timestamp, 0)
-                        .unwrap_or_else(|| Utc::now()),
+                        .unwrap_or_else(Utc::now),
                 })
             })
             .collect();
@@ -474,9 +474,9 @@ impl GitHubSearcher {
                     labels,
                     html_url: row.get(8),
                     created_at: DateTime::from_timestamp(created_timestamp, 0)
-                        .unwrap_or_else(|| Utc::now()),
+                        .unwrap_or_else(Utc::now),
                     updated_at: DateTime::from_timestamp(updated_timestamp, 0)
-                        .unwrap_or_else(|| Utc::now()),
+                        .unwrap_or_else(Utc::now),
                 })
             })
             .collect();
@@ -559,9 +559,9 @@ impl GitHubSearcher {
                     labels,
                     html_url: row.get(10),
                     created_at: DateTime::from_timestamp(created_timestamp, 0)
-                        .unwrap_or_else(|| Utc::now()),
+                        .unwrap_or_else(Utc::now),
                     updated_at: DateTime::from_timestamp(updated_timestamp, 0)
-                        .unwrap_or_else(|| Utc::now()),
+                        .unwrap_or_else(Utc::now),
                 })
             })
             .collect();
@@ -631,7 +631,7 @@ impl GitHubSearcher {
                     deletions: row.get(5),
                     html_url: row.get(6),
                     author_date: DateTime::from_timestamp(author_timestamp, 0)
-                        .unwrap_or_else(|| Utc::now()),
+                        .unwrap_or_else(Utc::now),
                 })
             })
             .collect();

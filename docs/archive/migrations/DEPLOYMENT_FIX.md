@@ -156,7 +156,7 @@ docker compose -f docker-compose.prod.yml logs -f
 docker ps
 
 # Check health
-curl http://localhost:3001/
+curl http://localhost:3000/
 
 # Check logs
 docker compose -f docker-compose.prod.yml logs --tail=50

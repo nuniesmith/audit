@@ -42,7 +42,7 @@ cargo run
 ### 3. Verify Server Health
 
 ```bash
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 ```
 
 **Status:** ☐ Health endpoint responds
@@ -52,7 +52,7 @@ curl http://localhost:3001/health
 ## Test 1: Progress Bar Renders on Page Load
 
 ### Steps
-1. Navigate to http://localhost:3001/repos
+1. Navigate to http://localhost:3000/repos
 2. Observe the repository cards
 
 ### Expected Results

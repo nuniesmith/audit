@@ -228,7 +228,7 @@ git push origin main
    ```bash
    ./scripts/verify_phase2.sh
    cargo test
-   curl http://localhost:3001/health
+   curl http://localhost:3000/health
    ```
 
 3. **Check deployment:**

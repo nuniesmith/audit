@@ -46,14 +46,14 @@ docker compose logs -f rustassistant-web
 
 ### 3. Access the Web UI
 
-Open your browser to: **http://localhost:3001**
+Open your browser to: **http://localhost:3000**
 
 ---
 
 ## 📦 Services Overview
 
 ### RustAssistant Web UI (`rustassistant-web`)
-- **Port**: 3001
+- **Port**: 3000
 - **Purpose**: Main web interface for managing notes, repos, costs, and analysis
 - **Database**: SQLite (persistent in `./data` volume)
 - **Cache**: Redis for LLM response caching
@@ -78,7 +78,7 @@ Open your browser to: **http://localhost:3001**
 **Web UI:**
 ```env
 HOST=0.0.0.0                          # Bind address
-PORT=3001                             # Web UI port
+PORT=3000                             # Web UI port
 RUST_LOG=info,rustassistant=debug    # Logging level
 XAI_API_KEY=xai-xxx                  # Grok API key (required)
 DATABASE_PATH=/app/data/rustassistant.db
@@ -336,7 +336,7 @@ ssh ${PI_USER}@${PI_HOST} << 'EOF'
 EOF
 
 echo "✅ Deployment complete!"
-echo "🌐 Access at: http://${PI_HOST}:3001"
+echo "🌐 Access at: http://${PI_HOST}:3000"
 ```
 
 ---
@@ -350,8 +350,8 @@ echo "🌐 Access at: http://${PI_HOST}:3001"
 docker compose logs rustassistant-web
 
 # Common issues:
-# 1. Port 3001 already in use
-sudo lsof -i :3001
+# 1. Port 3000 already in use
+sudo lsof -i :3000
 # Change port in docker-compose.yml or .env
 
 # 2. Missing API key
@@ -416,7 +416,7 @@ cargo build --release -j 1
 docker compose ps
 
 # Test web UI
-curl http://localhost:3001/
+curl http://localhost:3000/
 
 # Check Redis
 docker exec rustassistant-redis redis-cli PING
@@ -470,7 +470,7 @@ server {
     server_name rustassistant.example.com;
 
     location / {
-        proxy_pass http://localhost:3001;
+        proxy_pass http://localhost:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -516,4 +516,4 @@ server {
 ---
 
 **Status**: Ready for local and Raspberry Pi 4 deployment!  
-**Next**: Run `docker compose up -d` and access http://localhost:3001 🚀
+**Next**: Run `docker compose up -d` and access http://localhost:3000 🚀

@@ -109,10 +109,7 @@ pub enum WebhookEvent {
     },
 
     /// Document indexing failed
-    DocumentIndexingFailed {
-        document_id: i64,
-        error: String,
-    },
+    DocumentIndexingFailed { document_id: i64, error: String },
 
     /// Search was performed
     SearchPerformed {
@@ -138,21 +135,13 @@ pub enum WebhookEvent {
     },
 
     /// Indexing job failed
-    JobFailed {
-        job_id: String,
-        error: String,
-    },
+    JobFailed { job_id: String, error: String },
 
     /// Document was deleted
-    DocumentDeleted {
-        document_id: i64,
-    },
+    DocumentDeleted { document_id: i64 },
 
     /// System health check failed
-    HealthCheckFailed {
-        service: String,
-        error: String,
-    },
+    HealthCheckFailed { service: String, error: String },
 }
 
 impl WebhookEvent {
@@ -257,8 +246,8 @@ impl WebhookPayload {
 
         type HmacSha256 = Hmac<Sha256>;
 
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-            .expect("HMAC can take key of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(payload.as_bytes());
         hex::encode(mac.finalize().into_bytes())
     }
@@ -389,10 +378,7 @@ impl WebhookManager {
 
         // Deliver to each endpoint
         for endpoint in matching {
-            let payload = WebhookPayload::new(
-                event.clone(),
-                endpoint.secret.as_deref(),
-            );
+            let payload = WebhookPayload::new(event.clone(), endpoint.secret.as_deref());
 
             self.deliver(endpoint, payload).await;
         }
@@ -426,7 +412,9 @@ impl WebhookManager {
         // Spawn async delivery task
         let manager = self.clone_for_delivery();
         tokio::spawn(async move {
-            manager.execute_delivery(&endpoint, &payload, &delivery_id).await;
+            manager
+                .execute_delivery(&endpoint, &payload, &delivery_id)
+                .await;
         });
     }
 
@@ -444,7 +432,8 @@ impl WebhookManager {
             attempt += 1;
 
             // Update delivery status
-            self.update_delivery_status(delivery_id, DeliveryStatus::InProgress, attempt).await;
+            self.update_delivery_status(delivery_id, DeliveryStatus::InProgress, attempt)
+                .await;
 
             // Send HTTP request
             match self.send_webhook(&endpoint.url, payload).await {
@@ -452,9 +441,10 @@ impl WebhookManager {
                     let status_code = response.status().as_u16();
                     let body = response.text().await.unwrap_or_default();
 
-                    if status_code >= 200 && status_code < 300 {
+                    if (200..300).contains(&status_code) {
                         // Success
-                        self.mark_delivery_success(delivery_id, status_code, body).await;
+                        self.mark_delivery_success(delivery_id, status_code, body)
+                            .await;
                         self.update_endpoint_stats(&endpoint.id, true).await;
                         break;
                     } else {
@@ -466,7 +456,12 @@ impl WebhookManager {
                             self.update_endpoint_stats(&endpoint.id, false).await;
                             break;
                         } else {
-                            self.update_delivery_status(delivery_id, DeliveryStatus::Retrying, attempt).await;
+                            self.update_delivery_status(
+                                delivery_id,
+                                DeliveryStatus::Retrying,
+                                attempt,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -479,7 +474,8 @@ impl WebhookManager {
                         self.update_endpoint_stats(&endpoint.id, false).await;
                         break;
                     } else {
-                        self.update_delivery_status(delivery_id, DeliveryStatus::Retrying, attempt).await;
+                        self.update_delivery_status(delivery_id, DeliveryStatus::Retrying, attempt)
+                            .await;
                     }
                 }
             }
@@ -491,12 +487,9 @@ impl WebhookManager {
     }
 
     /// Send webhook HTTP request
-    async fn send_webhook(
-        &self,
-        url: &str,
-        payload: &WebhookPayload,
-    ) -> Result<reqwest::Response> {
-        let mut request = self.client
+    async fn send_webhook(&self, url: &str, payload: &WebhookPayload) -> Result<reqwest::Response> {
+        let mut request = self
+            .client
             .post(url)
             .header("Content-Type", "application/json")
             .header("User-Agent", "RustAssistant-Webhook/1.0");
@@ -648,11 +641,7 @@ mod tests {
         let manager = WebhookManager::new(config);
 
         let id = manager
-            .register(
-                "https://example.com/webhook".to_string(),
-                vec![],
-                None,
-            )
+            .register("https://example.com/webhook".to_string(), vec![], None)
             .await
             .unwrap();
 

@@ -118,22 +118,12 @@ pub async fn create_default_api_router(db_pool: SqlitePool) -> Router {
 // ============================================================================
 
 /// API configuration builder
+#[derive(Default)]
 pub struct ApiConfig {
     pub auth: AuthConfig,
     pub rate_limit: RateLimitConfig,
     pub indexing: IndexingConfig,
     pub job_queue: JobQueueConfig,
-}
-
-impl Default for ApiConfig {
-    fn default() -> Self {
-        Self {
-            auth: AuthConfig::default(),
-            rate_limit: RateLimitConfig::default(),
-            indexing: IndexingConfig::default(),
-            job_queue: JobQueueConfig::default(),
-        }
-    }
 }
 
 impl ApiConfig {

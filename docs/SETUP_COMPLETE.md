@@ -84,7 +84,7 @@ docker compose ps
 bash scripts/dashboard.sh
 
 # Or open Web UI
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 ### Common Tasks
@@ -176,14 +176,14 @@ cd /home/jordan/github/rustscape && git add . && git commit -m "test scanner"
 docker compose restart rustassistant
 
 # Check the queue
-open http://localhost:3001/queue
+open http://localhost:3000/queue
 ```
 
 ### 2. Explore the Web UI
 
-- **Dashboard:** http://localhost:3001
-- **Repositories:** http://localhost:3001/repos
-- **Task Queue:** http://localhost:3001/queue
+- **Dashboard:** http://localhost:3000
+- **Repositories:** http://localhost:3000/repos
+- **Task Queue:** http://localhost:3000/queue
 
 Try:
 - Toggle scanning on/off for a repo
@@ -260,10 +260,10 @@ bash scripts/manage_repos.sh interactive
 
 ### Web UI Shortcuts
 
-- **Main Dashboard:** http://localhost:3001
-- **Repositories:** http://localhost:3001/repos
-- **Queue:** http://localhost:3001/queue
-- **Health Check:** http://localhost:3001/health
+- **Main Dashboard:** http://localhost:3000
+- **Repositories:** http://localhost:3000/repos
+- **Queue:** http://localhost:3000/queue
+- **Health Check:** http://localhost:3000/health
 
 ---
 
@@ -294,7 +294,7 @@ bash scripts/manage_repos.sh interactive
 
 Use the "Copy for IDE" feature:
 
-1. Open queue: http://localhost:3001/queue
+1. Open queue: http://localhost:3000/queue
 2. Click "Copy for IDE" on any task
 3. Paste into Cursor, Copilot, or other AI assistant
 4. Let AI suggest fixes!
@@ -366,7 +366,7 @@ For more information, see:
 ```
 ✅ Database:           ./data/rustassistant.db
 ✅ Repositories:       7 active, 7 scanning
-✅ Web UI:             http://localhost:3001
+✅ Web UI:             http://localhost:3000
 ✅ Auto-scanner:       Enabled
 ✅ Scripts:            Ready to use
 ✅ Documentation:      Complete
@@ -385,7 +385,7 @@ The auto-scanner will:
 - ✅ Make tasks available via Web UI and API
 
 **Start by:**
-1. Opening the Web UI: http://localhost:3001
+1. Opening the Web UI: http://localhost:3000
 2. Making a change in a monitored repo
 3. Watching the magic happen! ✨
 

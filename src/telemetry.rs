@@ -34,11 +34,7 @@
 //! ```
 
 use anyhow::{Context, Result};
-use opentelemetry::{
-    global,
-    trace::{TraceError, TracerProvider as _},
-    KeyValue,
-};
+use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     trace::{self, RandomIdGenerator, Sampler},

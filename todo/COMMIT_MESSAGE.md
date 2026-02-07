@@ -117,7 +117,7 @@ cargo build --release --bin rustassistant-server
 ./target/release/rustassistant-server
 
 # 3. Test
-open http://localhost:3001/repos
+open http://localhost:3000/repos
 ```
 
 ### Option 2: Docker Deployment
@@ -136,7 +136,7 @@ docker compose up -d
 
 # 3. Verify
 docker compose logs -f rustassistant
-open http://localhost:3001/repos
+open http://localhost:3000/repos
 ```
 
 ### Option 3: Raspberry Pi Production
@@ -171,7 +171,7 @@ docker compose up -d
 docker compose logs -f rustassistant
 
 # Verify (from your computer)
-open http://your-pi-address:3001/repos
+open http://your-pi-address:3000/repos
 ```
 
 ---
@@ -192,10 +192,10 @@ open http://your-pi-address:3001/repos
 
 ```bash
 # 1. Check server is running
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 
 # 2. Verify repositories page loads
-curl http://localhost:3001/repos
+curl http://localhost:3000/repos
 
 # 3. Check database schema
 sqlite3 data/rustassistant.db "PRAGMA table_info(repositories);" | grep scan_
@@ -231,7 +231,7 @@ docker compose build
 docker compose up -d
 
 # 4. Verify rollback
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 docker compose logs -f rustassistant
 ```
 

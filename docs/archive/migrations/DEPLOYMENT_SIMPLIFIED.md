@@ -16,7 +16,7 @@ RustAssistant has been streamlined from **3 containers** to **2 containers** wit
 └─────────────────────┘
          ▼
 ┌─────────────────────┐
-│ rustassistant-web   │  Port 3001 (Web UI only)
+│ rustassistant-web   │  Port 3000 (Web UI only)
 │ 1GB RAM, 2 CPU      │
 └─────────────────────┘
          ▼
@@ -31,7 +31,7 @@ Total: 3 containers, 1.75GB RAM, 3.5 CPU
 ### After (New Architecture)
 ```
 ┌──────────────────────────┐
-│ rustassistant            │  Port 3001 (Web UI + API)
+│ rustassistant            │  Port 3000 (Web UI + API)
 │ Unified Server           │
 │ 1GB RAM, 2 CPU           │
 │                          │
@@ -63,7 +63,7 @@ Total: 2 containers, 1.25GB RAM, 2.5 CPU
 docker compose up -d
 
 # Access
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 ### Production
@@ -72,7 +72,7 @@ open http://localhost:3001
 docker compose -f docker-compose.prod.yml up -d
 
 # Access
-open http://your-server:3001
+open http://your-server:3000
 ```
 
 ---
@@ -81,9 +81,9 @@ open http://your-server:3001
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| **Web UI** | http://localhost:3001 | Dashboard, repos, queue management |
-| **API** | http://localhost:3001/api/* | REST API endpoints |
-| **Health** | http://localhost:3001/health | Health check |
+| **Web UI** | http://localhost:3000 | Dashboard, repos, queue management |
+| **API** | http://localhost:3000/api/* | REST API endpoints |
+| **Health** | http://localhost:3000/health | Health check |
 | **Redis** | localhost:6379 | Cache (internal) |
 
 ---
@@ -130,7 +130,7 @@ open http://your-server:3001
 ```bash
 # Server
 HOST=0.0.0.0
-PORT=3001
+PORT=3000
 RUST_LOG=info,rustassistant=debug
 
 # Database
@@ -154,7 +154,7 @@ REDIS_URL=redis://redis:6379
 services:
   rustassistant:
     image: rustassistant:latest
-    ports: ["3001:3001"]
+    ports: ["3000:3000"]
     volumes:
       - ./data:/app/data
       - ./config:/app/config:ro
@@ -191,12 +191,12 @@ services:
 4. **Verify**
    ```bash
    docker compose ps
-   curl http://localhost:3001/health
-   open http://localhost:3001
+   curl http://localhost:3000/health
+   open http://localhost:3000
    ```
 
 5. **Update bookmarks/scripts**
-   - Change API base URL from `:3000` to `:3001`
+   - Change API base URL from `:3000` to `:3000`
    - Everything else stays the same
 
 **Migration time: < 5 minutes**  
@@ -293,7 +293,7 @@ docker compose exec rustassistant sqlite3 /app/data/rustassistant.db
 
 ### Health Check
 ```bash
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 ```
 
 Expected response:
@@ -334,8 +334,8 @@ INFO Auto-scanner checking enabled repositories
 
 ### Port Already in Use
 ```bash
-# Check what's using port 3001
-lsof -ti:3001
+# Check what's using port 3000
+lsof -ti:3000
 
 # Change port
 echo "PORT=3002" >> .env
@@ -356,7 +356,7 @@ docker compose logs rustassistant
 ```bash
 # Update base URL in scripts
 # OLD: http://localhost:3000/api/repos
-# NEW: http://localhost:3001/api/repos
+# NEW: http://localhost:3000/api/repos
 ```
 
 ---
@@ -439,20 +439,20 @@ docker compose restart
 docker compose build && docker compose up -d
 
 # Health
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 ```
 
 ### Getting Help
 - Check logs first: `docker compose logs rustassistant`
 - Verify environment: `docker compose config`
-- Test connectivity: `curl http://localhost:3001/health`
+- Test connectivity: `curl http://localhost:3000/health`
 - Review docs: See links above
 
 ---
 
 **Status**: ✅ Production Ready  
 **Containers**: 2 (rustassistant + redis)  
-**Port**: 3001 (Web UI + API)  
+**Port**: 3000 (Web UI + API)  
 **Resource Savings**: 500MB RAM, 1 CPU core  
 **Migration Time**: < 5 minutes  
 **Last Updated**: 2024-01-15

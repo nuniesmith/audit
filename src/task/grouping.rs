@@ -233,11 +233,7 @@ pub fn enhance_group_description(group: &mut TaskGroup, description: String) {
 
 /// Merge two groups if they're related
 pub fn merge_groups(group1: TaskGroup, group2: TaskGroup) -> TaskGroup {
-    let combined_tasks: Vec<Task> = group1
-        .tasks
-        .into_iter()
-        .chain(group2.tasks.into_iter())
-        .collect();
+    let combined_tasks: Vec<Task> = group1.tasks.into_iter().chain(group2.tasks).collect();
 
     let new_key = format!("{} + {}", group1.group_key, group2.group_key);
     TaskGroup::new(new_key, combined_tasks)

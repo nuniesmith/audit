@@ -212,13 +212,13 @@ Choose scan intervals based on how actively you're developing:
 docker compose restart rustassistant
 
 # 3. Open Web UI to verify
-open http://localhost:3001/repos
+open http://localhost:3000/repos
 
 # 4. Make a test change in a monitored repo
 echo "# Test" >> /home/jordan/github/rustscape/README.md
 
 # 5. Wait for scan interval, then check queue
-open http://localhost:3001/queue
+open http://localhost:3000/queue
 ```
 
 ### Daily Workflow
@@ -287,7 +287,7 @@ python3 scripts/repo_manager.py cleanup
 
 All these scripts modify the same database as the Web UI. Changes are reflected immediately:
 
-1. **Add/modify repos via scripts** → See changes at `http://localhost:3001/repos`
+1. **Add/modify repos via scripts** → See changes at `http://localhost:3000/repos`
 2. **Enable scanning via scripts** → Auto-scanner picks up changes immediately
 3. **View queue via scripts or UI** → Both show the same data
 
@@ -408,15 +408,15 @@ These scripts interact directly with the SQLite database. For API-based interact
 
 ```bash
 # Add repository via API
-curl -X POST http://localhost:3001/api/repos \
+curl -X POST http://localhost:3000/api/repos \
   -H "Content-Type: application/json" \
   -d '{"path":"/home/jordan/github/myrepo","name":"myrepo"}'
 
 # List repositories via API
-curl http://localhost:3001/api/repos
+curl http://localhost:3000/api/repos
 
 # Get queue via API
-curl http://localhost:3001/api/queue
+curl http://localhost:3000/api/queue
 ```
 
 ---
@@ -462,8 +462,8 @@ chmod +x scripts/repo_manager.py
 
 After setting up your repositories:
 
-1. ✅ Visit the Web UI at http://localhost:3001
-2. ✅ Check the queue at http://localhost:3001/queue
+1. ✅ Visit the Web UI at http://localhost:3000
+2. ✅ Check the queue at http://localhost:3000/queue
 3. ✅ Make a change in a monitored repo to test scanning
 4. ✅ Copy queue items to your IDE using "Copy for IDE" button
 5. ✅ Review and prioritize tasks in your AI workflow

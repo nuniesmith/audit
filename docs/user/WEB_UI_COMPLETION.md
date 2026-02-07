@@ -73,7 +73,7 @@ Only 3 minor warnings (unused fields in grok_client, unused import in test_gener
 
 ### Server Test
 ```bash
-✅ Server starts on http://127.0.0.1:3001
+✅ Server starts on http://127.0.0.1:3000
 ✅ All pages render correctly:
    - GET /          → Dashboard page ✓
    - GET /notes     → Notes page ✓
@@ -103,15 +103,15 @@ cargo build --release --bin webui-server
 
 ### Access the Web UI
 Open browser to:
-- **Dashboard**: http://127.0.0.1:3001/
-- **Notes**: http://127.0.0.1:3001/notes
-- **Repositories**: http://127.0.0.1:3001/repos
-- **Costs**: http://127.0.0.1:3001/costs
-- **Analyze**: http://127.0.0.1:3001/analyze
+- **Dashboard**: http://127.0.0.1:3000/
+- **Notes**: http://127.0.0.1:3000/notes
+- **Repositories**: http://127.0.0.1:3000/repos
+- **Costs**: http://127.0.0.1:3000/costs
+- **Analyze**: http://127.0.0.1:3000/analyze
 
 ### Environment Configuration
 ```bash
-# Custom port (default: 3001)
+# Custom port (default: 3000)
 export PORT=8080
 
 # Custom database path (default: data/rustassistant.db)

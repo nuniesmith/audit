@@ -35,13 +35,13 @@ python3 scripts/repo_manager.py queue
 ### Web UI (Recommended)
 ```bash
 # Open repositories page
-http://localhost:3001/repos
+http://localhost:3000/repos
 
 # View task queue
-http://localhost:3001/queue
+http://localhost:3000/queue
 
 # Dashboard
-http://localhost:3001
+http://localhost:3000
 ```
 
 ### Manage Repositories
@@ -92,7 +92,7 @@ python3 scripts/repo_manager.py summary > daily_tasks.md
 cat daily_tasks.md
 
 # Or use the Web UI:
-# http://localhost:3001/queue
+# http://localhost:3000/queue
 # Click "Copy for IDE" button on any task
 ```
 
@@ -227,11 +227,11 @@ cd /home/jordan/github/rustscape && git add . && git commit -m "test"
 docker compose restart rustassistant
 
 # Check the queue
-http://localhost:3001/queue
+http://localhost:3000/queue
 ```
 
 ### 2. Integrate with Your IDE
-- Open Web UI: http://localhost:3001/queue
+- Open Web UI: http://localhost:3000/queue
 - Click "Copy for IDE" on any task
 - Paste into your AI assistant (Cursor, Copilot, etc.)
 - Let the AI help you fix the issue!
@@ -258,11 +258,11 @@ crontab -e
 
 ## 🔗 Quick Links
 
-- **Web UI Dashboard:** http://localhost:3001
-- **Repositories Page:** http://localhost:3001/repos
-- **Task Queue:** http://localhost:3001/queue
-- **API Health Check:** http://localhost:3001/health
-- **API Docs:** http://localhost:3001/api/*
+- **Web UI Dashboard:** http://localhost:3000
+- **Repositories Page:** http://localhost:3000/repos
+- **Task Queue:** http://localhost:3000/queue
+- **API Health Check:** http://localhost:3000/health
+- **API Docs:** http://localhost:3000/api/*
 
 ## 📚 Documentation
 

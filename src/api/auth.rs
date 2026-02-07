@@ -121,11 +121,7 @@ pub async fn auth_middleware(
         .and_then(|v| v.to_str().ok())
         .map(|s| {
             // Handle "Bearer <token>" format
-            if s.starts_with("Bearer ") {
-                &s[7..]
-            } else {
-                s
-            }
+            s.strip_prefix("Bearer ").unwrap_or(s)
         });
 
     // Get request method

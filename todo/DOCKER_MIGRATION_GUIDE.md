@@ -209,7 +209,7 @@ docker compose logs -f rustassistant
 
 ```bash
 # Check health
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 
 # Verify database is accessible
 docker compose exec rustassistant sqlite3 /app/data/rustassistant.db "SELECT COUNT(*) FROM repositories;"
@@ -218,7 +218,7 @@ docker compose exec rustassistant sqlite3 /app/data/rustassistant.db "SELECT COU
 docker compose exec rustassistant sqlite3 /app/data/rustassistant.db "SELECT * FROM repository_sync_status;"
 
 # Navigate to web UI
-open http://localhost:3001/repos
+open http://localhost:3000/repos
 ```
 
 ### Step 10: Test Repository Cloning
@@ -242,7 +242,7 @@ docker compose exec rustassistant ls -la /app/repos/
 After migration, verify:
 
 - [ ] Server starts without errors
-- [ ] Dashboard loads (`http://localhost:3001/`)
+- [ ] Dashboard loads (`http://localhost:3000/`)
 - [ ] Repositories page shows all repos
 - [ ] Database queries work
 - [ ] Auto-scanner is running

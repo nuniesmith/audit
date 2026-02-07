@@ -6,7 +6,7 @@ set -e
 
 # Configuration
 DB_PATH="${DB_PATH:-./data/rustassistant.db}"
-API_URL="${API_URL:-http://localhost:3001}"
+API_URL="${API_URL:-http://localhost:3000}"
 
 # Colors
 RED='\033[0;31m'

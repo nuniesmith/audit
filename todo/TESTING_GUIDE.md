@@ -97,7 +97,7 @@ cargo build --release --bin rustassistant-server
 # Run locally (without Docker)
 export DATABASE_URL=sqlite:data/rustassistant.db
 export REPOS_DIR=./repos
-export PORT=3001
+export PORT=3000
 ./target/release/rustassistant-server
 ```
 
@@ -227,7 +227,7 @@ Verify:
   - Last update should win (optimistic locking not implemented)
 
 - [ ] **Invalid Repo ID**
-  - Try: `curl -X POST http://localhost:3001/repos/nonexistent/settings`
+  - Try: `curl -X POST http://localhost:3000/repos/nonexistent/settings`
   - Should handle gracefully (no crash)
 
 ---

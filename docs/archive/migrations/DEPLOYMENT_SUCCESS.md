@@ -15,7 +15,7 @@ All three services are **UP and HEALTHY**:
 | Service | Container Name | Port | Status | Health Check |
 |---------|---------------|------|--------|--------------|
 | **API** | `rustassistant-api` | 3000 | ✅ Running | ✅ Healthy |
-| **Web UI** | `rustassistant-web` | 3001 | ✅ Running | ✅ Healthy |
+| **Web UI** | `rustassistant-web` | 3000 | ✅ Running | ✅ Healthy |
 | **Redis** | `rustassistant-redis` | 6379 | ✅ Running | ✅ Healthy |
 
 ---
@@ -37,7 +37,7 @@ All three services are **UP and HEALTHY**:
 
 ---
 
-### Web UI Service (Port 3001)
+### Web UI Service (Port 3000)
 ```json
 {
   "service": "rustassistant",
@@ -72,7 +72,7 @@ PONG
 │                                                 │
 │  ┌──────────────┐  ┌──────────────┐            │
 │  │  API Service │  │  Web Service │            │
-│  │  Port: 3000  │  │  Port: 3001  │            │
+│  │  Port: 3000  │  │  Port: 3000  │            │
 │  │  (Healthy)   │  │  (Healthy)   │            │
 │  └──────┬───────┘  └──────┬───────┘            │
 │         │                  │                    │
@@ -113,7 +113,7 @@ RUN rm -rf src target/release/rustassistant* target/release/.fingerprint/rustass
 - **Dockerfile:** Single unified Dockerfile for both API and Web
 - **Build Args:**
   - `SERVICE_TYPE`: `api` or `web`
-  - `SERVICE_PORT`: `3000` or `3001`
+  - `SERVICE_PORT`: `3000` or `3000`
 - **Base Images:**
   - Builder: `rust:1.92-slim-bookworm`
   - Runtime: `debian:bookworm-slim`
@@ -174,7 +174,7 @@ docker compose logs -f redis
 curl http://localhost:3000/health
 
 # Web UI
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 
 # Redis
 docker compose exec -T redis redis-cli ping

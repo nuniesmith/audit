@@ -124,7 +124,7 @@ sqlite3 data/rustassistant.db < migrations/003_scan_progress.sql
 ```
 
 ### Verification
-1. Navigate to http://localhost:3001/repos
+1. Navigate to http://localhost:3000/repos
 2. Add a repository
 3. Trigger a scan
 4. Observe progress bar animate

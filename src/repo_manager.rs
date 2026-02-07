@@ -93,7 +93,7 @@ impl RepoManager {
     }
 
     /// Update an existing repository
-    fn update_repo(&self, repo_path: &Path, git_url: &str) -> Result<PathBuf> {
+    fn update_repo(&self, repo_path: &Path, _git_url: &str) -> Result<PathBuf> {
         debug!("Updating repository at {:?}", repo_path);
 
         // Verify it's actually a git repo

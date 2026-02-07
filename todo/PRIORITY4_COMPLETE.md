@@ -335,7 +335,7 @@ sqlite3 data/rustassistant.db "SELECT name FROM sqlite_master WHERE type='table'
 
 ### 2. Test Quick Capture
 
-1. Navigate to http://localhost:3001/notes
+1. Navigate to http://localhost:3000/notes
 2. Click "+ Quick Note" button
 3. Enter: `"Test note #idea #test"`
 4. Click "Save Note"

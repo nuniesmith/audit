@@ -154,11 +154,9 @@ impl AutoScanner {
     async fn get_enabled_repos(&self) -> Result<Vec<Repository>> {
         let repos = sqlx::query_as::<_, Repository>(
             r#"
-            SELECT id, path, name, status, last_analyzed, metadata,
-                   auto_scan_enabled, scan_interval_minutes, last_scan_check,
-                   last_commit_hash, git_url, created_at, updated_at
+            SELECT *
             FROM repositories
-            WHERE auto_scan_enabled = 1 AND status = 'active'
+            WHERE auto_scan = 1
             "#,
         )
         .fetch_all(&self.pool)
@@ -410,7 +408,7 @@ impl AutoScanner {
         sqlx::query(
             r#"
             UPDATE repositories
-            SET path = ?, updated_at = ?
+            SET local_path = ?, updated_at = ?
             WHERE id = ?
             "#,
         )
@@ -722,7 +720,7 @@ impl AutoScanner {
         sqlx::query(
             r#"
             UPDATE repositories
-            SET last_scan_check = ?
+            SET last_scanned_at = ?
             WHERE id = ?
             "#,
         )
@@ -739,7 +737,7 @@ impl AutoScanner {
         sqlx::query(
             r#"
             UPDATE repositories
-            SET last_analyzed = ?
+            SET last_scanned_at = ?
             WHERE id = ?
             "#,
         )
@@ -791,7 +789,7 @@ pub async fn enable_auto_scan(
     sqlx::query(
         r#"
         UPDATE repositories
-        SET auto_scan_enabled = 1, scan_interval_minutes = ?
+        SET auto_scan = 1, scan_interval_mins = ?
         WHERE id = ?
         "#,
     )
@@ -813,7 +811,7 @@ pub async fn disable_auto_scan(pool: &sqlx::SqlitePool, repo_id: &str) -> Result
     sqlx::query(
         r#"
         UPDATE repositories
-        SET auto_scan_enabled = 0
+        SET auto_scan = 0
         WHERE id = ?
         "#,
     )
@@ -831,7 +829,7 @@ pub async fn force_scan(pool: &sqlx::SqlitePool, repo_id: &str) -> Result<()> {
     sqlx::query(
         r#"
         UPDATE repositories
-        SET last_scan_check = NULL
+        SET last_scanned_at = NULL
         WHERE id = ?
         "#,
     )

@@ -164,7 +164,7 @@ fi
 
 # Build Web service
 if [[ "$SERVICE" == "web" ]] || [[ "$SERVICE" == "all" ]]; then
-    build_service "web" "3001" "-web"
+    build_service "web" "3000" "-web"
 fi
 
 # If building all, also create a "latest" tag for web (default)

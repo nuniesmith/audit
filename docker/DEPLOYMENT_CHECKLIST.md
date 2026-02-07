@@ -6,7 +6,7 @@
 - [ ] `.env` file created with all required variables
 - [ ] `XAI_API_KEY` set in `.env`
 - [ ] `XAI_BASE_URL` configured (default: https://api.x.ai/v1)
-- [ ] Ports 3000, 3001, and 6379 are available
+- [ ] Ports 3000, 3000, and 6379 are available
 - [ ] Docker and Docker Compose installed
 - [ ] Docker Buildx enabled (for multi-arch builds)
 
@@ -107,10 +107,10 @@
   # Expected: healthy
   ```
 
-### Web UI Service (Port 3001)
+### Web UI Service (Port 3000)
 - [ ] Health endpoint responds
   ```bash
-  curl http://localhost:3001/health
+  curl http://localhost:3000/health
   # Expected: {"status":"ok"}
   ```
 - [ ] Docker health check passing
@@ -120,7 +120,7 @@
   ```
 - [ ] Web interface accessible in browser
   ```
-  http://localhost:3001
+  http://localhost:3000
   ```
 
 ### Redis Service (Port 6379)
@@ -230,7 +230,7 @@
   ```
 
 ### External Access
-- [ ] Ports exposed correctly (3000, 3001, 6379)
+- [ ] Ports exposed correctly (3000, 3000, 6379)
 - [ ] Reverse proxy configured (if using)
 - [ ] SSL/TLS certificates installed (if public)
 - [ ] Domain names configured (if applicable)
@@ -375,7 +375,7 @@
 ```bash
 # Health check all services
 curl http://localhost:3000/health && \
-curl http://localhost:3001/health && \
+curl http://localhost:3000/health && \
 docker compose exec redis redis-cli ping
 
 # View all logs

@@ -46,7 +46,7 @@ docker compose logs --tail=100        # Last 100 lines
 docker compose ps                     # Service status
 docker stats                          # Resource usage
 curl http://localhost:3000/health     # API health
-curl http://localhost:3001/health     # Web health
+curl http://localhost:3000/health     # Web health
 ```
 
 ### Restart Services
@@ -61,7 +61,7 @@ docker compose up -d --force-recreate # Force recreate containers
 | Service | Port | URL |
 |---------|------|-----|
 | API     | 3000 | http://localhost:3000 |
-| Web UI  | 3001 | http://localhost:3001 |
+| Web UI  | 3000 | http://localhost:3000 |
 | Redis   | 6379 | redis://localhost:6379 |
 
 ## 🛠️ Maintenance
@@ -157,7 +157,7 @@ RUST_LOG=info,rustassistant=debug
 ```bash
 # Dockerfile accepts:
 --build-arg SERVICE_TYPE=api|web      # Service variant
---build-arg SERVICE_PORT=3000|3001    # Port number
+--build-arg SERVICE_PORT=3000|3000    # Port number
 ```
 
 ## 🔍 Debug Mode

@@ -60,10 +60,12 @@ impl JobProgress {
         }
     }
 
+    #[allow(dead_code)]
     fn is_complete(&self) -> bool {
         self.completed + self.failed >= self.total
     }
 
+    #[allow(dead_code)]
     fn success_rate(&self) -> f64 {
         if self.total == 0 {
             0.0
@@ -144,7 +146,7 @@ pub struct JobQueue {
     jobs: Arc<RwLock<HashMap<String, IndexJob>>>,
     processing: Arc<Mutex<Vec<String>>>,
     db_pool: SqlitePool,
-    embedding_generator: Arc<Mutex<EmbeddingGenerator>>,
+    _embedding_generator: Arc<Mutex<EmbeddingGenerator>>,
     indexing_config: IndexingConfig,
 }
 
@@ -160,7 +162,7 @@ impl JobQueue {
             jobs: Arc::new(RwLock::new(HashMap::new())),
             processing: Arc::new(Mutex::new(Vec::new())),
             db_pool,
-            embedding_generator,
+            _embedding_generator: embedding_generator,
             indexing_config,
         }
     }
@@ -299,7 +301,7 @@ impl JobQueue {
             .await
             .map_err(|e| format!("Failed to create indexer: {}", e))?;
 
-        for (idx, doc_id) in document_ids.iter().enumerate() {
+        for doc_id in document_ids.iter() {
             // Update progress
             {
                 let mut jobs = self.jobs.write().await;

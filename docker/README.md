@@ -18,7 +18,7 @@ This directory contains Docker configuration for building and deploying RustAssi
 The RustAssistant Docker setup consists of three services:
 
 1. **API Service** (Port 3000) - REST API server
-2. **Web UI Service** (Port 3001) - Web interface
+2. **Web UI Service** (Port 3000) - Web interface
 3. **Redis Service** (Port 6379) - LLM response caching
 
 ### Single Dockerfile, Multiple Services
@@ -30,7 +30,7 @@ We use a **single multi-stage Dockerfile** with build arguments to create both A
 docker build --build-arg SERVICE_TYPE=api --build-arg SERVICE_PORT=3000 -t rustassistant:api .
 
 # Build Web variant
-docker build --build-arg SERVICE_TYPE=web --build-arg SERVICE_PORT=3001 -t rustassistant:web .
+docker build --build-arg SERVICE_TYPE=web --build-arg SERVICE_PORT=3000 -t rustassistant:web .
 ```
 
 ## 🚀 Quick Start
@@ -50,7 +50,7 @@ docker compose down
 
 Services will be available at:
 - API: http://localhost:3000
-- Web UI: http://localhost:3001
+- Web UI: http://localhost:3000
 - Redis: localhost:6379
 
 ### Production Environment
@@ -101,7 +101,7 @@ docker build \
 docker build \
   -f docker/Dockerfile \
   --build-arg SERVICE_TYPE=web \
-  --build-arg SERVICE_PORT=3001 \
+  --build-arg SERVICE_PORT=3000 \
   -t nuniesmith/rustassistant:web .
 ```
 
@@ -189,10 +189,10 @@ REDIS_URL=redis://redis:6379
 RUST_LOG=info,rustassistant=debug
 ```
 
-#### Web UI Service (Port 3001)
+#### Web UI Service (Port 3000)
 ```env
 HOST=0.0.0.0
-PORT=3001
+PORT=3000
 DATABASE_URL=sqlite:/app/data/rustassistant.db
 CACHE_DB_PATH=/app/data/rustassistant_cache.db
 REDIS_URL=redis://redis:6379
@@ -233,7 +233,7 @@ docker buildx create --use
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --build-arg SERVICE_TYPE=web \
-  --build-arg SERVICE_PORT=3001 \
+  --build-arg SERVICE_PORT=3000 \
   -t nuniesmith/rustassistant:latest \
   --push \
   .
@@ -286,7 +286,7 @@ docker compose -f docker-compose.prod.yml up -d
 # Verify services are running
 docker compose -f docker-compose.prod.yml ps
 curl http://localhost:3000/health
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 ```
 
 ### Resource Limits
@@ -314,7 +314,7 @@ docker inspect rustassistant-redis --format='{{json .State.Health}}' | jq
 
 # Manual health check
 curl http://localhost:3000/health
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 docker exec rustassistant-redis redis-cli ping
 ```
 
@@ -358,7 +358,7 @@ docker compose logs api
 
 # Check if port is already in use
 sudo lsof -i :3000
-sudo lsof -i :3001
+sudo lsof -i :3000
 
 # Restart service
 docker compose restart api

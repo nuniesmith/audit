@@ -259,7 +259,7 @@ show_summary() {
     echo "     docker compose logs -f rustassistant"
     echo ""
     echo "  3. Test the web UI:"
-    echo "     Open http://localhost:3001"
+    echo "     Open http://localhost:3000"
     echo ""
     echo "  4. To rollback if needed:"
     echo "     cp $BACKUP_PATH $DB_PATH"

@@ -88,7 +88,7 @@ pub struct PaginatedResponse<T> {
 
 impl<T> PaginatedResponse<T> {
     pub fn new(items: Vec<T>, total: u32, page: u32, limit: u32) -> Self {
-        let total_pages = (total + limit - 1) / limit;
+        let total_pages = total.div_ceil(limit);
         Self {
             items,
             total,

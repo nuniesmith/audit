@@ -243,7 +243,7 @@ rustassistant cache stats
 # Start server
 ./target/release/webui-server
 
-# Access at http://127.0.0.1:3001
+# Access at http://127.0.0.1:3000
 - Dashboard: Real-time stats, activity feed
 - Notes: View all notes with tags
 - Repos: Track repositories

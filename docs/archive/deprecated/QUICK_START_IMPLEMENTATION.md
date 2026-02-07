@@ -503,7 +503,7 @@ export XAI_API_KEY="xai-your-key"
 pkill devflow-server
 
 # Or change port in .env
-PORT=3001
+PORT=3000
 ```
 
 ### Compilation errors with sqlx

@@ -90,7 +90,7 @@ docker compose down && docker compose build && docker compose up -d
 
 ```bash
 # 1. Navigate to web UI
-open http://localhost:3001/repos
+open http://localhost:3000/repos
 
 # 2. Test auto-scan toggle
 # - Click checkbox → should see green toast

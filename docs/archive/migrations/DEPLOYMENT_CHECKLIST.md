@@ -224,7 +224,7 @@ docker compose -f docker-compose.prod.yml ps
 Expected output:
 ```
 NAME                   STATUS        PORTS
-rustassistant-web      Up (healthy)  0.0.0.0:3001->3001/tcp
+rustassistant-web      Up (healthy)  0.0.0.0:3000->3000/tcp
 rustassistant-redis    Up (healthy)  0.0.0.0:6379->6379/tcp
 ```
 
@@ -236,7 +236,7 @@ docker compose -f docker-compose.prod.yml logs -f
 ### Test Web UI
 From any device on your Tailscale network:
 ```
-http://YOUR_TAILSCALE_IP:3001
+http://YOUR_TAILSCALE_IP:3000
 ```
 
 You should see the RustAssistant dashboard!
@@ -317,7 +317,7 @@ docker builder prune -a
 2. Check firewall on Pi: `sudo ufw status`
 3. Verify container is listening: `docker compose -f docker-compose.prod.yml ps`
 4. Check logs: `docker compose -f docker-compose.prod.yml logs rustassistant-web`
-5. Test locally on Pi: `curl http://localhost:3001`
+5. Test locally on Pi: `curl http://localhost:3000`
 
 ### GitHub Actions - Tailscale Connection Fails
 **Error:** "Failed to connect to Tailscale"
@@ -594,7 +594,7 @@ ssh actions@YOUR_TAILSCALE_IP
 Your RustAssistant is now deployed and running on Raspberry Pi! 
 
 **Access your deployment:**
-- Web UI: `http://YOUR_TAILSCALE_IP:3001`
+- Web UI: `http://YOUR_TAILSCALE_IP:3000`
 - From any device on your Tailscale network
 - Secure, private, and accessible anywhere
 

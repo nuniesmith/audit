@@ -98,15 +98,23 @@ pub struct NoteTag {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Repository {
     pub id: String,
+    #[sqlx(rename = "local_path")]
     pub path: String,
     pub name: String,
+    #[sqlx(default)]
     pub status: String,
+    #[sqlx(rename = "last_scanned_at")]
     pub last_analyzed: Option<i64>,
+    #[sqlx(default)]
     pub metadata: Option<String>, // JSON blob
+    #[sqlx(rename = "auto_scan")]
     pub auto_scan_enabled: i64,
+    #[sqlx(rename = "scan_interval_mins")]
     pub scan_interval_minutes: i64,
+    #[sqlx(default)]
     pub last_scan_check: Option<i64>,
     pub last_commit_hash: Option<String>,
+    #[sqlx(rename = "url")]
     pub git_url: Option<String>, // GitHub clone URL
     pub created_at: i64,
     pub updated_at: i64,
@@ -284,7 +292,7 @@ pub struct DocumentTag {
     pub created_at: i64,
 }
 
-/// Database initialization
+// Database initialization
 // ============================================================================
 
 /// Initialize the database connection pool and create tables
@@ -826,8 +834,8 @@ pub async fn add_repository(
 
     sqlx::query(
         r#"
-        INSERT INTO repositories (id, path, name, status, git_url, created_at, updated_at)
-        VALUES (?, ?, ?, 'active', ?, ?, ?)
+        INSERT INTO repositories (id, local_path, name, url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -878,7 +886,7 @@ pub async fn get_repository(pool: &SqlitePool, id: &str) -> DbResult<Repository>
 /// Get a repository by path
 pub async fn get_repository_by_path(pool: &SqlitePool, path: &str) -> DbResult<Option<Repository>> {
     Ok(
-        sqlx::query_as::<_, Repository>("SELECT * FROM repositories WHERE path = ?")
+        sqlx::query_as::<_, Repository>("SELECT * FROM repositories WHERE local_path = ?")
             .bind(path)
             .fetch_optional(pool)
             .await?,
@@ -898,19 +906,17 @@ pub async fn list_repositories(pool: &SqlitePool) -> DbResult<Vec<Repository>> {
 pub async fn update_repository_analysis(
     pool: &SqlitePool,
     id: &str,
-    metadata: Option<&str>,
+    _metadata: Option<&str>,
 ) -> DbResult<()> {
     let now = chrono::Utc::now().timestamp();
 
-    let result = sqlx::query(
-        "UPDATE repositories SET last_analyzed = ?, metadata = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(now)
-    .bind(metadata)
-    .bind(now)
-    .bind(id)
-    .execute(pool)
-    .await?;
+    let result =
+        sqlx::query("UPDATE repositories SET last_scanned_at = ?, updated_at = ? WHERE id = ?")
+            .bind(now)
+            .bind(now)
+            .bind(id)
+            .execute(pool)
+            .await?;
 
     if result.rows_affected() == 0 {
         return Err(DbError::NotFound(format!("Repository not found: {}", id)));
@@ -949,7 +955,7 @@ pub async fn start_scan(pool: &SqlitePool, repo_id: &str, total_files: i64) -> D
             scan_files_processed = 0,
             scan_progress = 'Starting scan...',
             scan_current_file = NULL,
-            last_scan_check = ?,
+            last_scanned_at = ?,
             last_error = NULL,
             updated_at = ?
         WHERE id = ?
@@ -1043,7 +1049,7 @@ pub async fn complete_scan(
             last_scan_duration_ms = ?,
             last_scan_files_found = ?,
             last_scan_issues_found = ?,
-            last_analyzed = ?,
+            last_scanned_at = ?,
             updated_at = ?
         WHERE id = ?
         "#,

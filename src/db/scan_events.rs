@@ -294,7 +294,7 @@ pub async fn mark_scan_complete(
             scan_files_total = ?1,
             last_scan_issues_found = ?2,
             last_scan_duration_ms = ?3,
-            last_scan_check = ?4,
+            last_scanned_at = ?4,
             last_error = NULL,
             updated_at = ?4
         WHERE id = ?5

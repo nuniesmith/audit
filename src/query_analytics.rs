@@ -155,9 +155,9 @@ pub struct QueryAnalytics {
 
 #[derive(Debug, Default)]
 struct MemoryCache {
-    recent_queries: Vec<SearchAnalytics>,
+    _recent_queries: Vec<SearchAnalytics>,
     pattern_counts: HashMap<String, i64>,
-    last_aggregation: Option<DateTime<Utc>>,
+    _last_aggregation: Option<DateTime<Utc>>,
 }
 
 impl QueryAnalytics {

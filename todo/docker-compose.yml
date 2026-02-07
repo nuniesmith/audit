@@ -6,7 +6,7 @@
 #
 # Usage:
 #   docker compose up -d --build
-#   open http://localhost:3001
+#   open http://localhost:3000
 # ============================================================================
 
 services:
@@ -20,11 +20,11 @@ services:
     container_name: rustassistant
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3000:3000"
     environment:
       # Server
       HOST: "0.0.0.0"
-      PORT: "3001"
+      PORT: "3000"
       RUST_LOG: "info,rustassistant=debug"
 
       # Database (inside named volume)
@@ -66,7 +66,7 @@ services:
         reservations:
           memory: 256M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 5s
       start_period: 10s

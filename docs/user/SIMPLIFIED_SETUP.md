@@ -6,7 +6,7 @@ RustAssistant now runs with just **TWO containers**:
 1. **rustassistant** - Unified server (Web UI + API combined)
 2. **redis** - Cache
 
-Previously, we had three containers (api, web, redis). Now the API and Web UI are served from a single container on port 3001.
+Previously, we had three containers (api, web, redis). Now the API and Web UI are served from a single container on port 3000.
 
 ---
 
@@ -29,7 +29,7 @@ docker compose ps
 Expected output:
 ```
 NAME               STATUS              PORTS
-rustassistant      Up (healthy)        0.0.0.0:3001->3001/tcp
+rustassistant      Up (healthy)        0.0.0.0:3000->3000/tcp
 rustassistant-redis Up (healthy)        0.0.0.0:6379->6379/tcp
 ```
 
@@ -37,11 +37,11 @@ rustassistant-redis Up (healthy)        0.0.0.0:6379->6379/tcp
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Web UI | http://localhost:3001 | Dashboard, repos, queue |
-| API | http://localhost:3001/api/* | REST API endpoints |
-| Health | http://localhost:3001/health | Health check |
+| Web UI | http://localhost:3000 | Dashboard, repos, queue |
+| API | http://localhost:3000/api/* | REST API endpoints |
+| Health | http://localhost:3000/health | Health check |
 
-**Note**: Everything is now on port **3001** (previously API was on 3000)
+**Note**: Everything is now on port **3000** (previously API was on 3000)
 
 ---
 
@@ -60,17 +60,17 @@ docker rmi rustassistant-api rustassistant-web
 docker compose up -d
 
 # 4. Verify
-curl http://localhost:3001/health
-curl http://localhost:3001/api/repos
-open http://localhost:3001
+curl http://localhost:3000/health
+curl http://localhost:3000/api/repos
+open http://localhost:3000
 ```
 
 ### Update Your Scripts/Bookmarks
 
 **Old URLs** → **New URLs**
-- ~~http://localhost:3000/api/repos~~ → http://localhost:3001/api/repos
-- ~~http://localhost:3000/health~~ → http://localhost:3001/health
-- http://localhost:3001/ → http://localhost:3001/ (unchanged)
+- ~~http://localhost:3000/api/repos~~ → http://localhost:3000/api/repos
+- ~~http://localhost:3000/health~~ → http://localhost:3000/health
+- http://localhost:3000/ → http://localhost:3000/ (unchanged)
 
 ### Update Environment Variables
 
@@ -83,7 +83,7 @@ PORT=3000  # For API
 
 **After:**
 ```bash
-PORT=3001  # For unified server
+PORT=3000  # For unified server
 ```
 
 ---
@@ -104,7 +104,7 @@ PORT=3001  # For unified server
 - Storage: Shared `./data` directory
 
 **Ports:**
-- 3001 (Web UI + API)
+- 3000 (Web UI + API)
 
 **Volumes:**
 - `./data` - Database and cache
@@ -133,7 +133,7 @@ PORT=3001  # For unified server
 - **Savings**: ~512MB memory, 1 CPU core
 
 ### 2. Simpler Configuration
-- Single port to remember (3001)
+- Single port to remember (3000)
 - One container to monitor
 - Fewer environment variables
 - Easier networking
@@ -178,13 +178,13 @@ docker compose up -d
 ### Check Health
 ```bash
 # Main health endpoint
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 
 # Web UI
-curl http://localhost:3001/
+curl http://localhost:3000/
 
 # API
-curl http://localhost:3001/api/repos
+curl http://localhost:3000/api/repos
 
 # Redis
 docker compose exec redis redis-cli ping
@@ -207,10 +207,10 @@ docker compose restart rustassistant
 
 ## 🔧 Troubleshooting
 
-### Port 3001 Already in Use
+### Port 3000 Already in Use
 ```bash
 # Option 1: Stop conflicting service
-lsof -ti:3001 | xargs kill -9
+lsof -ti:3000 | xargs kill -9
 
 # Option 2: Change port in .env
 echo "PORT=3002" >> .env
@@ -241,10 +241,10 @@ docker compose ps
 ```bash
 # Update base URL in your scripts
 # OLD: BASE_URL="http://localhost:3000"
-# NEW: BASE_URL="http://localhost:3001"
+# NEW: BASE_URL="http://localhost:3000"
 
 # Example fix:
-sed -i 's|localhost:3000|localhost:3001|g' your-script.sh
+sed -i 's|localhost:3000|localhost:3000|g' your-script.sh
 ```
 
 ---
@@ -290,7 +290,7 @@ docker compose -f docker-compose.prod.yml ps
 Create `.env.production`:
 ```bash
 # Server
-PORT=3001
+PORT=3000
 HOST=0.0.0.0
 RUST_LOG=info,rustassistant=info
 
@@ -327,7 +327,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 services:
   rustassistant:
     build: .
-    ports: ["3001:3001"]
+    ports: ["3000:3000"]
     volumes:
       - ./data:/app/data
       - /home/jordan/github:/home/jordan/github:ro
@@ -342,7 +342,7 @@ services:
 services:
   rustassistant:
     image: nuniesmith/rustassistant:latest  # Pre-built
-    ports: ["3001:3001"]
+    ports: ["3000:3000"]
     volumes:
       - ./data:/app/data
       - ${REPOS_PATH}:${REPOS_PATH}:ro
@@ -364,15 +364,15 @@ docker compose ps
 # Expected: 2 containers, both healthy
 
 # 2. Test health endpoint
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 # Expected: {"status":"ok","service":"rustassistant","version":"..."}
 
 # 3. Test Web UI
-curl -I http://localhost:3001/
+curl -I http://localhost:3000/
 # Expected: HTTP/1.1 200 OK
 
 # 4. Test API
-curl http://localhost:3001/api/repos
+curl http://localhost:3000/api/repos
 # Expected: JSON array of repositories
 
 # 5. Check auto-scanner
@@ -380,7 +380,7 @@ docker compose logs rustassistant | grep -i "auto.*scan"
 # Expected: "Starting auto-scanner" or similar
 
 # 6. Open in browser
-open http://localhost:3001
+open http://localhost:3000
 # Expected: Dashboard loads with stats
 ```
 

@@ -14,13 +14,12 @@
 use crate::db::documents::{
     count_documents, count_ideas, create_document, create_idea, delete_document, delete_idea,
     get_document, list_documents, list_ideas, list_tags, search_documents, search_tags,
-    update_document, update_idea_status,
+    update_idea_status,
 };
-use crate::db::scan_events::{get_recent_events, get_repo_events, ScanEvent};
+use crate::db::scan_events::get_recent_events;
 use crate::web_ui::{timezone_js, timezone_selector_html, WebAppState};
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     response::{Html, IntoResponse, Json},
     routing::{get, post},
     Form, Router,
@@ -355,7 +354,7 @@ pub async fn docs_handler(
     };
 
     let total = count_documents(pool).await.unwrap_or(0);
-    let tags = list_tags(pool, 30).await.unwrap_or_default();
+    let _tags = list_tags(pool, 30).await.unwrap_or_default();
 
     let docs_html: String = if documents.is_empty() {
         r#"<div class="empty-state"><p>No documents yet. Add your first reference doc or research note!</p></div>"#.to_string()
@@ -1006,10 +1005,10 @@ pub async fn update_repo_settings_handler(
     let now = chrono::Utc::now().timestamp();
 
     // Clamp interval to valid range
-    let interval = form.scan_interval_minutes.max(5).min(1440);
+    let interval = form.scan_interval_minutes.clamp(5, 1440);
 
     let _ = sqlx::query(
-        "UPDATE repositories SET scan_interval_minutes = ?1, updated_at = ?2 WHERE id = ?3",
+        "UPDATE repositories SET scan_interval_mins = ?1, updated_at = ?2 WHERE id = ?3",
     )
     .bind(interval)
     .bind(now)
@@ -1031,11 +1030,11 @@ struct RepoScanStatus {
     id: String,
     name: String,
     scan_status: String,
-    scan_files_done: i32,
+    scan_files_processed: i32,
     scan_files_total: i32,
-    scan_issues_found: i32,
-    scan_duration_ms: Option<i64>,
-    last_scan_error: Option<String>,
+    last_scan_issues_found: i32,
+    last_scan_duration_ms: Option<i64>,
+    last_error: Option<String>,
     percent: f32,
 }
 
@@ -1055,9 +1054,9 @@ pub async fn scan_progress_api(State(state): State<Arc<WebAppState>>) -> impl In
             Option<String>,
         ),
     >(
-        r#"SELECT id, name, scan_status, scan_files_done, scan_files_total,
-                  scan_issues_found, scan_duration_ms, last_scan_error
-           FROM repositories WHERE auto_scan_enabled = 1
+        r#"SELECT id, name, scan_status, scan_files_processed, scan_files_total,
+                  last_scan_issues_found, last_scan_duration_ms, last_error
+           FROM repositories WHERE auto_scan = 1
            ORDER BY name"#,
     )
     .fetch_all(pool)
@@ -1074,11 +1073,11 @@ pub async fn scan_progress_api(State(state): State<Arc<WebAppState>>) -> impl In
             id,
             name,
             scan_status: status,
-            scan_files_done: done,
+            scan_files_processed: done,
             scan_files_total: total,
-            scan_issues_found: issues,
-            scan_duration_ms: duration,
-            last_scan_error: error,
+            last_scan_issues_found: issues,
+            last_scan_duration_ms: duration,
+            last_error: error,
             percent,
         }
     })
@@ -1091,7 +1090,7 @@ pub async fn scan_progress_api(State(state): State<Arc<WebAppState>>) -> impl In
 pub async fn scan_progress_partial(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     let pool = &state.db.pool;
 
-    let rows: Vec<(
+    type ScanProgressRow = (
         String,
         String,
         String,
@@ -1100,10 +1099,11 @@ pub async fn scan_progress_partial(State(state): State<Arc<WebAppState>>) -> imp
         i32,
         Option<i64>,
         Option<String>,
-    )> = sqlx::query_as(
-        r#"SELECT id, name, scan_status, scan_files_done, scan_files_total,
-                      scan_issues_found, scan_duration_ms, last_scan_error
-               FROM repositories WHERE auto_scan_enabled = 1
+    );
+    let rows: Vec<ScanProgressRow> = sqlx::query_as(
+        r#"SELECT id, name, scan_status, scan_files_processed, scan_files_total,
+                      last_scan_issues_found, last_scan_duration_ms, last_error
+               FROM repositories WHERE auto_scan = 1
                ORDER BY name"#,
     )
     .fetch_all(pool)
@@ -1112,16 +1112,17 @@ pub async fn scan_progress_partial(State(state): State<Arc<WebAppState>>) -> imp
 
     let html: String = rows
         .iter()
-        .map(|(id, name, status, done, total, issues, duration, error)| {
-            let percent = if *total > 0 {
-                (*done as f32 / *total as f32) * 100.0
-            } else {
-                0.0
-            };
+        .map(
+            |(_id, name, status, done, total, issues, duration, error)| {
+                let percent = if *total > 0 {
+                    (*done as f32 / *total as f32) * 100.0
+                } else {
+                    0.0
+                };
 
-            match status.as_str() {
-                "scanning" | "analyzing" | "cloning" => format!(
-                    r#"
+                match status.as_str() {
+                    "scanning" | "analyzing" | "cloning" => format!(
+                        r#"
                 <div class="progress-item">
                     <span class="progress-name">{name}</span>
                     <span class="progress-status scanning">⏳ {status}</span>
@@ -1130,37 +1131,38 @@ pub async fn scan_progress_partial(State(state): State<Arc<WebAppState>>) -> imp
                     </div>
                     <span class="progress-text">{done}/{total} files ({percent:.0}%)</span>
                 </div>"#,
-                    name = name,
-                    status = status,
-                    percent = percent,
-                    done = done,
-                    total = total,
-                ),
-                "error" => format!(
-                    r#"
+                        name = name,
+                        status = status,
+                        percent = percent,
+                        done = done,
+                        total = total,
+                    ),
+                    "error" => format!(
+                        r#"
                 <div class="progress-item">
                     <span class="progress-name">{name}</span>
                     <span class="progress-status error">❌ Error</span>
                     <span class="progress-error">{err}</span>
                 </div>"#,
-                    name = name,
-                    err = error.as_deref().unwrap_or("Unknown error"),
-                ),
-                _ => format!(
-                    r#"
+                        name = name,
+                        err = error.as_deref().unwrap_or("Unknown error"),
+                    ),
+                    _ => format!(
+                        r#"
                 <div class="progress-item">
                     <span class="progress-name">{name}</span>
                     <span class="progress-status idle">✅ Idle</span>
                     <span class="progress-text">{issues} issues · {duration}s last scan</span>
                 </div>"#,
-                    name = name,
-                    issues = issues,
-                    duration = duration
-                        .map(|d| format!("{:.1}", d as f64 / 1000.0))
-                        .unwrap_or_else(|| "—".to_string()),
-                ),
-            }
-        })
+                        name = name,
+                        issues = issues,
+                        duration = duration
+                            .map(|d| format!("{:.1}", d as f64 / 1000.0))
+                            .unwrap_or_else(|| "—".to_string()),
+                    ),
+                }
+            },
+        )
         .collect::<Vec<_>>()
         .join("\n");
 

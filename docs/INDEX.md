@@ -82,7 +82,7 @@ Advanced topics and technical details:
 ```bash
 # Standard Docker setup (2 containers)
 docker compose up -d
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 See:
@@ -103,7 +103,7 @@ See archived migration guides in `archive/migrations/` for historical context.
 
 RustAssistant consists of:
 
-1. **Unified Server** (Port 3001)
+1. **Unified Server** (Port 3000)
    - Web UI (dashboard, repos, queue)
    - REST API endpoints
    - Auto-scanner background task

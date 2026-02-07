@@ -845,7 +845,7 @@ lsof -i :3000
 kill -9 <PID>
 
 # Or use different port
-PORT=3001 ./run.sh up
+PORT=3000 ./run.sh up
 ```
 
 ---

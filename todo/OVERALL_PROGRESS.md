@@ -418,7 +418,7 @@ sqlite3 data/rustassistant.db < migrations/003_scan_progress.sql
 docker compose build && docker compose up -d
 
 # 3. Test
-open http://localhost:3001/repos
+open http://localhost:3000/repos
 # Toggle auto-scan, change interval, verify
 ```
 

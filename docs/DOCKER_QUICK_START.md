@@ -14,7 +14,7 @@ echo "XAI_API_KEY=xai-your-key-here" > .env
 docker compose up -d
 
 # 3. Open browser
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 **Done!** 🎉
@@ -25,7 +25,7 @@ open http://localhost:3001
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| **Web UI** | 3001 | Dashboard, notes, analysis |
+| **Web UI** | 3000 | Dashboard, notes, analysis |
 | **Redis** | 6379 | LLM response cache (400x speedup!) |
 
 ---
@@ -111,7 +111,7 @@ docker compose up -d
 
 # 4. Check it's running
 docker compose ps
-curl http://localhost:3001
+curl http://localhost:3000
 ```
 
 **Pro Tip**: Use an SSD instead of SD card for much better performance!
@@ -134,12 +134,12 @@ docker compose restart rustassistant-web
 
 ### Port already in use?
 ```bash
-# Find what's using port 3001
-sudo lsof -i :3001
+# Find what's using port 3000
+sudo lsof -i :3000
 
 # Or change port in docker-compose.yml:
 # ports:
-#   - "8080:3001"
+#   - "8080:3000"
 ```
 
 ### Redis connection issues?
@@ -239,8 +239,8 @@ rustassistant/
 ## 💡 Next Steps
 
 1. **Build your cache**: `docker compose run --rm rustassistant-cli rustassistant analyze batch src/**/*.rs`
-2. **Add repositories**: Via Web UI at http://localhost:3001/repos or CLI
-3. **Monitor costs**: Check dashboard at http://localhost:3001/costs
+2. **Add repositories**: Via Web UI at http://localhost:3000/repos or CLI
+3. **Monitor costs**: Check dashboard at http://localhost:3000/costs
 4. **Review code**: `docker compose run --rm rustassistant-cli rustassistant review diff`
 
 ---
@@ -254,6 +254,6 @@ rustassistant/
 ---
 
 **Status**: Ready to use! 🚀  
-**Web UI**: http://localhost:3001  
+**Web UI**: http://localhost:3000  
 **Cache Speedup**: 400x with Redis  
 **Monthly Cost**: <$50 with caching  

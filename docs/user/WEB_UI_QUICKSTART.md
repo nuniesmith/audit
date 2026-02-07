@@ -32,13 +32,13 @@ Expected output:
 ```
 NAME                   STATUS              PORTS
 rustassistant-api      Up (healthy)        0.0.0.0:3000->3000/tcp
-rustassistant-web      Up (healthy)        0.0.0.0:3001->3001/tcp
+rustassistant-web      Up (healthy)        0.0.0.0:3000->3000/tcp
 rustassistant-redis    Up (healthy)        0.0.0.0:6379->6379/tcp
 ```
 
 ### Step 2: Open the Web UI
 
-Open your browser and navigate to: **http://localhost:3001**
+Open your browser and navigate to: **http://localhost:3000**
 
 You should see the dashboard!
 
@@ -85,7 +85,7 @@ cargo run --bin rustassistant-server
 
 ### Step 2: Access the UI
 
-Open: **http://localhost:3001**
+Open: **http://localhost:3000**
 
 ---
 
@@ -158,7 +158,7 @@ DATABASE_URL=sqlite:data/rustassistant.db
 
 # Server
 HOST=0.0.0.0
-PORT=3001
+PORT=3000
 
 # Auto-Scanner
 AUTO_SCAN_ENABLED=true
@@ -232,7 +232,7 @@ docker compose exec web env | grep AUTO_SCAN
 docker compose logs -f web | grep auto_scanner
 
 # Verify repository has auto-scan enabled
-curl http://localhost:3001/api/repos | jq '.[] | select(.name=="fks")'
+curl http://localhost:3000/api/repos | jq '.[] | select(.name=="fks")'
 ```
 
 ### Database Locked Error
@@ -369,7 +369,7 @@ Now that you're set up:
 - [Full Web UI Documentation](./WEB_UI_STATUS.md)
 - [Auto-Scanner Setup](./AUTO_SCANNER_SETUP.md)
 - [Docker Deployment Guide](./DEPLOYMENT_SUCCESS.md)
-- [API Documentation](http://localhost:3001/)
+- [API Documentation](http://localhost:3000/)
 
 ---
 
@@ -390,7 +390,7 @@ docker compose logs -f web
 ### Health Checks
 ```bash
 # Web UI
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 
 # API
 curl http://localhost:3000/health

@@ -249,7 +249,7 @@ impl DocumentIndexer {
             tracing::debug!(
                 "Processing batch {}/{} ({} chunks)",
                 batch_idx + 1,
-                (chunks.len() + self.config.max_batch_size - 1) / self.config.max_batch_size,
+                chunks.len().div_ceil(self.config.max_batch_size),
                 batch_texts.len()
             );
 

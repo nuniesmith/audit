@@ -23,7 +23,7 @@ Your RustAssistant project is now **clean, organized, and production-ready** wit
 **Benefits**:
 - 500MB RAM saved
 - 1 CPU core saved
-- Single port (3001) for both Web UI and API
+- Single port (3000) for both Web UI and API
 - Simpler configuration and monitoring
 
 ### 3. Documentation Cleanup
@@ -54,16 +54,16 @@ docs/
 docker compose up -d
 
 # Access Web UI
-open http://localhost:3001
+open http://localhost:3000
 
 # Check status
 docker compose ps
 ```
 
 ### Access Points
-- **Web UI**: http://localhost:3001
-- **API**: http://localhost:3001/api/*
-- **Health**: http://localhost:3001/health
+- **Web UI**: http://localhost:3000
+- **API**: http://localhost:3000/api/*
+- **Health**: http://localhost:3000/health
 
 ### Perfect AI Workflow
 ```
@@ -71,7 +71,7 @@ docker compose ps
    ↓
 2. Issues appear in queue automatically
    ↓
-3. Go to http://localhost:3001/queue
+3. Go to http://localhost:3000/queue
    ↓
 4. Click "📋 Copy for IDE" on any issue
    ↓
@@ -179,7 +179,7 @@ Start here:
 ### Environment Variables
 ```bash
 # Server
-PORT=3001
+PORT=3000
 HOST=0.0.0.0
 RUST_LOG=info,rustassistant=debug
 
@@ -199,7 +199,7 @@ XAI_API_KEY=your-key-here
 ```yaml
 services:
   rustassistant:
-    ports: ["3001:3001"]
+    ports: ["3000:3000"]
     volumes:
       - ./data:/app/data
       - /home/jordan/github:/home/jordan/github:ro
@@ -265,7 +265,7 @@ services:
 ### 1. Add Your FKS Repository
 ```bash
 # Via Web UI
-1. Open http://localhost:3001/repos
+1. Open http://localhost:3000/repos
 2. Click "Add Repository"
 3. Enter path: /home/jordan/github/fks
 4. Enter name: fks
@@ -276,7 +276,7 @@ services:
 ### 2. Monitor the Queue
 ```bash
 # Via Web UI
-1. Open http://localhost:3001/queue
+1. Open http://localhost:3000/queue
 2. Wait for scanner to detect issues
 3. Click "📋 Copy for IDE" on any issue
 4. Paste in Cursor and let AI help
@@ -286,14 +286,14 @@ services:
 ### 3. Check Dashboard Daily
 ```bash
 # Quick overview
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Port 3001 Already in Use
+### Port 3000 Already in Use
 ```bash
 # Change port in .env
 echo "PORT=3002" >> .env
@@ -333,7 +333,7 @@ docker compose logs -f rustassistant | grep auto_scanner
 ## 🏆 Summary
 
 You now have:
-- ✅ **Fully functional Web UI** at http://localhost:3001
+- ✅ **Fully functional Web UI** at http://localhost:3000
 - ✅ **Simplified 2-container deployment** (down from 3)
 - ✅ **Clean, organized documentation** (28 current files)
 - ✅ **Clean data directory** (only current databases)
@@ -353,7 +353,7 @@ docker compose up -d
 
 ### Access Web UI
 ```bash
-open http://localhost:3001
+open http://localhost:3000
 ```
 
 ### View Logs
@@ -363,7 +363,7 @@ docker compose logs -f rustassistant
 
 ### Check Health
 ```bash
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 ```
 
 ### Stop Services

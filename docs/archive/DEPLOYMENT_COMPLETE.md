@@ -127,7 +127,7 @@ All required tables and columns verified:
 ```yaml
 rustassistant:
   image: rustassistant-rustassistant
-  ports: 3000:3001
+  ports: 3000:3000
   volumes:
     - rustassistant_data:/app/data  # Named volume
     - repos_data:/app/repos          # Named volume

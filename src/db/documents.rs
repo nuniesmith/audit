@@ -14,6 +14,7 @@ use sqlx::FromRow;
 // ============================================================================
 
 /// Create a new document
+#[allow(clippy::too_many_arguments)]
 pub async fn create_document(
     pool: &SqlitePool,
     title: String,
@@ -713,6 +714,7 @@ pub struct Tag {
 }
 
 /// Create a new idea
+#[allow(clippy::too_many_arguments)]
 pub async fn create_idea(
     pool: &SqlitePool,
     content: &str,

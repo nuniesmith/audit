@@ -183,10 +183,10 @@ cargo run --release
 
 ```bash
 # Check health
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 
 # Navigate to repos
-open http://localhost:3001/repos
+open http://localhost:3000/repos
 
 # Trigger a scan and watch progress
 ```

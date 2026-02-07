@@ -8,7 +8,7 @@
 #   docker build -f docker/Dockerfile -t rustassistant:latest .
 #
 # Run:
-#   docker run -v rustassistant-data:/app/data -p 3001:3001 rustassistant:latest
+#   docker run -v rustassistant-data:/app/data -p 3000:3000 rustassistant:latest
 # ============================================================================
 
 # ----------------------------------------------------------------------------
@@ -86,7 +86,7 @@ USER rustassistant
 
 # Environment defaults
 ENV HOST=0.0.0.0 \
-    PORT=3001 \
+    PORT=3000 \
     DATABASE_PATH=/app/data/rustassistant.db \
     CACHE_DB_PATH=/app/data/rustassistant_cache.db \
     REPOS_PATH=/app/repos \
@@ -95,9 +95,9 @@ ENV HOST=0.0.0.0 \
     AUTO_SCAN_INTERVAL=60 \
     AUTO_SCAN_MAX_CONCURRENT=2
 
-EXPOSE 3001
+EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:3001/health || exit 1
+    CMD curl -f http://localhost:3000/health || exit 1
 
 ENTRYPOINT ["/app/rustassistant-server"]

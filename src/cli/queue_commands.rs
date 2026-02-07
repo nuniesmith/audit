@@ -858,7 +858,7 @@ async fn resolve_repo(pool: &SqlitePool, input: &str) -> Result<(String, PathBuf
             .unwrap_or("unknown");
 
         let existing: Option<(String,)> =
-            sqlx::query_as("SELECT id FROM repositories WHERE path = ?")
+            sqlx::query_as("SELECT id FROM repositories WHERE local_path = ?")
                 .bind(path.to_string_lossy().as_ref())
                 .fetch_optional(pool)
                 .await?;
@@ -870,7 +870,7 @@ async fn resolve_repo(pool: &SqlitePool, input: &str) -> Result<(String, PathBuf
             let now = chrono::Utc::now().timestamp();
 
             sqlx::query(
-                "INSERT INTO repositories (id, path, name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)"
+                "INSERT INTO repositories (id, local_path, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
             )
             .bind(&id)
             .bind(path.to_string_lossy().as_ref())
@@ -888,7 +888,7 @@ async fn resolve_repo(pool: &SqlitePool, input: &str) -> Result<(String, PathBuf
 
     // Try as repo name or ID
     let repo: Option<(String, String)> =
-        sqlx::query_as("SELECT id, path FROM repositories WHERE id = ? OR name = ?")
+        sqlx::query_as("SELECT id, local_path FROM repositories WHERE id = ? OR name = ?")
             .bind(input)
             .bind(input)
             .fetch_optional(pool)

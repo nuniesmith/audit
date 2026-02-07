@@ -52,10 +52,10 @@ docker compose logs -f rustassistant
 
 ### 4. Access the Web UI
 
-Open your browser to `http://localhost:3001`
+Open your browser to `http://localhost:3000`
 
 Default ports:
-- Web UI: `3001`
+- Web UI: `3000`
 - Redis: `6379` (internal)
 
 ---
@@ -118,7 +118,7 @@ RustAssistant automatically clones and updates repositories from their git URLs:
 ### Adding a Repository
 
 **Via Web UI:**
-1. Navigate to http://localhost:3001/repos
+1. Navigate to http://localhost:3000/repos
 2. Click "Add Repository"
 3. Enter git URL: `https://github.com/username/repo.git`
 4. Enter repo name: `repo-name`
@@ -147,7 +147,7 @@ docker compose exec rustassistant sqlite3 /app/data/rustassistant.db \
 | `AUTO_SCAN_INTERVAL` | No | `60` | Default scan interval (minutes) |
 | `AUTO_SCAN_MAX_CONCURRENT` | No | `2` | Max concurrent scans |
 | `RUST_LOG` | No | `info,rustassistant=debug` | Logging level |
-| `PORT` | No | `3001` | Web UI port |
+| `PORT` | No | `3000` | Web UI port |
 | `HOST` | No | `0.0.0.0` | Web UI bind address |
 | `REDIS_URL` | No | `redis://redis:6379` | Redis connection URL |
 
@@ -239,7 +239,7 @@ docker compose logs rustassistant | grep -i error
 
 ```bash
 # Check service health
-curl http://localhost:3001/health
+curl http://localhost:3000/health
 
 # Expected response:
 # {"status":"healthy","version":"0.1.0"}
@@ -374,14 +374,14 @@ nano .env
 docker compose up -d
 
 # Access from network
-http://raspberry-pi-ip:3001
+http://raspberry-pi-ip:3000
 ```
 
 ### Cloud Deployment (AWS/GCP/Azure)
 
 ```bash
 # Same steps as local deployment
-# Ensure security group/firewall allows port 3001
+# Ensure security group/firewall allows port 3000
 # Consider using Docker secrets for sensitive values
 
 # Docker secrets example:
@@ -399,7 +399,7 @@ server {
     server_name rustassistant.yourdomain.com;
 
     location / {
-        proxy_pass http://localhost:3001;
+        proxy_pass http://localhost:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
