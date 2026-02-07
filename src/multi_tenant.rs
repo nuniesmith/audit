@@ -240,7 +240,8 @@ impl TenantManager {
         quota: TenantQuota,
     ) -> Result<Tenant> {
         let id = uuid::Uuid::new_v4().to_string();
-        let created_at = Utc::now().timestamp();
+        let created_at_dt = Utc::now();
+        let created_at = created_at_dt.timestamp();
 
         sqlx::query(
             r#"
@@ -281,7 +282,7 @@ impl TenantManager {
             slug: slug.to_string(),
             quota,
             enabled: true,
-            created_at,
+            created_at: created_at_dt,
             custom_domain: None,
         })
     }

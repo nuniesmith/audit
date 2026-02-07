@@ -166,7 +166,7 @@ impl JobQueue {
     }
 
     /// Submit a new job
-    pub async fn submit_job(&self, document_ids: Vec<i64>, force_reindex: bool) -> String {
+    pub async fn submit_job(&self, document_ids: Vec<String>, force_reindex: bool) -> String {
         let job = IndexJob::new(document_ids, force_reindex);
         let job_id = job.id.clone();
 

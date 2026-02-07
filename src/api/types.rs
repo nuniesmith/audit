@@ -1,7 +1,7 @@
 //! API request and response types for RAG endpoints
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // Common Types
@@ -243,7 +243,7 @@ pub struct SearchResponse {
 /// Request to index a document
 #[derive(Debug, Clone, Deserialize)]
 pub struct IndexDocumentRequest {
-    pub document_id: i64,
+    pub document_id: String,
     #[serde(default)]
     pub force_reindex: bool,
 }
@@ -251,7 +251,7 @@ pub struct IndexDocumentRequest {
 /// Batch index request
 #[derive(Debug, Clone, Deserialize)]
 pub struct BatchIndexRequest {
-    pub document_ids: Vec<i64>,
+    pub document_ids: Vec<String>,
     #[serde(default)]
     pub force_reindex: bool,
 }
@@ -260,7 +260,7 @@ pub struct BatchIndexRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct IndexJobResponse {
     pub job_id: String,
-    pub document_ids: Vec<i64>,
+    pub document_ids: Vec<String>,
     pub status: String,
     pub queued_at: DateTime<Utc>,
 }

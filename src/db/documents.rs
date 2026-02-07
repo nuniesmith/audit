@@ -704,11 +704,12 @@ pub struct Idea {
 /// Tag model for tag registry
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Tag {
-    pub id: i64,
     pub name: String,
-    pub color: Option<String>,
+    pub color: String,
+    pub description: Option<String>,
     pub usage_count: i64,
     pub created_at: i64,
+    pub updated_at: i64,
 }
 
 /// Create a new idea
@@ -765,36 +766,40 @@ pub async fn list_ideas(
         "#,
     );
 
-    if status.is_some() {
-        query.push_str(" AND status = ?1");
+    let mut binds: Vec<String> = Vec::new();
+
+    if let Some(s) = status {
+        binds.push(s.to_string());
+        query.push_str(&format!(" AND status = ?{}", binds.len()));
     }
-    if category.is_some() {
-        query.push_str(" AND category = ?2");
+    if let Some(c) = category {
+        binds.push(c.to_string());
+        query.push_str(&format!(" AND category = ?{}", binds.len()));
     }
-    if tag.is_some() {
-        query.push_str(" AND (tags LIKE '%' || ?3 || '%')");
+    if let Some(t) = tag {
+        binds.push(t.to_string());
+        query.push_str(&format!(" AND (tags LIKE '%' || ?{} || '%')", binds.len()));
     }
-    if project.is_some() {
-        query.push_str(" AND project = ?4");
+    if let Some(p) = project {
+        binds.push(p.to_string());
+        query.push_str(&format!(" AND project = ?{}", binds.len()));
     }
 
-    query.push_str(" ORDER BY created_at DESC LIMIT ?5");
+    binds.push(limit.to_string());
+    query.push_str(&format!(" ORDER BY created_at DESC LIMIT ?{}", binds.len()));
 
     let mut q = sqlx::query_as::<_, Idea>(&query);
 
-    if let Some(s) = status {
-        q = q.bind(s);
+    // Bind all parameters in order
+    for (idx, bind) in binds.iter().enumerate() {
+        if idx < binds.len() - 1 {
+            // All filters are strings
+            q = q.bind(bind);
+        } else {
+            // Last one is limit (i64)
+            q = q.bind(limit);
+        }
     }
-    if let Some(c) = category {
-        q = q.bind(c);
-    }
-    if let Some(t) = tag {
-        q = q.bind(t);
-    }
-    if let Some(p) = project {
-        q = q.bind(p);
-    }
-    q = q.bind(limit);
 
     Ok(q.fetch_all(pool).await?)
 }
@@ -846,7 +851,7 @@ pub async fn count_ideas(pool: &SqlitePool) -> DbResult<i64> {
 pub async fn list_tags(pool: &SqlitePool, limit: i64) -> DbResult<Vec<Tag>> {
     Ok(sqlx::query_as::<_, Tag>(
         r#"
-        SELECT id, name, color, usage_count, created_at
+        SELECT name, color, description, usage_count, created_at, updated_at
         FROM tags
         ORDER BY usage_count DESC
         LIMIT ?1
@@ -861,7 +866,7 @@ pub async fn list_tags(pool: &SqlitePool, limit: i64) -> DbResult<Vec<Tag>> {
 pub async fn search_tags(pool: &SqlitePool, query: &str) -> DbResult<Vec<Tag>> {
     Ok(sqlx::query_as::<_, Tag>(
         r#"
-        SELECT id, name, color, usage_count, created_at
+        SELECT name, color, description, usage_count, created_at, updated_at
         FROM tags
         WHERE name LIKE '%' || ?1 || '%'
         ORDER BY usage_count DESC
