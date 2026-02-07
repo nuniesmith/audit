@@ -155,7 +155,7 @@ pub enum EvictionPolicy {
 
 /// SQLite-based repository cache
 pub struct RepoCacheSql {
-    pool: SqlitePool,
+    pub pool: SqlitePool,
 }
 
 impl RepoCacheSql {

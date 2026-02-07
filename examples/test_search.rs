@@ -13,6 +13,7 @@ use rustassistant::indexing::{DocumentIndexer, IndexingConfig};
 use rustassistant::search::{SearchConfig, SearchFilters, SearchQuery, SemanticSearcher};
 
 #[tokio::main]
+
 async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt()
@@ -24,7 +25,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Setup test database
     println!("📋 Setting up test database...");
-    let pool = init_pool("sqlite::memory:").await?;
+    let db_config = rustassistant::db::DatabaseConfig {
+        url: "sqlite::memory:".to_string(),
+        ..Default::default()
+    };
+    let pool = init_pool(&db_config).await?;
     println!("✓ Database initialized\n");
 
     // Create and index sample documents
@@ -127,7 +132,7 @@ async fn create_sample_documents(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<
     let mut doc_ids = Vec::new();
 
     for (id, title, content, doc_type, tags) in documents {
-        let tags_json = serde_json::to_string(&tags)?;
+        let tags_vec: Vec<String> = tags.iter().map(|t| t.to_string()).collect();
 
         create_document(
             pool,
@@ -137,9 +142,7 @@ async fn create_sample_documents(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<
             "text".to_string(),
             "manual".to_string(),
             doc_type.to_string(),
-            Some(tags_json),
-            None,
-            None,
+            tags_vec,
         )
         .await?;
 

@@ -18,6 +18,43 @@ use crate::refactor_assistant::RefactorAssistant;
 use crate::repo_cache_sql::RepoCacheSql;
 use crate::repo_manager::RepoManager;
 
+/// Maximum file size to send to LLM analysis (100 KB)
+const MAX_ANALYSIS_FILE_SIZE: u64 = 100 * 1024;
+
+/// Default per-scan cost budget in dollars
+const DEFAULT_SCAN_COST_BUDGET: f64 = 3.00;
+
+/// Grok 4.1 Fast pricing constants (mirrors grok_client.rs)
+const COST_PER_MILLION_INPUT: f64 = 0.20;
+const COST_PER_MILLION_OUTPUT: f64 = 0.50;
+
+/// Directories to always skip during scanning
+const SKIP_DIRS: &[&str] = &[
+    "/dist/",
+    "/build/",
+    "/node_modules/",
+    "/target/",
+    "/.git/",
+    "/vendor/",
+    "/__pycache__/",
+    "/.next/",
+    "/out/",
+    "/coverage/",
+    "/.cache/",
+];
+
+/// File patterns to always skip (suffix match)
+const SKIP_SUFFIXES: &[&str] = &[
+    ".min.js",
+    ".min.css",
+    ".map",
+    ".bundle.js",
+    ".chunk.js",
+    ".min.mjs",
+    ".d.ts",
+    ".lock",
+];
+
 /// Auto-scanner configuration
 #[derive(Debug, Clone)]
 pub struct AutoScannerConfig {
@@ -27,6 +64,8 @@ pub struct AutoScannerConfig {
     pub default_interval_minutes: u64,
     /// Maximum concurrent scans
     pub max_concurrent_scans: usize,
+    /// Per-scan cost budget in dollars (0.0 = unlimited)
+    pub scan_cost_budget: f64,
 }
 
 impl Default for AutoScannerConfig {
@@ -35,6 +74,7 @@ impl Default for AutoScannerConfig {
             enabled: true,
             default_interval_minutes: 60,
             max_concurrent_scans: 2,
+            scan_cost_budget: DEFAULT_SCAN_COST_BUDGET,
         }
     }
 }
@@ -330,7 +370,7 @@ impl AutoScanner {
             .await;
 
         match result {
-            Ok((files_analyzed, issues_found)) => {
+            Ok((files_analyzed, issues_found, budget_halted)) => {
                 // Calculate scan duration
                 let duration_ms = scan_start.elapsed().as_millis() as i64;
 
@@ -365,10 +405,22 @@ impl AutoScanner {
                     repo.name, files_analyzed, issues_found, duration_ms
                 );
 
-                // Update last_analyzed and commit hash
+                // Update last_analyzed timestamp
                 self.update_last_analyzed(&repo.id, now).await?;
-                if let Some(ref hash) = current_head {
-                    self.update_last_commit_hash(&repo.id, hash).await?;
+
+                // CRITICAL: Only store the commit hash if ALL files were analyzed.
+                // If the budget cap halted the scan, we leave the hash unstored so
+                // the next scan cycle will re-diff, hit cache on already-analyzed
+                // files (free), and continue analyzing remaining files.
+                if !budget_halted {
+                    if let Some(ref hash) = current_head {
+                        self.update_last_commit_hash(&repo.id, hash).await?;
+                    }
+                } else {
+                    info!(
+                        "Skipping commit hash update — budget halted scan. \
+                         Next cycle will resume from cache hits."
+                    );
                 }
             }
             Err(e) => {
@@ -479,8 +531,16 @@ impl AutoScanner {
                             }
                             // For renames (R100), the new path is the last element
                             let file_path = parts.last().unwrap().trim();
-                            if Self::is_analyzable_file(file_path) {
-                                changed_set.insert(repo_path.join(file_path));
+                            if Self::should_analyze_file(file_path) {
+                                let full_path = repo_path.join(file_path);
+                                if full_path.exists() {
+                                    changed_set.insert(full_path);
+                                } else {
+                                    debug!(
+                                        "Skipping {} - file does not exist on disk (deleted in later commit?)",
+                                        file_path
+                                    );
+                                }
                             }
                         }
                         info!(
@@ -537,8 +597,13 @@ impl AutoScanner {
                     continue;
                 }
 
-                if Self::is_analyzable_file(file_path) {
-                    changed_set.insert(repo_path.join(file_path));
+                if Self::should_analyze_file(file_path) {
+                    let full_path = repo_path.join(file_path);
+                    if full_path.exists() {
+                        changed_set.insert(full_path);
+                    } else {
+                        debug!("Skipping {} - file does not exist on disk", file_path);
+                    }
                 }
             }
         }
@@ -565,8 +630,13 @@ impl AutoScanner {
                 let stdout = String::from_utf8_lossy(&out.stdout);
                 for line in stdout.lines() {
                     let file_path = line.trim();
-                    if !file_path.is_empty() && Self::is_analyzable_file(file_path) {
-                        changed_set.insert(repo_path.join(file_path));
+                    if !file_path.is_empty() && Self::should_analyze_file(file_path) {
+                        let full_path = repo_path.join(file_path);
+                        if full_path.exists() {
+                            changed_set.insert(full_path);
+                        } else {
+                            debug!("Skipping {} - file does not exist on disk", file_path);
+                        }
                     }
                 }
             }
@@ -592,22 +662,101 @@ impl AutoScanner {
             || file_path.ends_with(".rb")
     }
 
-    /// Analyze changed files with progress tracking
+    /// Check if a file should be skipped based on path patterns.
+    /// This catches generated/bundled/vendored code that wastes API budget.
+    fn should_skip_path(file_path: &str) -> bool {
+        // Normalize to forward slashes for consistent matching
+        let normalized = file_path.replace('\\', "/");
+        // Ensure we match directory components properly by wrapping in slashes
+        let with_leading = if normalized.starts_with('/') {
+            normalized.clone()
+        } else {
+            format!("/{}", normalized)
+        };
+
+        // Check directory patterns
+        for dir in SKIP_DIRS {
+            if with_leading.contains(dir) {
+                return true;
+            }
+        }
+
+        // Check suffix patterns (minified files, sourcemaps, etc.)
+        for suffix in SKIP_SUFFIXES {
+            if normalized.ends_with(suffix) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Combined filter: is it a code file AND not in a skip path?
+    fn should_analyze_file(file_path: &str) -> bool {
+        Self::is_analyzable_file(file_path) && !Self::should_skip_path(file_path)
+    }
+
+    /// Analyze changed files with progress tracking and cost budget enforcement.
     /// Returns (files_analyzed, issues_found)
     async fn analyze_changed_files_with_progress(
         &self,
         repo_id: &str,
         repo_path: &Path,
         files: &[PathBuf],
-    ) -> Result<(i64, i64)> {
+    ) -> Result<(i64, i64, bool)> {
         let cache = RepoCacheSql::new_for_repo(repo_path).await?;
         let mut files_analyzed = 0i64;
         let mut issues_found = 0i64;
+        let mut cumulative_cost = 0.0f64;
+        let mut budget_halted = false;
         let progress_update_interval = 5; // Update progress every N files
 
-        for (idx, file) in files.iter().enumerate() {
+        // Pre-filter files that match skip patterns (extra safety — get_changed_files
+        // already filters, but files may have been added to the list via other paths)
+        let analyzable_files: Vec<&PathBuf> = files
+            .iter()
+            .filter(|f| {
+                let path_str = f.to_string_lossy();
+                if Self::should_skip_path(&path_str) {
+                    let rel = f.strip_prefix(repo_path).unwrap_or(f);
+                    info!(
+                        "Pre-filter: skipping {} — matches skip pattern",
+                        rel.display()
+                    );
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
+
+        let original_count = files.len();
+        let filtered_count = analyzable_files.len();
+        if original_count != filtered_count {
+            info!(
+                "Filtered {} → {} files ({} skipped by path/pattern rules)",
+                original_count,
+                filtered_count,
+                original_count - filtered_count
+            );
+        }
+
+        for (idx, file) in analyzable_files.iter().enumerate() {
+            // Check cost budget before each file (using actual accumulated cost)
+            if self.config.scan_cost_budget > 0.0 && cumulative_cost >= self.config.scan_cost_budget {
+                warn!(
+                    "⚠️  Scan cost budget reached (${:.4} >= ${:.2} limit). \
+                     Stopping analysis with {} files remaining.",
+                    cumulative_cost,
+                    self.config.scan_cost_budget,
+                    filtered_count - idx
+                );
+                budget_halted = true;
+                break;
+            }
+
             // Update progress periodically
-            if idx % progress_update_interval == 0 || idx == files.len() - 1 {
+            if idx % progress_update_interval == 0 || idx == filtered_count - 1 {
                 let current_file = file
                     .strip_prefix(repo_path)
                     .unwrap_or(file)
@@ -627,9 +776,21 @@ impl AutoScanner {
             }
 
             match self.analyze_file(repo_path, file, &cache).await {
-                Ok(found_issues) => {
+                Ok((found_issues, file_cost)) => {
                     files_analyzed += 1;
                     issues_found += found_issues;
+                    cumulative_cost += file_cost;
+
+                    // Log cost milestone every $0.50
+                    if cumulative_cost > 0.0
+                        && (cumulative_cost * 2.0) as i64
+                            > ((cumulative_cost - file_cost) * 2.0) as i64
+                    {
+                        info!(
+                            "💰 Scan cost: ${:.4} / ${:.2} budget ({} files analyzed)",
+                            cumulative_cost, self.config.scan_cost_budget, files_analyzed
+                        );
+                    }
                 }
                 Err(e) => {
                     error!("Failed to analyze {}: {}", file.display(), e);
@@ -637,32 +798,74 @@ impl AutoScanner {
             }
         }
 
-        Ok((files_analyzed, issues_found))
+        info!(
+            "Scan summary: analyzed={}, issues={}, actual_cost=${:.4}, budget_halted={}",
+            files_analyzed, issues_found, cumulative_cost, budget_halted
+        );
+
+        Ok((files_analyzed, issues_found, budget_halted))
     }
 
-    /// Analyze a single file
-    /// Returns the number of issues found (0 or 1 for now)
+    /// Analyze a single file.
+    /// Returns (issues_found, actual_cost_usd). Cache hits cost $0.
     async fn analyze_file(
         &self,
         repo_path: &Path,
         file_path: &Path,
         cache: &RepoCacheSql,
-    ) -> Result<i64> {
-        // Read file content
-        let content = match tokio::fs::read_to_string(file_path).await {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("Cannot read {}: {}", file_path.display(), e);
-                return Ok(0);
-            }
-        };
-
-        // Get relative path
+    ) -> Result<(i64, f64)> {
         let rel_path = file_path
             .strip_prefix(repo_path)
             .unwrap_or(file_path)
             .to_string_lossy()
             .to_string();
+
+        // Skip non-existent files (deleted between diff and analysis)
+        if !file_path.exists() {
+            debug!("Skipping {} - file no longer exists on disk", rel_path);
+            return Ok((0, 0.0));
+        }
+
+        // Check file size before reading
+        let metadata = tokio::fs::metadata(file_path).await?;
+        let file_size = metadata.len();
+
+        if file_size > MAX_ANALYSIS_FILE_SIZE {
+            info!(
+                "Skipping {} - file too large ({} KB > {} KB limit)",
+                rel_path,
+                file_size / 1024,
+                MAX_ANALYSIS_FILE_SIZE / 1024
+            );
+            return Ok((0, 0.0));
+        }
+
+        if file_size == 0 {
+            debug!("Skipping {} - empty file", rel_path);
+            return Ok((0, 0.0));
+        }
+
+        // Read file content
+        let content = match tokio::fs::read_to_string(file_path).await {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Cannot read {}: {} (possibly binary)", rel_path, e);
+                return Ok((0, 0.0));
+            }
+        };
+
+        // Skip if content is suspiciously dense (likely minified/bundled).
+        // Heuristic: if average line length > 500 chars and fewer than 50 lines,
+        // it's almost certainly generated or minified code.
+        let line_count = content.lines().count().max(1);
+        let avg_line_len = content.len() / line_count;
+        if avg_line_len > 500 && line_count < 50 {
+            info!(
+                "Skipping {} - likely minified (avg line: {} chars, {} lines)",
+                rel_path, avg_line_len, line_count
+            );
+            return Ok((0, 0.0));
+        }
 
         // Check cache first
         if cache
@@ -679,7 +882,7 @@ impl AutoScanner {
             .is_some()
         {
             debug!("Cache hit for {}", rel_path);
-            return Ok(0);
+            return Ok((0, 0.0));
         }
 
         info!("Analyzing {}", rel_path);
@@ -690,6 +893,19 @@ impl AutoScanner {
 
         // Analyze with LLM
         let analysis = assistant.analyze_file(file_path).await?;
+
+        // Calculate actual cost from API-reported tokens_used
+        // Uses Grok 4.1 Fast pricing with ~70% input / 30% output split
+        // (observed from actual API logs)
+        let actual_cost = if let Some(tokens) = analysis.tokens_used {
+            let t = tokens as f64;
+            let input_est = t * 0.7;
+            let output_est = t * 0.3;
+            (input_est / 1_000_000.0) * COST_PER_MILLION_INPUT
+                + (output_est / 1_000_000.0) * COST_PER_MILLION_OUTPUT
+        } else {
+            0.0
+        };
 
         // Cache the result
         let result_json = serde_json::to_value(&analysis)?;
@@ -708,11 +924,14 @@ impl AutoScanner {
             })
             .await?;
 
-        debug!("Cached analysis for {}", rel_path);
+        debug!(
+            "Cached analysis for {} (cost: ${:.4}, tokens: {:?})",
+            rel_path, actual_cost, analysis.tokens_used
+        );
 
         // For now, count any analysis as 1 issue found
         // TODO: Parse analysis.suggestions to count actual issues
-        Ok(1)
+        Ok((1, actual_cost))
     }
 
     /// Update last_scan_check timestamp
@@ -824,7 +1043,7 @@ pub async fn disable_auto_scan(pool: &sqlx::SqlitePool, repo_id: &str) -> Result
     Ok(())
 }
 
-/// Force a scan check for a repository (reset last_scan_check)
+/// Force a scan check for a repository (reset last_scanned_at)
 pub async fn force_scan(pool: &sqlx::SqlitePool, repo_id: &str) -> Result<()> {
     sqlx::query(
         r#"
@@ -852,6 +1071,7 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.default_interval_minutes, 60);
         assert_eq!(config.max_concurrent_scans, 2);
+        assert!((config.scan_cost_budget - 0.50).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -859,5 +1079,121 @@ mod tests {
         let status = FileStatus::Modified;
         assert_eq!(status, FileStatus::Modified);
         assert_ne!(status, FileStatus::Unmodified);
+    }
+
+    #[test]
+    fn test_should_skip_path_skip_dirs() {
+        assert!(AutoScanner::should_skip_path(
+            "src/clients/web/dist/bundle.js"
+        ));
+        assert!(AutoScanner::should_skip_path("frontend/build/index.js"));
+        assert!(AutoScanner::should_skip_path(
+            "node_modules/lodash/index.js"
+        ));
+        assert!(AutoScanner::should_skip_path("target/debug/build/main.rs"));
+        assert!(AutoScanner::should_skip_path("vendor/third_party/lib.go"));
+        assert!(AutoScanner::should_skip_path("app/.next/server/pages.js"));
+        assert!(AutoScanner::should_skip_path("project/__pycache__/mod.py"));
+        assert!(AutoScanner::should_skip_path(".cache/some/file.js"));
+    }
+
+    #[test]
+    fn test_should_skip_path_skip_suffixes() {
+        assert!(AutoScanner::should_skip_path("src/app.min.js"));
+        assert!(AutoScanner::should_skip_path("styles/main.min.css"));
+        assert!(AutoScanner::should_skip_path("src/index.js.map"));
+        assert!(AutoScanner::should_skip_path("src/chunk.bundle.js"));
+        assert!(AutoScanner::should_skip_path("src/vendor.chunk.js"));
+        assert!(AutoScanner::should_skip_path("lib/types.d.ts"));
+        assert!(AutoScanner::should_skip_path("package-lock.lock"));
+        assert!(AutoScanner::should_skip_path("src/utils.min.mjs"));
+    }
+
+    #[test]
+    fn test_should_skip_path_the_offending_file() {
+        // THE file that cost $0.14 in one API call
+        assert!(AutoScanner::should_skip_path("dist/fks-web-kmp.js"));
+        assert!(AutoScanner::should_skip_path(
+            "src/clients/web/dist/fks-web-kmp.js"
+        ));
+    }
+
+    #[test]
+    fn test_should_not_skip_normal_code() {
+        assert!(!AutoScanner::should_skip_path("src/main.rs"));
+        assert!(!AutoScanner::should_skip_path("src/auto_scanner.rs"));
+        assert!(!AutoScanner::should_skip_path("lib/utils.js"));
+        assert!(!AutoScanner::should_skip_path("scripts/build.sh"));
+        assert!(!AutoScanner::should_skip_path("src/components/App.tsx"));
+        assert!(!AutoScanner::should_skip_path("cmd/server/main.go"));
+    }
+
+    #[test]
+    fn test_should_not_skip_distribution_source_code() {
+        // "distribution" in a path should NOT be caught by "/dist/" pattern
+        assert!(!AutoScanner::should_skip_path("src/distribution/calc.py"));
+        assert!(!AutoScanner::should_skip_path("lib/distribution/normal.rs"));
+    }
+
+    #[test]
+    fn test_should_analyze_file_good_files() {
+        assert!(AutoScanner::should_analyze_file("src/main.rs"));
+        assert!(AutoScanner::should_analyze_file("lib/app.js"));
+        assert!(AutoScanner::should_analyze_file("src/utils.ts"));
+        assert!(AutoScanner::should_analyze_file("src/App.tsx"));
+        assert!(AutoScanner::should_analyze_file("scripts/deploy.sh"));
+        assert!(AutoScanner::should_analyze_file("src/Main.kt"));
+        assert!(AutoScanner::should_analyze_file("src/Main.java"));
+        assert!(AutoScanner::should_analyze_file("cmd/main.go"));
+        assert!(AutoScanner::should_analyze_file("app.py"));
+        assert!(AutoScanner::should_analyze_file("lib/helpers.rb"));
+    }
+
+    #[test]
+    fn test_should_analyze_file_non_code() {
+        assert!(!AutoScanner::should_analyze_file("README.md"));
+        assert!(!AutoScanner::should_analyze_file("Cargo.toml"));
+        assert!(!AutoScanner::should_analyze_file("data.json"));
+        assert!(!AutoScanner::should_analyze_file("image.png"));
+        assert!(!AutoScanner::should_analyze_file("styles.css"));
+        assert!(!AutoScanner::should_analyze_file(".gitignore"));
+    }
+
+    #[test]
+    fn test_should_analyze_file_code_in_skip_paths() {
+        assert!(!AutoScanner::should_analyze_file("dist/bundle.js"));
+        assert!(!AutoScanner::should_analyze_file(
+            "node_modules/pkg/index.js"
+        ));
+        assert!(!AutoScanner::should_analyze_file("src/app.min.js"));
+        assert!(!AutoScanner::should_analyze_file(
+            "src/clients/web/dist/fks-web-kmp.js"
+        ));
+        assert!(!AutoScanner::should_analyze_file("build/output.js"));
+        assert!(!AutoScanner::should_analyze_file("vendor/lib/helper.rb"));
+    }
+
+    #[test]
+    fn test_is_analyzable_file() {
+        assert!(AutoScanner::is_analyzable_file("main.rs"));
+        assert!(AutoScanner::is_analyzable_file("script.py"));
+        assert!(AutoScanner::is_analyzable_file("app.js"));
+        assert!(AutoScanner::is_analyzable_file("component.tsx"));
+        assert!(AutoScanner::is_analyzable_file("build.sh"));
+        assert!(!AutoScanner::is_analyzable_file("readme.md"));
+        assert!(!AutoScanner::is_analyzable_file("config.toml"));
+        assert!(!AutoScanner::is_analyzable_file("data.csv"));
+    }
+
+    #[test]
+    fn test_windows_path_normalization() {
+        // Backslash paths should be normalized
+        assert!(AutoScanner::should_skip_path(
+            "src\\clients\\web\\dist\\bundle.js"
+        ));
+        assert!(AutoScanner::should_skip_path(
+            "node_modules\\lodash\\index.js"
+        ));
+        assert!(!AutoScanner::should_skip_path("src\\main.rs"));
     }
 }

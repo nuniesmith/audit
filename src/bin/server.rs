@@ -22,6 +22,7 @@ use rustassistant::db::{
     self, get_next_task, get_stats, list_repositories, list_tasks, update_task_status, Database,
 };
 use rustassistant::web_ui::{create_router as create_web_ui_router, WebAppState};
+use rustassistant::web_ui_cache_viewer::create_cache_viewer_router;
 use rustassistant::web_ui_extensions::create_extension_router;
 use std::sync::Arc;
 
@@ -429,6 +430,10 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|_| "2".into())
             .parse()
             .unwrap_or(2),
+        scan_cost_budget: std::env::var("AUTO_SCAN_COST_BUDGET")
+            .unwrap_or_else(|_| "0.50".into())
+            .parse()
+            .unwrap_or(0.50),
     };
 
     if scanner_config.enabled {

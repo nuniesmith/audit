@@ -395,7 +395,10 @@ mod tests {
 
     #[test]
     fn test_job_creation() {
-        let job = IndexJob::new(vec![1, 2, 3], false);
+        let job = IndexJob::new(
+            vec!["1".to_string(), "2".to_string(), "3".to_string()],
+            false,
+        );
         assert_eq!(job.status, JobStatus::Queued);
         assert_eq!(job.progress.total, 3);
         assert_eq!(job.progress.completed, 0);
@@ -404,7 +407,10 @@ mod tests {
 
     #[test]
     fn test_job_lifecycle() {
-        let mut job = IndexJob::new(vec![1, 2, 3], false);
+        let mut job = IndexJob::new(
+            vec!["1".to_string(), "2".to_string(), "3".to_string()],
+            false,
+        );
 
         // Start job
         job.start();
@@ -419,7 +425,10 @@ mod tests {
 
     #[test]
     fn test_job_failure() {
-        let mut job = IndexJob::new(vec![1, 2, 3], false);
+        let mut job = IndexJob::new(
+            vec!["1".to_string(), "2".to_string(), "3".to_string()],
+            false,
+        );
         job.fail("Test error".to_string());
 
         assert_eq!(job.status, JobStatus::Failed);

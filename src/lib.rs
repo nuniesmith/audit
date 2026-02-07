@@ -82,6 +82,7 @@ pub mod tree_state;
 pub mod types;
 pub mod vector_index;
 pub mod web_ui;
+pub mod web_ui_cache_viewer;
 pub mod web_ui_extensions;
 pub mod webhooks;
 

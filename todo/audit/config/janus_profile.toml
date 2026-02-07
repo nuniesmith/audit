@@ -1,0 +1,405 @@
+# JANUS-Specific Audit Profile
+# Focus: Neuromorphic trading algorithm research validation
+# Reference: docs/research/*.md
+
+[profile]
+name = "janus"
+description = "Audit profile for JANUS neuromorphic trading system"
+version = "1.0"
+author = "JANUS Research Team"
+
+# Critical areas based on IMPLEMENTATION_STATUS.md and research roadmap
+[focus_areas]
+neuromorphic_components = true
+hyrotrader_compliance = true
+research_reproducibility = true
+trading_safety = true
+performance_metrics = true
+
+# Severity thresholds
+[thresholds]
+max_critical = 0  # Zero tolerance for critical issues
+max_high = 10
+max_medium = 50
+fail_on_critical = true
+
+# ============================================================================
+# 1. NEUROMORPHIC IMPLEMENTATION CHECKS
+# Reference: IMPLEMENTATION_STATUS.md (497 TODOs)
+# ============================================================================
+
+[[checks]]
+name = "neuromorphic_stub_detection"
+category = "neuromorphic"
+severity = "critical"
+description = "Detect unimplemented neuromorphic components (research blockers)"
+pattern = '''
+(?x)
+(struct|impl)\s+(
+    Differentiable|
+    VivitModel|
+    FuzzyLogic|
+    PolicyNetwork|
+    FearNetwork|
+    AttentionGate|
+    BasalGanglia|
+    OpAL|
+    LTN
+)
+.*?
+(TODO|STUB|unimplemented!|panic!)
+'''
+paths = ["src/janus/crates/vision/", "src/janus/crates/logic/", "src/janus/crates/basal_ganglia/"]
+message = "Neuromorphic component not implemented - blocks MH-02 Empirical Validation"
+reference = "docs/research/IMPLEMENTATION_STATUS.md"
+
+[[checks]]
+name = "diffgaf_learnable_params"
+category = "neuromorphic"
+severity = "high"
+description = "DiffGAF must have learnable gamma/beta parameters"
+pattern = '''(?x)struct\s+Differentiable.*?\{(?:(?!gamma|beta).)*?\}'''
+paths = ["src/janus/crates/vision/src/gaf.rs"]
+message = "DiffGAF missing learnable normalization (γ, β) - see HYPERPARAMETERS.md §2.2"
+reference = "docs/research/HYPERPARAMETERS.md"
+
+[[checks]]
+name = "vivit_attention_layers"
+category = "neuromorphic"
+severity = "high"
+description = "ViViT requires factorized attention implementation"
+pattern = '''struct\s+VivitModel(?:(?!MultiheadAttention|FactorizedAttention).)*?impl'''
+paths = ["src/janus/crates/vision/"]
+message = "ViViT missing transformer layers (factorized attention) - placeholder stub only"
+
+[[checks]]
+name = "ltn_tnorm_operators"
+category = "neuromorphic"
+severity = "high"
+description = "Logic Tensor Networks need T-norm fuzzy logic operators"
+pattern = '''(?x)struct\s+FuzzyLogic.*?(?:(?!product_tnorm|lukasiewicz).)*?impl'''
+paths = ["src/janus/crates/logic/"]
+message = "LTN missing T-norm operators (Product, Łukasiewicz) - see §5.2.2"
+
+# ============================================================================
+# 2. HYROTRADER COMPLIANCE CHECKS
+# Reference: IMPLEMENTATION_STATUS.md §3.1, §5.3
+# ============================================================================
+
+[[checks]]
+name = "five_minute_sl_timer"
+category = "compliance"
+severity = "critical"
+description = "HyroTrader requires 5-minute stop loss enforcement timer"
+pattern = '''(?x)async\s+fn\s+on_trade_execution(?:(?!tokio::spawn|sleep\(Duration::from_secs\(300\)\)|force_close).){0,500}\}'''
+paths = ["src/janus/crates/compliance/"]
+message = "5-minute SL timer NOT implemented (HyroTrader CRITICAL requirement)"
+reference = "docs/research/JANUS_ARCHITECTURAL_SPECIFICATION.md §6.4.2"
+
+[[checks]]
+name = "midnight_utc_reset"
+category = "compliance"
+severity = "critical"
+description = "Daily drawdown must reset at midnight UTC"
+pattern = '''(?x)struct\s+(PropFirmValidator|ComplianceSheriff)(?:(?!midnight_reset|Utc::now|00:00).){0,1000}\}'''
+paths = ["src/janus/crates/compliance/"]
+message = "Midnight UTC daily reset NOT implemented (drawdown tracking incomplete)"
+
+[[checks]]
+name = "trailing_drawdown_hwm"
+category = "compliance"
+severity = "high"
+description = "Trailing drawdown monitor needs high-water mark tracking"
+pattern = '''struct\s+TrailingDrawdownMonitor\s*\{(?:(?!high_water_mark).)*?\}'''
+paths = ["src/janus/crates/compliance/"]
+message = "Trailing drawdown missing HWM tracking - see §6.4.3"
+
+[[checks]]
+name = "position_stop_loss_mandatory"
+category = "compliance"
+severity = "critical"
+description = "All positions MUST have stop loss (HyroTrader rule)"
+pattern = '''(?x)fn\s+validate_order.*?stop_loss:\s*Option<.*?(?:(?!is_none|bail!).)*?Ok\('''
+paths = ["src/janus/crates/compliance/"]
+message = "Stop loss check may not be enforcing mandatory SL"
+
+# ============================================================================
+# 3. RESEARCH REPRODUCIBILITY CHECKS
+# Reference: EMPIRICAL_VALIDATION_TEMPLATE.md, HYPERPARAMETERS.md
+# ============================================================================
+
+[[checks]]
+name = "hyperparameter_documentation"
+category = "research"
+severity = "medium"
+description = "All hyperparameters must reference HYPERPARAMETERS.md"
+pattern = '''(?x)(window_size|embedding_dim|num_heads|learning_rate|batch_size|gamma|beta)\s*=\s*[0-9.]+(?!\s*//.*?HYPERPARAMETERS\.md)'''
+paths = ["src/janus/", "experiments/"]
+message = "Hyperparameter lacks documentation comment (reference HYPERPARAMETERS.md)"
+
+[[checks]]
+name = "seed_locking_reproducibility"
+category = "research"
+severity = "high"
+description = "Experiments must lock random seeds for reproducibility"
+pattern = '''(?x)def\s+(train|backtest|experiment)(?:(?!seed|torch\.manual_seed|np\.random\.seed|random\.seed).){0,500}:'''
+paths = ["experiments/**/*.py"]
+message = "Missing seed lock - see EMPIRICAL_VALIDATION_TEMPLATE.md Appendix D"
+
+[[checks]]
+name = "baseline_strategy_implementations"
+category = "research"
+severity = "critical"
+description = "All 4 baseline strategies required for MH-03"
+required_patterns = [
+    '''class\s+BuyAndHold''',
+    '''class\s+SMA.*?Strategy''',
+    '''class\s+Bollinger.*?Strategy''',
+    '''class\s+DQN.*?(Agent|Baseline)'''
+]
+paths = ["experiments/baselines/strategies.py"]
+message = "Missing baseline strategy (need: Buy-Hold, SMA, Bollinger, DQN)"
+reference = "docs/research/ACTION_CHECKLIST.md §Week 4"
+
+[[checks]]
+name = "statistical_significance_tests"
+category = "research"
+severity = "high"
+description = "Results must include t-tests and p-values"
+pattern = '''(?x)def\s+(compare|test|validate).*?(?:(?!ttest|scipy\.stats|p_value).){0,1000}return'''
+paths = ["experiments/backtesting/", "experiments/run_validation.py"]
+message = "Statistical testing missing (need p-values, bootstrap) - see §7"
+
+# ============================================================================
+# 4. TRADING ALGORITHM SAFETY CHECKS
+# Reference: EMPIRICAL_VALIDATION_TEMPLATE.md §1.4-1.5
+# ============================================================================
+
+[[checks]]
+name = "position_size_hard_limit"
+category = "trading_safety"
+severity = "critical"
+description = "Position size must not exceed 20% of capital"
+pattern = '''(?x)fn\s+calculate_position.*?\{(?:(?!0\.20|20%|max_position).){0,500}(?<!if\s+size\s*>\s*capital\s*\*\s*0\.20)'''
+paths = ["src/janus/crates/execution/", "src/janus/crates/hypothalamus/"]
+message = "Position sizing may exceed 20% risk limit (Kelly fraction check)"
+
+[[checks]]
+name = "slippage_model_required"
+category = "trading_safety"
+severity = "high"
+description = "Order execution must model slippage/market impact"
+pattern = '''(?x)fn\s+(execute|place)_order(?:(?!slippage|price_impact|spread).){0,800}\}'''
+paths = ["src/janus/crates/execution/", "experiments/backtesting/"]
+message = "Order execution missing slippage model (affects backtest validity)"
+
+[[checks]]
+name = "lookahead_bias_prevention"
+category = "trading_safety"
+severity = "critical"
+description = "Prevent future data peeking (Temporal Fortress)"
+pattern = '''(?x)(\.iloc\[.*?:\s*\]|\.shift\(-\d+\)|\.loc\[.*?:.*?\+.*?days?\])'''
+paths = ["experiments/**/*.py", "src/janus/backtesting/"]
+message = "CRITICAL: Potential lookahead bias (future data leak) detected"
+reference = "Temporal Fortress zero-lookahead principle"
+
+[[checks]]
+name = "commission_costs_backtesting"
+category = "trading_safety"
+severity = "medium"
+description = "Backtests must include realistic commission (0.1% Binance)"
+pattern = '''(?x)def\s+backtest(?:(?!commission|fee|0\.001|0\.1%).){0,1000}return'''
+paths = ["experiments/backtesting/engine.py"]
+message = "Backtesting may be missing commission costs (unrealistic results)"
+
+[[checks]]
+name = "circuit_breaker_implementation"
+category = "trading_safety"
+severity = "high"
+description = "Circuit breakers for kill switch / halt conditions"
+pattern = '''(?x)struct\s+KillSwitch(?:(?!activate|halt|emergency).){0,500}\}'''
+paths = ["src/janus/crates/amygdala/"]
+message = "Circuit breaker/kill switch incomplete (see §6.3)"
+
+# ============================================================================
+# 5. PERFORMANCE METRICS VALIDATION
+# Reference: EMPIRICAL_VALIDATION_TEMPLATE.md §4
+# ============================================================================
+
+[[checks]]
+name = "sharpe_ratio_calculation"
+category = "performance"
+severity = "high"
+description = "Sharpe ratio must use correct formula (excess return / volatility)"
+pattern = '''(?x)def\s+sharpe.*?\{(?:(?!mean.*?std|excess.*?volatility).){0,500}return'''
+paths = ["experiments/backtesting/", "src/janus/metrics/"]
+message = "Sharpe ratio calculation may be incorrect (check formula)"
+
+[[checks]]
+name = "max_drawdown_tracking"
+category = "performance"
+severity = "high"
+description = "Maximum drawdown required for all strategies"
+pattern = '''(?x)class\s+.*?Strategy(?:(?!max_drawdown|peak|trough).){0,2000}\}'''
+paths = ["experiments/baselines/", "src/janus/"]
+message = "Strategy missing max drawdown tracking (compliance requirement)"
+
+[[checks]]
+name = "walk_forward_validation"
+category = "performance"
+severity = "critical"
+description = "Must use train/val/test split (no in-sample optimization)"
+pattern = '''(?x)def\s+(backtest|validate)(?:(?!train.*?val.*?test|split).){0,1000}:'''
+paths = ["experiments/run_validation.py"]
+message = "Missing walk-forward validation (overfitting risk)"
+
+# ============================================================================
+# 6. CODE QUALITY & DOCUMENTATION
+# ============================================================================
+
+[[checks]]
+name = "panic_in_production_code"
+category = "quality"
+severity = "high"
+description = "Production code should not use panic!/unwrap() in critical paths"
+pattern = '''(?x)(panic!|unwrap\(\)|expect\(|unreachable!)'''
+paths = ["src/janus/crates/execution/", "src/janus/crates/compliance/"]
+exclude_paths = ["src/janus/**/tests/", "src/janus/**/benches/"]
+message = "Panic/unwrap in production code (use Result<T, E> instead)"
+
+[[checks]]
+name = "missing_error_handling"
+category = "quality"
+severity = "medium"
+description = "Functions should return Result for error propagation"
+pattern = '''(?x)pub\s+fn\s+\w+\([^)]*\)\s*(?!->\s*Result)'''
+paths = ["src/janus/crates/compliance/", "src/janus/crates/execution/"]
+message = "Missing Result return type (error handling)"
+
+[[checks]]
+name = "todo_in_critical_modules"
+category = "quality"
+severity = "high"
+description = "TODOs in critical modules block production"
+pattern = '''(?i)TODO|FIXME|XXX|HACK'''
+paths = ["src/janus/crates/compliance/", "src/janus/crates/execution/", "src/janus/crates/amygdala/"]
+message = "TODO found in critical module (must resolve before production)"
+
+# ============================================================================
+# 7. ROADMAP-SPECIFIC CHECKS
+# Reference: VISUALIZATION_MISSING_PIECES_ROADMAP.md
+# ============================================================================
+
+[[checks]]
+name = "phase1_data_acquisition"
+category = "roadmap"
+severity = "critical"
+description = "MH-02: Historical data required for backtesting"
+file_exists = ["experiments/data/btcusdt_2022-2024.parquet"]
+message = "Missing historical data (blocker for Week 3-4 backtesting)"
+reference = "ACTION_CHECKLIST.md §Week 3"
+
+[[checks]]
+name = "phase1_gpu_access"
+category = "roadmap"
+severity = "high"
+description = "GPU required for DQN baseline training"
+pattern = '''(?x)import\s+torch.*?(?:(?!cuda|device).){0,100}$'''
+paths = ["experiments/**/*.py"]
+message = "Missing GPU configuration (needed for MH-02 training)"
+
+[[checks]]
+name = "phase2_ablation_framework"
+category = "roadmap"
+severity = "high"
+description = "SH-01: Ablation studies framework required"
+pattern = '''(?x)def\s+ablation.*?remove.*?component'''
+paths = ["experiments/"]
+message = "Ablation study framework missing (SH-01 deliverable)"
+
+# ============================================================================
+# 8. REPORT GENERATION SETTINGS
+# ============================================================================
+
+[report]
+format = "markdown"
+output_file = "JANUS_AUDIT_REPORT.md"
+include_code_snippets = true
+max_snippet_lines = 10
+group_by = "category"
+sort_by = "severity"
+
+# Custom sections for JANUS report
+[report.sections]
+research_blockers = true
+compliance_gaps = true
+production_readiness = false  # Not production yet
+roadmap_alignment = true
+
+# Metrics specific to JANUS
+[metrics]
+track_todo_count = true
+track_neuromorphic_coverage = true
+track_compliance_coverage = true
+track_test_coverage = true
+
+# Alert thresholds
+[alerts]
+todo_count_increase = 10  # Alert if TODOs increase by >10
+critical_issues_any = true  # Alert on any critical issue
+research_blocker_any = true  # Alert on any research blocker
+
+# ============================================================================
+# 9. INTEGRATION WITH CI/CD
+# ============================================================================
+
+[ci]
+fail_build_on_critical = true
+fail_build_on_research_blocker = true
+generate_github_annotations = true
+post_comment_to_pr = true
+
+[ci.github_actions]
+enabled = true
+workflow_name = "JANUS Audit"
+run_on = ["pull_request", "push"]
+paths_filter = ["src/janus/**", "experiments/**"]
+
+# ============================================================================
+# 10. CUSTOM JANUS RULES
+# ============================================================================
+
+[custom_rules.neuromorphic_coverage]
+description = "Track % of neuromorphic components implemented"
+components = [
+    "DiffGAF",
+    "ViViT",
+    "LTN",
+    "OpAL",
+    "FearNetwork",
+    "StaticVWAP",
+    "M3T",
+    "VPIN"
+]
+target_percentage = 80  # Need 80% for research paper
+
+[custom_rules.research_checklist]
+description = "Track research deliverables from ACTION_CHECKLIST.md"
+deliverables = [
+    "MH-01: Bibliography",
+    "MH-02: Backtesting Results",
+    "MH-03: Baseline Comparisons",
+    "MH-04: Hyperparameter Specification",
+    "MH-05: Failure Mode Analysis",
+    "SH-01: Ablation Studies"
+]
+
+[custom_rules.compliance_checklist]
+description = "HyroTrader compliance requirements"
+requirements = [
+    "5-minute SL timer",
+    "Midnight UTC reset",
+    "Trailing drawdown (10% max)",
+    "Daily drawdown (5% max)",
+    "Mandatory stop loss"
+]

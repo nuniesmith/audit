@@ -194,7 +194,7 @@ impl GrokClient {
     /// Create a new Grok client
     pub fn new(api_key: impl Into<String>, db: Database) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(90))
             .build()
             .expect("Failed to build HTTP client");
 

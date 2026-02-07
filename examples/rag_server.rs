@@ -18,6 +18,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
+
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::registry()
@@ -43,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::migrate!("./migrations").run(&db_pool).await?;
 
     // Initialize database (create tables if needed)
-    init_db(&db_pool).await?;
+    init_db(&database_url).await?;
     tracing::info!("✅ Database initialized");
 
     // API Configuration
