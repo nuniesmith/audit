@@ -20,16 +20,18 @@ services:
             - RUST_LOG=${RUST_LOG:-info,rustassistant=debug}
             - DATABASE_URL=sqlite:/app/data/rustassistant.db
             - CACHE_DB_PATH=/app/data/rustassistant_cache.db
+            - REPOS_DIR=/app/repos
             - REDIS_URL=redis://redis:6379
             - XAI_API_KEY=${XAI_API_KEY}
             - XAI_BASE_URL=${XAI_BASE_URL:-https://api.x.ai/v1}
+            - GITHUB_TOKEN=${GITHUB_TOKEN}
             - AUTO_SCAN_ENABLED=${AUTO_SCAN_ENABLED:-true}
             - AUTO_SCAN_INTERVAL=${AUTO_SCAN_INTERVAL:-60}
             - AUTO_SCAN_MAX_CONCURRENT=${AUTO_SCAN_MAX_CONCURRENT:-2}
         volumes:
             - ./data:/app/data
             - ./config:/app/config:ro
-            - /home/jordan/github:/home/jordan/github:ro
+            - repos_data:/app/repos
         depends_on:
             redis:
                 condition: service_healthy
@@ -96,6 +98,9 @@ volumes:
     redis_data:
         driver: local
         name: rustassistant_redis_data
+    repos_data:
+        driver: local
+        name: rustassistant_repos_data
 
 networks:
     rustassistant:

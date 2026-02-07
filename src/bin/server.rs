@@ -356,7 +356,7 @@ async fn add_repo_handler(
             .to_string()
     });
 
-    match db::add_repository(&state.db, &req.path, &name).await {
+    match db::add_repository(&state.db, &req.path, &name, None).await {
         Ok(repo) => (StatusCode::CREATED, ApiResponse::ok(repo)).into_response(),
         Err(e) => ApiResponse::error(e.to_string()).into_response(),
     }
@@ -494,7 +494,11 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:data/rustassistant.db".into());
     let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port = std::env::var("PORT").unwrap_or_else(|_| "3000".into());
+    let repos_dir = std::env::var("REPOS_DIR").unwrap_or_else(|_| "/app/repos".into());
     let addr = format!("{}:{}", host, port);
+
+    // Ensure repos directory exists
+    std::fs::create_dir_all(&repos_dir).expect("Failed to create repos directory");
 
     // Initialize database
     info!("Initializing database at {}", database_url);
@@ -504,7 +508,7 @@ async fn main() -> anyhow::Result<()> {
     let api_state = AppState { db: db.clone() };
 
     // Create app state for Web UI
-    let web_state = WebAppState::new(Database::from_pool(db.clone()));
+    let web_state = WebAppState::new(Database::from_pool(db.clone()), repos_dir.clone());
 
     // Build combined router with Web UI at root and API at /api
     let api_router = create_api_router(api_state);
@@ -534,7 +538,11 @@ async fn main() -> anyhow::Result<()> {
             "🔍 Starting auto-scanner (interval: {} minutes)",
             scanner_config.default_interval_minutes
         );
-        let scanner = Arc::new(AutoScanner::new(scanner_config, db.clone()));
+        let scanner = Arc::new(AutoScanner::new(
+            scanner_config,
+            db.clone(),
+            std::path::PathBuf::from(&repos_dir),
+        ));
         let scanner_clone = scanner.clone();
         tokio::spawn(async move {
             if let Err(e) = scanner_clone.start().await {

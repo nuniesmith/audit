@@ -477,7 +477,7 @@ async fn handle_repo_action(pool: &sqlx::SqlitePool, action: RepoAction) -> anyh
                 anyhow::bail!("Path does not exist: {}", path_str);
             }
 
-            let repo = db::add_repository(pool, &path_str, &name).await?;
+            let repo = db::add_repository(pool, &path_str, &name, None).await?;
 
             println!("{} Repository added", "✓".green());
             println!("  {} {}", "ID:".dimmed(), repo.id);

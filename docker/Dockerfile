@@ -73,7 +73,7 @@ RUN apt-get update && apt-get install -y \
 
 # Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash rustassistant && \
-    mkdir -p /app/data /app/config /app/static && \
+    mkdir -p /app/data /app/config /app/static /app/repos && \
     chown -R rustassistant:rustassistant /app
 
 # Set working directory

@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::db::{Database, Repository};
+use crate::git::GitManager;
 use crate::refactor_assistant::RefactorAssistant;
 use crate::repo_cache_sql::RepoCacheSql;
 
@@ -61,15 +62,17 @@ pub struct RepoScanState {
 pub struct AutoScanner {
     config: AutoScannerConfig,
     pool: sqlx::SqlitePool,
+    repos_dir: PathBuf,
     scan_states: Arc<RwLock<HashMap<String, RepoScanState>>>,
 }
 
 impl AutoScanner {
     /// Create a new auto-scanner
-    pub fn new(config: AutoScannerConfig, pool: sqlx::SqlitePool) -> Self {
+    pub fn new(config: AutoScannerConfig, pool: sqlx::SqlitePool, repos_dir: PathBuf) -> Self {
         Self {
             config,
             pool,
+            repos_dir,
             scan_states: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -142,7 +145,7 @@ impl AutoScanner {
             r#"
             SELECT id, path, name, status, last_analyzed, metadata,
                    auto_scan_enabled, scan_interval_minutes, last_scan_check,
-                   last_commit_hash, created_at, updated_at
+                   last_commit_hash, git_url, created_at, updated_at
             FROM repositories
             WHERE auto_scan_enabled = 1 AND status = 'active'
             "#,
@@ -175,8 +178,46 @@ impl AutoScanner {
         // Update last_scan_check
         self.update_last_scan_check(&repo.id, now).await?;
 
-        // Check for changes (both committed and uncommitted)
+        // Ensure the repo exists locally — clone from git_url if missing
         let repo_path = PathBuf::from(&repo.path);
+        let repo_path = if !repo_path.exists() || !repo_path.join(".git").exists() {
+            if let Some(ref git_url) = repo.git_url {
+                info!(
+                    "Local path {} not found, cloning from {}",
+                    repo_path.display(),
+                    git_url
+                );
+                match self.clone_repo(git_url, &repo.name) {
+                    Ok(cloned_path) => {
+                        // Update the stored path in the database to the new clone location
+                        let new_path = cloned_path.to_string_lossy().to_string();
+                        if let Err(e) = self.update_repo_path(&repo.id, &new_path).await {
+                            error!("Failed to update repo path in DB: {}", e);
+                        }
+                        info!("Cloned {} to {}", repo.name, cloned_path.display());
+                        cloned_path
+                    }
+                    Err(e) => {
+                        error!("Failed to clone {} from {}: {}", repo.name, git_url, e);
+                        return Ok(());
+                    }
+                }
+            } else {
+                warn!(
+                    "Repo {} path {} does not exist and no git_url configured — skipping",
+                    repo.name,
+                    repo_path.display()
+                );
+                return Ok(());
+            }
+        } else {
+            repo_path
+        };
+
+        // Fetch latest changes from remote (for cloned repos)
+        self.fetch_remote(&repo_path);
+
+        // Check for changes (both committed and uncommitted)
         let current_head = self.get_head_hash(&repo_path)?;
         let changed_files = self
             .get_changed_files(
@@ -212,6 +253,83 @@ impl AutoScanner {
         }
 
         Ok(())
+    }
+
+    /// Clone a repository from a git URL into the repos directory
+    fn clone_repo(&self, git_url: &str, name: &str) -> Result<PathBuf> {
+        let git = GitManager::new(self.repos_dir.clone(), false)
+            .context("Failed to initialize GitManager")?;
+        let cloned_path = git
+            .clone_repo(git_url, Some(name))
+            .context(format!("Failed to clone {}", git_url))?;
+        Ok(cloned_path)
+    }
+
+    /// Update the stored path for a repository in the database
+    async fn update_repo_path(&self, repo_id: &str, new_path: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE repositories
+            SET path = ?, updated_at = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(new_path)
+        .bind(chrono::Utc::now().timestamp())
+        .bind(repo_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Fetch latest changes from the remote origin
+    fn fetch_remote(&self, repo_path: &Path) {
+        use std::process::Command;
+
+        // Fast-forward the local branch after fetching
+        let fetch_result = Command::new("git")
+            .args(["fetch", "origin"])
+            .current_dir(repo_path)
+            .output();
+
+        match fetch_result {
+            Ok(output) if output.status.success() => {
+                debug!("Fetched latest from origin for {}", repo_path.display());
+
+                // Try to fast-forward merge (safe for bare tracking repos)
+                let merge_result = Command::new("git")
+                    .args(["merge", "--ff-only", "FETCH_HEAD"])
+                    .current_dir(repo_path)
+                    .output();
+
+                match merge_result {
+                    Ok(out) if out.status.success() => {
+                        debug!("Fast-forwarded {}", repo_path.display());
+                    }
+                    Ok(out) => {
+                        debug!(
+                            "Fast-forward not possible for {} ({}), using fetched refs for diff",
+                            repo_path.display(),
+                            String::from_utf8_lossy(&out.stderr).trim()
+                        );
+                    }
+                    Err(e) => {
+                        debug!("Failed to merge for {}: {}", repo_path.display(), e);
+                    }
+                }
+            }
+            Ok(output) => {
+                debug!(
+                    "git fetch failed for {} ({})",
+                    repo_path.display(),
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+            }
+            Err(e) => {
+                debug!("Failed to run git fetch for {}: {}", repo_path.display(), e);
+            }
+        }
     }
 
     /// Get the current HEAD commit hash for a repository
@@ -526,6 +644,7 @@ impl AutoScanner {
         Self {
             config: self.config.clone(),
             pool: self.pool.clone(),
+            repos_dir: self.repos_dir.clone(),
             scan_states: self.scan_states.clone(),
         }
     }

@@ -77,6 +77,7 @@ pub struct Repository {
     pub scan_interval_minutes: i64,
     pub last_scan_check: Option<i64>,
     pub last_commit_hash: Option<String>,
+    pub git_url: Option<String>, // GitHub clone URL
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -177,6 +178,7 @@ async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
             scan_interval_minutes INTEGER NOT NULL DEFAULT 60,
             last_scan_check INTEGER,
             last_commit_hash TEXT,
+            git_url TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         )
@@ -187,6 +189,11 @@ async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
 
     // Add last_commit_hash column to existing repositories tables (safe to run repeatedly)
     let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN last_commit_hash TEXT")
+        .execute(pool)
+        .await;
+
+    // Add git_url column to existing repositories tables (safe to run repeatedly)
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN git_url TEXT")
         .execute(pool)
         .await;
 
@@ -376,19 +383,25 @@ pub async fn delete_note(pool: &SqlitePool, id: &str) -> DbResult<()> {
 // ============================================================================
 
 /// Add a repository to track
-pub async fn add_repository(pool: &SqlitePool, path: &str, name: &str) -> DbResult<Repository> {
+pub async fn add_repository(
+    pool: &SqlitePool,
+    path: &str,
+    name: &str,
+    git_url: Option<&str>,
+) -> DbResult<Repository> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
 
     sqlx::query(
         r#"
-        INSERT INTO repositories (id, path, name, status, created_at, updated_at)
-        VALUES (?, ?, ?, 'active', ?, ?)
+        INSERT INTO repositories (id, path, name, status, git_url, created_at, updated_at)
+        VALUES (?, ?, ?, 'active', ?, ?, ?)
         "#,
     )
     .bind(&id)
     .bind(path)
     .bind(name)
+    .bind(git_url)
     .bind(now)
     .bind(now)
     .execute(pool)
@@ -405,6 +418,7 @@ pub async fn add_repository(pool: &SqlitePool, path: &str, name: &str) -> DbResu
         scan_interval_minutes: 60,
         last_scan_check: None,
         last_commit_hash: None,
+        git_url: git_url.map(|s| s.to_string()),
         created_at: now,
         updated_at: now,
     })
@@ -728,7 +742,7 @@ mod tests {
     async fn test_repository_crud() {
         let pool = setup_test_db().await;
 
-        let repo = add_repository(&pool, "/path/to/repo", "my-repo")
+        let repo = add_repository(&pool, "/path/to/repo", "my-repo", None)
             .await
             .unwrap();
 
@@ -800,7 +814,7 @@ mod tests {
 
         create_note(&pool, "Note 1", None, None).await.unwrap();
         create_note(&pool, "Note 2", None, None).await.unwrap();
-        add_repository(&pool, "/path", "repo").await.unwrap();
+        add_repository(&pool, "/path", "repo", None).await.unwrap();
         create_task(&pool, "Task 1", None, 2, "manual", None, None, None, None)
             .await
             .unwrap();
@@ -874,10 +888,10 @@ impl Database {
         &self,
         name: &str,
         path: &str,
-        _remote_url: Option<String>,
+        remote_url: Option<String>,
         _default_branch: Option<String>,
     ) -> DbResult<String> {
-        let repo = add_repository(&self.pool, path, name).await?;
+        let repo = add_repository(&self.pool, path, name, remote_url.as_deref()).await?;
         Ok(repo.id)
     }
 

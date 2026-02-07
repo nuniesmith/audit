@@ -4,6 +4,7 @@
 //! Features: repository management, queue operations, auto-scanner control.
 
 use crate::db::{add_repository, remove_repository, Database, Repository};
+use crate::git::GitManager;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -15,15 +16,103 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info};
 
+/// Returns the shared timezone JavaScript that should be included in every page.
+/// Handles timezone selection, localStorage persistence, and client-side timestamp conversion.
+fn timezone_js() -> &'static str {
+    r#"<script>
+    (function() {
+        const TIMEZONE_KEY = 'rustassistant_timezone';
+        const DEFAULT_TZ = 'America/New_York';
+
+        function getSavedTimezone() {
+            return localStorage.getItem(TIMEZONE_KEY) || DEFAULT_TZ;
+        }
+
+        function saveTimezone(tz) {
+            localStorage.setItem(TIMEZONE_KEY, tz);
+        }
+
+        function convertTimestamp(utcStr, tz) {
+            // Accepts "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD HH:MM:SS UTC"
+            const cleaned = utcStr.replace(' UTC', '').trim();
+            const date = new Date(cleaned + 'Z'); // append Z to parse as UTC
+            if (isNaN(date.getTime())) return utcStr;
+            try {
+                return date.toLocaleString('en-US', {
+                    timeZone: tz,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+            } catch(e) {
+                return utcStr;
+            }
+        }
+
+        function convertAllTimestamps() {
+            const tz = getSavedTimezone();
+            document.querySelectorAll('[data-utc]').forEach(function(el) {
+                const utc = el.getAttribute('data-utc');
+                el.textContent = convertTimestamp(utc, tz);
+            });
+            // Update selector if present
+            const sel = document.getElementById('tz-select');
+            if (sel) sel.value = tz;
+        }
+
+        // Initialize on DOM ready
+        document.addEventListener('DOMContentLoaded', function() {
+            convertAllTimestamps();
+            var sel = document.getElementById('tz-select');
+            if (sel) {
+                sel.addEventListener('change', function() {
+                    saveTimezone(this.value);
+                    convertAllTimestamps();
+                });
+            }
+        });
+    })();
+    </script>"#
+}
+
+/// Returns the HTML for the timezone selector dropdown, styled for the nav bar.
+fn timezone_selector_html() -> &'static str {
+    r#"<div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+        <label for="tz-select" style="color: #94a3b8; font-size: 0.85rem;">🕐</label>
+        <select id="tz-select" style="background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 4px; padding: 0.3rem 0.5rem; font-size: 0.85rem; cursor: pointer;">
+            <option value="America/New_York">Eastern (EST/EDT)</option>
+            <option value="America/Chicago">Central (CST/CDT)</option>
+            <option value="America/Denver">Mountain (MST/MDT)</option>
+            <option value="America/Los_Angeles">Pacific (PST/PDT)</option>
+            <option value="UTC">UTC</option>
+            <option value="Europe/London">London (GMT/BST)</option>
+            <option value="Europe/Berlin">Berlin (CET/CEST)</option>
+            <option value="Asia/Tokyo">Tokyo (JST)</option>
+            <option value="Asia/Shanghai">Shanghai (CST)</option>
+            <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+        </select>
+    </div>"#
+}
+
+/// Wraps a UTC timestamp string in a `<span>` with `data-utc` attribute for JS conversion.
+fn ts(utc_str: &str) -> String {
+    format!(r#"<span data-utc="{}">{}</span>"#, utc_str, utc_str)
+}
+
 /// Application state for web UI
 #[derive(Clone)]
 pub struct WebAppState {
     pub db: Database,
+    pub repos_dir: String,
 }
 
 impl WebAppState {
-    pub fn new(db: Database) -> Self {
-        Self { db }
+    pub fn new(db: Database, repos_dir: String) -> Self {
+        Self { db, repos_dir }
     }
 }
 
@@ -48,6 +137,7 @@ pub struct RepoItem {
     pub id: String,
     pub name: String,
     pub path: String,
+    pub git_url: Option<String>,
     pub status: String,
     pub auto_scan_enabled: bool,
     pub scan_interval_minutes: i64,
@@ -61,6 +151,7 @@ impl From<Repository> for RepoItem {
             id: repo.id,
             name: repo.name,
             path: repo.path,
+            git_url: repo.git_url,
             status: repo.status,
             auto_scan_enabled: repo.auto_scan_enabled != 0,
             scan_interval_minutes: repo.scan_interval_minutes,
@@ -92,7 +183,7 @@ pub struct QueueItemDisplay {
 /// Form data for adding repository
 #[derive(Debug, Deserialize)]
 pub struct AddRepoForm {
-    pub path: String,
+    pub git_url: String,
     pub name: String,
 }
 
@@ -186,6 +277,7 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
                 <a href="/repos">Repositories</a>
                 <a href="/queue">Queue</a>
                 <a href="/scanner">Auto-Scanner</a>
+                {}
             </nav>
         </header>
 
@@ -229,14 +321,17 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
             <p>RustAssistant v0.1.0 | Powered by Rust & Axum</p>
         </footer>
     </div>
+    {}
 </body>
 </html>"#,
+        timezone_selector_html(),
         stats.total_repos,
         stats.auto_scan_enabled,
         stats.queue_pending,
         stats.queue_processing,
         stats.queue_completed,
-        stats.queue_failed
+        stats.queue_failed,
+        timezone_js()
     )
 }
 
@@ -259,39 +354,35 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
                 let last_scan = repo
                     .last_scan_check
                     .as_ref()
-                    .map(|s| s.as_str())
-                    .unwrap_or("Never");
+                    .map(|s| ts(s))
+                    .unwrap_or_else(|| "Never".to_string());
 
                 format!(
                     r#"<div class="repo-card">
                     <div class="repo-header">
-                        <h3>{}</h3>
-                        <span class="repo-status {}">{}</span>
+                        <h3>{name}</h3>
+                        <span class="repo-status {status_class}">{status}</span>
                     </div>
                     <div class="repo-info">
-                        <p><strong>Path:</strong> {}</p>
-                        <p><strong>Auto-Scan:</strong> {}</p>
-                        <p><strong>Last Scan:</strong> {}</p>
-                        <p><strong>Created:</strong> {}</p>
+                        <p><strong>Source:</strong> {source}</p>
+                        <p><strong>Auto-Scan:</strong> {scan_status}</p>
+                        <p><strong>Last Scan:</strong> {last_scan}</p>
+                        <p><strong>Created:</strong> {created}</p>
                     </div>
                     <div class="repo-actions">
-                        <a href="/repos/{}/toggle-scan" class="btn-small btn-primary">Toggle Scan</a>
-                        <a href="/repos/{}/scan-now" class="btn-small btn-success">Scan Now</a>
-                        <a href="/repos/{}/configure" class="btn-small btn-secondary">Configure</a>
-                        <a href="/repos/{}/delete" class="btn-small btn-danger" onclick="return confirm('Delete this repository?')">Delete</a>
+                        <a href="/repos/{id}/toggle-scan" class="btn-small btn-primary">Toggle Scan</a>
+                        <a href="/scanner/{id}/force" class="btn-small btn-success">Scan Now</a>
+                        <a href="/repos/{id}/delete" class="btn-small btn-danger" onclick="return confirm('Delete this repository?')">Delete</a>
                     </div>
                 </div>"#,
-                    repo.name,
-                    if repo.auto_scan_enabled { "status-enabled" } else { "status-disabled" },
-                    repo.status,
-                    repo.path,
-                    scan_status,
-                    last_scan,
-                    repo.created_at,
-                    repo.id,
-                    repo.id,
-                    repo.id,
-                    repo.id
+                    name = repo.name,
+                    status_class = if repo.auto_scan_enabled { "status-enabled" } else { "status-disabled" },
+                    status = repo.status,
+                    source = repo.git_url.as_deref().unwrap_or(&repo.path),
+                    scan_status = scan_status,
+                    last_scan = last_scan,
+                    created = ts(&repo.created_at),
+                    id = repo.id,
                 )
             })
             .collect::<Vec<_>>()
@@ -305,6 +396,7 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Repositories - RustAssistant</title>
+    {tz_js}
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }}
@@ -348,6 +440,7 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
                 <a href="/repos" class="active">Repositories</a>
                 <a href="/queue">Queue</a>
                 <a href="/scanner">Auto-Scanner</a>
+                {tz_selector}
             </nav>
         </header>
 
@@ -362,39 +455,62 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
     </div>
 </body>
 </html>"#,
-        repos_html
+        repos_html,
+        tz_js = timezone_js(),
+        tz_selector = timezone_selector_html()
     )
 }
 
 fn render_add_repo_page() -> String {
-    r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Add Repository - RustAssistant</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
-        .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
-        header { background: #1e293b; padding: 1.5rem; margin-bottom: 2rem; border-radius: 8px; }
-        h1 { color: #38bdf8; font-size: 2rem; margin-bottom: 0.5rem; }
-        nav { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
-        nav a { background: #334155; color: #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; transition: all 0.3s; }
-        nav a:hover { background: #475569; }
-        .form-container { background: #1e293b; padding: 2rem; border-radius: 8px; }
-        .form-group { margin-bottom: 1.5rem; }
-        label { display: block; color: #94a3b8; margin-bottom: 0.5rem; font-weight: 500; }
-        input, select { width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 1rem; }
-        input:focus, select:focus { outline: none; border-color: #0ea5e9; }
-        .form-actions { display: flex; gap: 1rem; margin-top: 2rem; }
-        .btn { padding: 0.75rem 1.5rem; border-radius: 6px; border: none; cursor: pointer; font-size: 1rem; font-weight: 500; transition: all 0.3s; text-decoration: none; display: inline-block; }
-        .btn-primary { background: #0ea5e9; color: white; }
-        .btn-primary:hover { background: #0284c7; }
-        .btn-secondary { background: #64748b; color: white; }
-        .btn-secondary:hover { background: #475569; }
-        .help-text { color: #64748b; font-size: 0.9rem; margin-top: 0.25rem; }
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }}
+        .container {{ max-width: 800px; margin: 0 auto; padding: 2rem; }}
+        header {{ background: #1e293b; padding: 1.5rem; margin-bottom: 2rem; border-radius: 8px; }}
+        h1 {{ color: #38bdf8; font-size: 2rem; margin-bottom: 0.5rem; }}
+        nav {{ display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }}
+        nav a {{ background: #334155; color: #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; transition: all 0.3s; }}
+        nav a:hover {{ background: #475569; }}
+        .form-container {{ background: #1e293b; padding: 2rem; border-radius: 8px; }}
+        .form-group {{ margin-bottom: 1.5rem; }}
+        label {{ display: block; color: #94a3b8; margin-bottom: 0.5rem; font-weight: 500; }}
+        input, select {{ width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 1rem; }}
+        input:focus, select:focus {{ outline: none; border-color: #0ea5e9; }}
+        .form-actions {{ display: flex; gap: 1rem; margin-top: 2rem; }}
+        .btn {{ padding: 0.75rem 1.5rem; border-radius: 6px; border: none; cursor: pointer; font-size: 1rem; font-weight: 500; transition: all 0.3s; text-decoration: none; display: inline-block; }}
+        .btn-primary {{ background: #0ea5e9; color: white; }}
+        .btn-primary:hover {{ background: #0284c7; }}
+        .btn-secondary {{ background: #64748b; color: white; }}
+        .btn-secondary:hover {{ background: #475569; }}
+        .help-text {{ color: #64748b; font-size: 0.9rem; margin-top: 0.25rem; }}
     </style>
+    <script>
+        function autoFillName() {{
+            const urlInput = document.getElementById('git_url').value;
+            const nameInput = document.getElementById('name');
+            if (nameInput.value === '' || nameInput.dataset.autoFilled === 'true') {{
+                // Extract repo name from URL: https://github.com/user/repo.git -> repo
+                const match = urlInput.match(/\/([^\/]+?)(\.git)?$/);
+                if (match) {{
+                    nameInput.value = match[1];
+                    nameInput.dataset.autoFilled = 'true';
+                }}
+            }}
+        }}
+        document.addEventListener('DOMContentLoaded', function() {{
+            const nameInput = document.getElementById('name');
+            nameInput.addEventListener('input', function() {{
+                nameInput.dataset.autoFilled = 'false';
+            }});
+        }});
+    </script>
 </head>
 <body>
     <div class="container">
@@ -405,6 +521,7 @@ fn render_add_repo_page() -> String {
                 <a href="/repos">Repositories</a>
                 <a href="/queue">Queue</a>
                 <a href="/scanner">Auto-Scanner</a>
+                {tz_selector}
             </nav>
         </header>
 
@@ -412,24 +529,30 @@ fn render_add_repo_page() -> String {
             <h2 style="color: #e2e8f0; margin-bottom: 1.5rem;">Add Repository</h2>
             <form method="POST" action="/repos/add">
                 <div class="form-group">
-                    <label for="path">Repository Path</label>
-                    <input type="text" id="path" name="path" required placeholder="/home/user/github/myproject">
-                    <p class="help-text">Full path to the repository on your system</p>
+                    <label for="git_url">GitHub URL</label>
+                    <input type="text" id="git_url" name="git_url" required
+                           placeholder="https://github.com/user/repo"
+                           oninput="autoFillName()">
+                    <p class="help-text">GitHub repository URL — the repo will be cloned automatically</p>
                 </div>
                 <div class="form-group">
                     <label for="name">Repository Name</label>
-                    <input type="text" id="name" name="name" required placeholder="myproject">
-                    <p class="help-text">A friendly name for this repository</p>
+                    <input type="text" id="name" name="name" required placeholder="myproject" data-auto-filled="false">
+                    <p class="help-text">A friendly name for this repository (auto-filled from URL)</p>
                 </div>
                 <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Add Repository</button>
+                    <button type="submit" class="btn btn-primary">Clone &amp; Add Repository</button>
                     <a href="/repos" class="btn btn-secondary">Cancel</a>
                 </div>
             </form>
         </div>
     </div>
+    {tz_js}
 </body>
-</html>"#.to_string()
+</html>"#,
+        tz_js = timezone_js(),
+        tz_selector = timezone_selector_html()
+    )
 }
 
 fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
@@ -556,6 +679,7 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
                 <a href="/repos">Repositories</a>
                 <a href="/queue" class="active">Queue</a>
                 <a href="/scanner">Auto-Scanner</a>
+                {}
             </nav>
         </header>
 
@@ -567,9 +691,12 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
             {}
         </div>
     </div>
+    {}
 </body>
 </html>"#,
-        items_html
+        timezone_selector_html(),
+        items_html,
+        timezone_js()
     )
 }
 
@@ -607,26 +734,65 @@ pub async fn add_repo_form_handler() -> impl IntoResponse {
     Html(render_add_repo_page())
 }
 
-/// Add repository POST handler
+/// Add repository POST handler — clones from GitHub URL
 pub async fn add_repo_handler(
     State(state): State<Arc<WebAppState>>,
     Form(form): Form<AddRepoForm>,
 ) -> impl IntoResponse {
-    match add_repository(&state.db.pool, &form.path, &form.name).await {
-        Ok(_) => {
-            info!("Added repository: {} at {}", form.name, form.path);
-            (
-                StatusCode::SEE_OTHER,
-                [("Location", "/repos")],
-                "Redirecting...",
-            )
-        }
+    // Normalize the URL: ensure it ends with .git for cloning
+    let git_url = if form.git_url.ends_with(".git") {
+        form.git_url.clone()
+    } else {
+        format!("{}.git", form.git_url.trim_end_matches('/'))
+    };
+
+    // Clone the repo into the repos directory
+    let repos_dir = std::path::PathBuf::from(&state.repos_dir);
+    let clone_path = repos_dir.join(&form.name);
+
+    match GitManager::new(repos_dir.clone(), false) {
+        Ok(git) => match git.clone_repo(&git_url, Some(&form.name)) {
+            Ok(cloned_path) => {
+                let path_str = cloned_path.to_string_lossy().to_string();
+                match add_repository(&state.db.pool, &path_str, &form.name, Some(&git_url)).await {
+                    Ok(_) => {
+                        info!(
+                            "Cloned and added repository: {} from {} to {}",
+                            form.name, git_url, path_str
+                        );
+                        (
+                            StatusCode::SEE_OTHER,
+                            [("Location", "/repos")],
+                            "Redirecting...",
+                        )
+                    }
+                    Err(e) => {
+                        error!("Cloned repo but failed to save to DB: {}", e);
+                        // Clean up the cloned directory on DB failure
+                        let _ = std::fs::remove_dir_all(&clone_path);
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            [("Location", "/repos")],
+                            "Error saving repository",
+                        )
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to clone repository {}: {}", git_url, e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    [("Location", "/repos")],
+                    "Error cloning repository",
+                )
+            }
+        },
         Err(e) => {
-            error!("Failed to add repository: {}", e);
+            error!("Failed to initialize git manager: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 [("Location", "/repos")],
-                "Error adding repository",
+                "Error initializing git manager",
             )
         }
     }
@@ -650,13 +816,33 @@ pub async fn toggle_scan_handler(
     }
 }
 
-/// Delete repository handler
+/// Delete repository handler — also removes cloned repo from disk
 pub async fn delete_repo_handler(
     State(state): State<Arc<WebAppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
+    // Look up the repo before deleting so we can clean up the clone directory
+    let repo_path = sqlx::query_scalar::<_, String>("SELECT path FROM repositories WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db.pool)
+        .await
+        .ok()
+        .flatten();
+
     match remove_repository(&state.db.pool, &id).await {
         Ok(_) => {
+            // Clean up the cloned directory if it lives inside our repos_dir
+            if let Some(path) = repo_path {
+                let path = std::path::Path::new(&path);
+                let repos_dir = std::path::Path::new(&state.repos_dir);
+                if path.starts_with(repos_dir) && path.exists() {
+                    if let Err(e) = std::fs::remove_dir_all(path) {
+                        error!("Failed to remove cloned repo at {}: {}", path.display(), e);
+                    } else {
+                        info!("Removed cloned repo directory: {}", path.display());
+                    }
+                }
+            }
             info!("Deleted repository: {}", id);
             (StatusCode::SEE_OTHER, [("Location", "/repos")], "OK")
         }
@@ -804,13 +990,17 @@ async fn get_queue_items(db: &Database) -> anyhow::Result<Vec<QueueItemDisplay>>
                 priority: priority_label,
                 content: item.content,
                 error_message: item.last_error,
-                created_at: chrono::DateTime::from_timestamp(item.created_at, 0)
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_else(|| "unknown".to_string()),
-                processing_started_at: item.processed_at.map(|ts| {
-                    chrono::DateTime::from_timestamp(ts, 0)
+                created_at: {
+                    let formatted = chrono::DateTime::from_timestamp(item.created_at, 0)
                         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                        .unwrap_or_else(|| "unknown".to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    ts(&formatted)
+                },
+                processing_started_at: item.processed_at.map(|t| {
+                    let formatted = chrono::DateTime::from_timestamp(t, 0)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    ts(&formatted)
                 }),
             }
         })
@@ -929,8 +1119,9 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
 
                 let last_scan = repo
                     .last_scan_check
-                    .as_deref()
-                    .unwrap_or("Never");
+                    .as_ref()
+                    .map(|s| ts(s))
+                    .unwrap_or_else(|| "Never".to_string());
 
                 let last_hash = repo
                     .last_commit_hash
@@ -939,8 +1130,9 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
 
                 let last_analyzed = repo
                     .last_analyzed
-                    .as_deref()
-                    .unwrap_or("Never");
+                    .as_ref()
+                    .map(|s| ts(s))
+                    .unwrap_or_else(|| "Never".to_string());
 
                 format!(
                     r#"<div class="scanner-repo" style="background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid {};">
@@ -1031,18 +1223,22 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
                 <a href="/repos">Repositories</a>
                 <a href="/queue">Queue</a>
                 <a href="/scanner" class="active">Auto-Scanner</a>
+                {tz_selector}
             </nav>
         </header>
 
         <h2>🔍 Auto-Scanner Status</h2>
 
         <div class="scanner-list">
-            {}
+            {repos_html}
         </div>
     </div>
+    {tz_js}
 </body>
 </html>"#,
-        repos_html
+        tz_selector = timezone_selector_html(),
+        repos_html = repos_html,
+        tz_js = timezone_js()
     )
 }
 
