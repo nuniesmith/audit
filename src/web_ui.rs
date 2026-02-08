@@ -143,6 +143,11 @@ pub struct RepoItem {
     pub scan_interval_minutes: i64,
     pub last_scan_check: Option<String>,
     pub created_at: String,
+    // Scan progress fields
+    pub scan_status: Option<String>,
+    pub scan_files_processed: Option<i64>,
+    pub scan_files_total: Option<i64>,
+    pub scan_current_file: Option<String>,
 }
 
 impl From<Repository> for RepoItem {
@@ -163,6 +168,10 @@ impl From<Repository> for RepoItem {
             created_at: chrono::DateTime::from_timestamp(repo.created_at, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_else(|| "unknown".to_string()),
+            scan_status: repo.scan_status,
+            scan_files_processed: repo.scan_files_processed,
+            scan_files_total: repo.scan_files_total,
+            scan_current_file: repo.scan_current_file,
         }
     }
 }
@@ -280,6 +289,9 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
                 <a href="/scanner">Auto-Scanner</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {}
             </nav>
         </header>
@@ -360,6 +372,49 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
                     .map(|s| ts(s))
                     .unwrap_or_else(|| "Never".to_string());
 
+                // Build inline scan progress if actively scanning
+                let is_scanning = matches!(
+                    repo.scan_status.as_deref(),
+                    Some("scanning") | Some("analyzing") | Some("cloning")
+                );
+                let inline_progress = if is_scanning {
+                    let processed = repo.scan_files_processed.unwrap_or(0);
+                    let total = repo.scan_files_total.unwrap_or(0);
+                    let percent = if total > 0 {
+                        (processed as f64 / total as f64 * 100.0).min(100.0)
+                    } else {
+                        0.0
+                    };
+                    let file_display = repo.scan_current_file.as_deref()
+                        .map(|f| if f.len() > 60 { format!("…{}", &f[f.len().saturating_sub(57)..]) } else { f.to_string() })
+                        .unwrap_or_else(|| "starting...".to_string());
+                    format!(
+                        r#"<div id="inline-progress-{id}" hx-get="/scan/inline/{id}" hx-trigger="every 2s" hx-swap="outerHTML"
+                             style="margin-top:0.75rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem;">
+                                <span style="font-size:1.1rem;font-weight:700;color:#0ea5e9;">
+                                    &#x1f504; {done}<span style="color:#475569;font-weight:300;">/{total}</span> files
+                                </span>
+                                <span style="font-size:0.85rem;color:#94a3b8;">{percent:.0}%</span>
+                            </div>
+                            <div style="width:100%;background:#0f172a;border-radius:0.25rem;height:0.5rem;overflow:hidden;">
+                                <div style="height:100%;background:linear-gradient(90deg,#0ea5e9,#8b5cf6);width:{percent:.1}%;transition:width 0.5s;"></div>
+                            </div>
+                            <div style="font-family:monospace;font-size:0.75rem;color:#64748b;margin-top:0.25rem;
+                                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                {file}
+                            </div>
+                        </div>"#,
+                        id = repo.id,
+                        done = processed,
+                        total = total,
+                        percent = percent,
+                        file = file_display,
+                    )
+                } else {
+                    String::new()
+                };
+
                 format!(
                     r#"<div class="repo-card">
                     <div class="repo-header">
@@ -371,7 +426,7 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
                         <p><strong>Auto-Scan:</strong> {scan_status}</p>
                         <p><strong>Last Scan:</strong> {last_scan}</p>
                         <p><strong>Created:</strong> {created}</p>
-                    </div>
+                    </div>{inline_progress}
                     <div class="repo-actions">
                         <a href="/repos/{id}/toggle-scan" class="btn-small btn-primary">Toggle Scan</a>
                         <a href="/scanner/{id}/force" class="btn-small btn-success">Scan Now</a>
@@ -386,6 +441,7 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
                     last_scan = last_scan,
                     created = ts(&repo.created_at),
                     id = repo.id,
+                    inline_progress = inline_progress,
                 )
             })
             .collect::<Vec<_>>()
@@ -446,6 +502,9 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
                 <a href="/scanner">Auto-Scanner</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {tz_selector}
             </nav>
         </header>
@@ -459,6 +518,7 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
             {}
         </div>
     </div>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </body>
 </html>"#,
         repos_html,
@@ -530,6 +590,9 @@ fn render_add_repo_page() -> String {
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
                 <a href="/scanner">Auto-Scanner</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {tz_selector}
             </nav>
         </header>
@@ -691,6 +754,9 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
                 <a href="/scanner">Auto-Scanner</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {}
             </nav>
         </header>
@@ -1405,6 +1471,9 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
                 <a href="/scanner" class="active">Auto-Scanner</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {tz_selector}
             </nav>
         </header>
@@ -1548,6 +1617,9 @@ pub async fn notes_handler(State(state): State<Arc<WebAppState>>) -> impl IntoRe
                 <a href="/activity">Activity</a>
                 <a href="/scanner">Scanner</a>
                 <a href="/notes" class="active">Notes</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {tz_selector}
             </nav>
         </header>

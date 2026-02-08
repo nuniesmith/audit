@@ -94,6 +94,7 @@ pub enum FileStatus {
 struct FileAnalysisResult {
     issues_found: i64,
     cost_usd: f64,
+    #[allow(dead_code)]
     tokens_used: Option<usize>,
     was_cache_hit: bool,
 }
@@ -364,6 +365,16 @@ impl AutoScanner {
         if let Err(e) = crate::db::core::start_scan(&self.pool, &repo.id, total_files).await {
             error!("Failed to start scan progress tracking: {}", e);
         }
+
+        // Mark scan start with timestamp for ETA calculation and reset enhanced columns
+        sqlx::query(
+            "UPDATE repositories SET scan_started_at = ?, scan_cost_accumulated = 0.0, scan_cache_hits = 0, scan_api_calls = 0 WHERE id = ?"
+        )
+        .bind(chrono::Utc::now().timestamp())
+        .bind(&repo.id)
+        .execute(&self.pool)
+        .await
+        .ok();
 
         // Log scan progress event
         if let Err(e) =
@@ -768,8 +779,8 @@ impl AutoScanner {
         let mut issues_found = 0i64;
         let mut cumulative_cost = 0.0f64;
         let mut cache_hits = 0i64;
+        let mut api_calls = 0i64;
         let mut budget_halted = false;
-        let progress_update_interval = 5; // Update progress every N files
 
         // Pre-filter files that match skip patterns (extra safety — get_changed_files
         // already filters, but files may have been added to the list via other paths)
@@ -852,20 +863,6 @@ impl AutoScanner {
                 .to_string_lossy()
                 .to_string();
 
-            // Update progress periodically
-            if idx % progress_update_interval == 0 || idx == filtered_count - 1 {
-                if let Err(e) = crate::db::core::update_scan_progress(
-                    &self.pool,
-                    repo_id,
-                    idx as i64,
-                    Some(&rel_path),
-                )
-                .await
-                {
-                    error!("Failed to update scan progress: {}", e);
-                }
-            }
-
             match self
                 .analyze_file(repo_path, file, &cache, idx, filtered_count)
                 .await
@@ -876,6 +873,8 @@ impl AutoScanner {
                     cumulative_cost += file_result.cost_usd;
                     if file_result.was_cache_hit {
                         cache_hits += 1;
+                    } else {
+                        api_calls += 1;
                     }
 
                     // Log cost milestone every $0.50
@@ -904,6 +903,26 @@ impl AutoScanner {
                     {
                         warn!("Failed to save scan checkpoint: {}", e);
                     }
+
+                    // Update DB progress on every file for the HTMX live progress bar
+                    sqlx::query(
+                        "UPDATE repositories SET
+                            scan_files_processed = ?,
+                            scan_current_file = ?,
+                            scan_cost_accumulated = ?,
+                            scan_cache_hits = ?,
+                            scan_api_calls = ?
+                        WHERE id = ?",
+                    )
+                    .bind((idx + 1) as i64)
+                    .bind(&rel_path)
+                    .bind(cumulative_cost)
+                    .bind(cache_hits)
+                    .bind(api_calls)
+                    .bind(repo_id)
+                    .execute(&self.pool)
+                    .await
+                    .ok();
                 }
                 Err(e) => {
                     error!(

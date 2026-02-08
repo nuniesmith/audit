@@ -214,6 +214,9 @@ pub async fn ideas_handler(
                 <a href="/ideas" class="active">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {tz_selector}
             </nav>
         </header>
@@ -473,6 +476,9 @@ pub async fn docs_handler(
                 <a href="/ideas">Ideas</a>
                 <a href="/docs" class="active">Docs</a>
                 <a href="/activity">Activity</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {tz_selector}
             </nav>
         </header>
@@ -539,6 +545,9 @@ pub async fn new_doc_form_handler() -> impl IntoResponse {
                 <a href="/ideas">Ideas</a>
                 <a href="/docs" class="active">Docs</a>
                 <a href="/activity">Activity</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
             </nav>
         </header>
 
@@ -679,6 +688,9 @@ pub async fn view_doc_handler(
                 <a href="/ideas">Ideas</a>
                 <a href="/docs" class="active">Docs</a>
                 <a href="/activity">Activity</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {tz_selector}
             </nav>
         </header>
@@ -819,6 +831,9 @@ pub async fn activity_handler(State(state): State<Arc<WebAppState>>) -> impl Int
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity" class="active">Activity</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
                 {tz_selector}
             </nav>
         </header>
@@ -936,6 +951,9 @@ pub async fn repo_settings_handler(
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
+                <a href="/db">DB Explorer</a>
+                <a href="/scan/dashboard">Scan Progress</a>
+                <a href="/cache">Cache</a>
             </nav>
         </header>
 

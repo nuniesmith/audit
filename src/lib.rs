@@ -83,7 +83,9 @@ pub mod types;
 pub mod vector_index;
 pub mod web_ui;
 pub mod web_ui_cache_viewer;
+pub mod web_ui_db_explorer;
 pub mod web_ui_extensions;
+pub mod web_ui_scan_progress;
 pub mod webhooks;
 
 pub use api::{

@@ -1,8 +1,5 @@
 # Docker Compose for RustAssistant with Advanced Features
 # Includes: PostgreSQL, Redis, Jaeger, Grafana, Prometheus, Tempo
-
-version: "3.8"
-
 services:
     # ==========================================================================
     # Database - PostgreSQL with Replication

@@ -23,7 +23,9 @@ use rustassistant::db::{
 };
 use rustassistant::web_ui::{create_router as create_web_ui_router, WebAppState};
 use rustassistant::web_ui_cache_viewer::create_cache_viewer_router;
+use rustassistant::web_ui_db_explorer::create_db_explorer_router;
 use rustassistant::web_ui_extensions::create_extension_router;
+use rustassistant::web_ui_scan_progress::create_scan_progress_router;
 use std::sync::Arc;
 
 // ============================================================================
@@ -410,12 +412,16 @@ async fn main() -> anyhow::Result<()> {
     let web_router = create_web_ui_router(web_state.clone());
     let extension_router = create_extension_router(web_state.clone());
     let cache_viewer_router = create_cache_viewer_router(Arc::new(web_state.clone()));
+    let db_explorer_router = create_db_explorer_router(Arc::new(web_state.clone()));
+    let scan_progress_router = create_scan_progress_router(Arc::new(web_state.clone()));
 
-    // Merge routers: Web UI gets root paths, extensions add new pages, cache viewer, API gets /api/* and /health
+    // Merge routers: Web UI gets root paths, extensions add new pages, cache viewer, DB explorer, scan progress, API gets /api/* and /health
     let app = Router::new()
         .merge(web_router)
         .merge(extension_router)
         .merge(cache_viewer_router)
+        .merge(db_explorer_router)
+        .merge(scan_progress_router)
         .merge(api_router);
 
     // Start auto-scanner in background if enabled

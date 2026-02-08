@@ -68,7 +68,9 @@ fn nav(active: &str) -> String {
     let items = [
         ("Dashboard", "/dashboard"),
         ("Repos", "/repos"),
+        ("Scan Progress", "/scan/dashboard"),
         ("Cache Viewer", "/cache"),
+        ("DB Explorer", "/db"),
         ("Queue", "/queue"),
         ("Ideas", "/ideas"),
         ("Docs", "/docs"),
