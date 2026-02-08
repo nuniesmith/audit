@@ -339,6 +339,7 @@ async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
             tags TEXT,
             project TEXT,
             status TEXT NOT NULL DEFAULT 'inbox',
+            repo_id TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         )
@@ -347,36 +348,98 @@ async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
     .execute(pool)
     .await?;
 
-    // Repositories table
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS repositories (
-            id TEXT PRIMARY KEY,
-            path TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'active',
-            last_analyzed INTEGER,
-            metadata TEXT,
-            auto_scan_enabled INTEGER NOT NULL DEFAULT 0,
-            scan_interval_minutes INTEGER NOT NULL DEFAULT 60,
-            last_scan_check INTEGER,
-            last_commit_hash TEXT,
-            git_url TEXT,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-        )
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    // Add last_commit_hash column to existing repositories tables (safe to run repeatedly)
-    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN last_commit_hash TEXT")
+    // Add columns that may be missing on older notes tables (safe to run repeatedly)
+    let _ = sqlx::query("ALTER TABLE notes ADD COLUMN tags TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE notes ADD COLUMN project TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE notes ADD COLUMN repo_id TEXT")
         .execute(pool)
         .await;
 
-    // Add git_url column to existing repositories tables (safe to run repeatedly)
+    // Repositories table — column names must match the migration schema
+    // (local_path, auto_scan, scan_interval_mins, url, last_scanned_at, etc.)
+    // so that sqlx(rename) mappings on the Repository struct work correctly.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS repositories (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL UNIQUE,
+            url TEXT,
+            local_path TEXT,
+            auto_scan INTEGER NOT NULL DEFAULT 1,
+            scan_interval_mins INTEGER NOT NULL DEFAULT 60,
+            last_scanned_at INTEGER,
+            last_commit_hash TEXT,
+            git_url TEXT,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            scan_status TEXT DEFAULT 'idle',
+            scan_progress TEXT DEFAULT NULL,
+            scan_current_file TEXT DEFAULT NULL,
+            scan_files_total INTEGER DEFAULT 0,
+            scan_files_processed INTEGER DEFAULT 0,
+            last_scan_duration_ms INTEGER DEFAULT NULL,
+            last_scan_files_found INTEGER DEFAULT 0,
+            last_scan_issues_found INTEGER DEFAULT 0,
+            last_error TEXT DEFAULT NULL,
+            source_type TEXT DEFAULT 'git',
+            clone_depth INTEGER DEFAULT 1,
+            last_sync_at INTEGER
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Add columns that may be missing on older databases (safe to run repeatedly)
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN last_commit_hash TEXT")
+        .execute(pool)
+        .await;
     let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN git_url TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN scan_status TEXT DEFAULT 'idle'")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN scan_progress TEXT DEFAULT NULL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN scan_current_file TEXT DEFAULT NULL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN scan_files_total INTEGER DEFAULT 0")
+        .execute(pool)
+        .await;
+    let _ =
+        sqlx::query("ALTER TABLE repositories ADD COLUMN scan_files_processed INTEGER DEFAULT 0")
+            .execute(pool)
+            .await;
+    let _ = sqlx::query(
+        "ALTER TABLE repositories ADD COLUMN last_scan_duration_ms INTEGER DEFAULT NULL",
+    )
+    .execute(pool)
+    .await;
+    let _ =
+        sqlx::query("ALTER TABLE repositories ADD COLUMN last_scan_files_found INTEGER DEFAULT 0")
+            .execute(pool)
+            .await;
+    let _ =
+        sqlx::query("ALTER TABLE repositories ADD COLUMN last_scan_issues_found INTEGER DEFAULT 0")
+            .execute(pool)
+            .await;
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN last_error TEXT DEFAULT NULL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN source_type TEXT DEFAULT 'git'")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN clone_depth INTEGER DEFAULT 1")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN last_sync_at INTEGER")
         .execute(pool)
         .await;
 
@@ -416,9 +479,13 @@ async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority, status)")
         .execute(pool)
         .await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo_id)")
+    // Use let _ = because migration-created tasks table uses `source_repo` not `repo_id`
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_repo ON tasks(repo_id)")
         .execute(pool)
-        .await?;
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_source_repo ON tasks(source_repo)")
+        .execute(pool)
+        .await;
 
     Ok(())
 }

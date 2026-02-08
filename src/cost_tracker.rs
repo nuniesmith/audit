@@ -41,7 +41,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Grok 4.1 Fast pricing (per million tokens)
 const GROK_COST_PER_MILLION_INPUT: f64 = 0.20;
@@ -97,6 +97,58 @@ pub struct BudgetStatus {
     pub monthly_remaining: f64,
     pub monthly_percent_used: f64,
     pub alerts: Vec<String>,
+}
+
+/// Record of a static analysis decision for cost tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StaticDecisionRecord {
+    /// File path that was analyzed
+    pub file_path: String,
+    /// Repository identifier
+    pub repo_id: String,
+    /// The recommendation from static analysis (SKIP, MINIMAL, STANDARD, DEEP_DIVE)
+    pub recommendation: String,
+    /// Reason for skip (if recommendation was SKIP)
+    pub skip_reason: Option<String>,
+    /// Number of static issues found (without LLM)
+    pub static_issue_count: i64,
+    /// Estimated LLM value score (0.0-1.0)
+    pub estimated_llm_value: f64,
+    /// Whether an LLM call was actually made
+    pub llm_called: bool,
+    /// Estimated cost saved in USD (if skipped or downgraded)
+    pub estimated_cost_saved_usd: f64,
+    /// Actual cost if LLM was called
+    pub actual_cost_usd: f64,
+    /// Prompt tier used (if LLM was called)
+    pub prompt_tier: Option<String>,
+}
+
+/// Summary of savings from static analysis decisions
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SavingsReport {
+    /// Total files processed
+    pub total_files: i64,
+    /// Files skipped entirely (no LLM call)
+    pub files_skipped: i64,
+    /// Files that used minimal prompt
+    pub files_minimal: i64,
+    /// Files that used standard prompt
+    pub files_standard: i64,
+    /// Files that used deep-dive prompt
+    pub files_deep_dive: i64,
+    /// Total estimated cost saved in USD
+    pub total_estimated_savings_usd: f64,
+    /// Total actual cost spent on LLM calls
+    pub total_actual_cost_usd: f64,
+    /// Number of LLM calls avoided
+    pub llm_calls_avoided: i64,
+    /// Total static issues found across all files
+    pub total_static_issues: i64,
+    /// Savings as a percentage of total possible cost
+    pub savings_percent: f64,
+    /// Period for this report
+    pub period: String,
 }
 
 /// LLM API cost tracker
@@ -161,6 +213,29 @@ impl CostTracker {
         .await
         .context("Failed to create llm_costs table")?;
 
+        // Static analysis decisions table — tracks skip/tier decisions for savings reporting
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS static_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                file_path TEXT NOT NULL,
+                repo_id TEXT NOT NULL,
+                recommendation TEXT NOT NULL,
+                skip_reason TEXT,
+                static_issue_count INTEGER NOT NULL DEFAULT 0,
+                estimated_llm_value REAL NOT NULL DEFAULT 0.0,
+                llm_called BOOLEAN NOT NULL DEFAULT 0,
+                estimated_cost_saved_usd REAL NOT NULL DEFAULT 0.0,
+                actual_cost_usd REAL NOT NULL DEFAULT 0.0,
+                prompt_tier TEXT
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .context("Failed to create static_decisions table")?;
+
         // Create indexes for efficient queries
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_costs_timestamp ON llm_costs(timestamp)")
             .execute(&self.pool)
@@ -176,6 +251,27 @@ impl CostTracker {
             .execute(&self.pool)
             .await
             .context("Failed to create cache_hit index")?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_static_decisions_timestamp ON static_decisions(timestamp)",
+        )
+        .execute(&self.pool)
+        .await
+        .context("Failed to create static_decisions timestamp index")?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_static_decisions_repo ON static_decisions(repo_id)",
+        )
+        .execute(&self.pool)
+        .await
+        .context("Failed to create static_decisions repo index")?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_static_decisions_rec ON static_decisions(recommendation)",
+        )
+        .execute(&self.pool)
+        .await
+        .context("Failed to create static_decisions recommendation index")?;
 
         Ok(())
     }
@@ -234,6 +330,142 @@ impl CostTracker {
         let cached_cost = (usage.cached_tokens as f64 / 1_000_000.0) * GROK_COST_PER_MILLION_CACHED;
 
         input_cost + output_cost + cached_cost
+    }
+
+    // -------------------------------------------------------------------
+    // Static analysis savings tracking
+    // -------------------------------------------------------------------
+
+    /// Log a static analysis decision (skip, minimal, standard, or deep-dive)
+    ///
+    /// Call this for every file processed by the scanner, whether or not an LLM
+    /// call was made. This lets us track and report cost savings from static
+    /// pre-filtering.
+    pub async fn log_static_decision(&self, record: &StaticDecisionRecord) -> Result<i64> {
+        let id = sqlx::query(
+            r#"
+            INSERT INTO static_decisions (
+                file_path, repo_id, recommendation, skip_reason,
+                static_issue_count, estimated_llm_value,
+                llm_called, estimated_cost_saved_usd, actual_cost_usd,
+                prompt_tier
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&record.file_path)
+        .bind(&record.repo_id)
+        .bind(&record.recommendation)
+        .bind(&record.skip_reason)
+        .bind(record.static_issue_count)
+        .bind(record.estimated_llm_value)
+        .bind(record.llm_called)
+        .bind(record.estimated_cost_saved_usd)
+        .bind(record.actual_cost_usd)
+        .bind(&record.prompt_tier)
+        .execute(&self.pool)
+        .await
+        .context("Failed to log static decision")?
+        .last_insert_rowid();
+
+        debug!(
+            "Logged static decision: {} → {} (saved: ${:.4}, LLM: {})",
+            record.file_path,
+            record.recommendation,
+            record.estimated_cost_saved_usd,
+            record.llm_called
+        );
+
+        Ok(id)
+    }
+
+    /// Get savings report for today
+    pub async fn get_daily_savings_report(&self) -> Result<SavingsReport> {
+        self.get_savings_report_for_period("date(timestamp) = date('now')", "today")
+            .await
+    }
+
+    /// Get savings report for the last 7 days
+    pub async fn get_weekly_savings_report(&self) -> Result<SavingsReport> {
+        self.get_savings_report_for_period("timestamp >= datetime('now', '-7 days')", "last 7 days")
+            .await
+    }
+
+    /// Get savings report for the current month
+    pub async fn get_monthly_savings_report(&self) -> Result<SavingsReport> {
+        let now = Utc::now();
+        let month_start = format!("{}-{:02}-01", now.year(), now.month());
+        self.get_savings_report_for_period(&format!("timestamp >= '{}'", month_start), "this month")
+            .await
+    }
+
+    /// Get savings report for a specific repo
+    pub async fn get_repo_savings_report(&self, repo_id: &str) -> Result<SavingsReport> {
+        let where_clause = format!("repo_id = '{}'", repo_id.replace('\'', "''"));
+        self.get_savings_report_for_period(&where_clause, &format!("repo: {}", repo_id))
+            .await
+    }
+
+    /// Internal helper to build a savings report from a WHERE clause
+    async fn get_savings_report_for_period(
+        &self,
+        where_clause: &str,
+        period_label: &str,
+    ) -> Result<SavingsReport> {
+        let query = format!(
+            r#"
+            SELECT
+                COUNT(*) as total_files,
+                COALESCE(SUM(CASE WHEN recommendation = 'SKIP' THEN 1 ELSE 0 END), 0) as files_skipped,
+                COALESCE(SUM(CASE WHEN recommendation = 'MINIMAL' THEN 1 ELSE 0 END), 0) as files_minimal,
+                COALESCE(SUM(CASE WHEN recommendation = 'STANDARD' THEN 1 ELSE 0 END), 0) as files_standard,
+                COALESCE(SUM(CASE WHEN recommendation = 'DEEP_DIVE' THEN 1 ELSE 0 END), 0) as files_deep_dive,
+                COALESCE(SUM(estimated_cost_saved_usd), 0.0) as total_savings,
+                COALESCE(SUM(actual_cost_usd), 0.0) as total_actual,
+                COALESCE(SUM(CASE WHEN llm_called = 0 THEN 1 ELSE 0 END), 0) as llm_avoided,
+                COALESCE(SUM(static_issue_count), 0) as total_static_issues
+            FROM static_decisions
+            WHERE {}
+            "#,
+            where_clause
+        );
+
+        let row = sqlx::query_as::<_, (i64, i64, i64, i64, i64, f64, f64, i64, i64)>(&query)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to get savings report")?;
+
+        let total_possible = row.5 + row.6;
+        let savings_pct = if total_possible > 0.0 {
+            (row.5 / total_possible) * 100.0
+        } else {
+            0.0
+        };
+
+        Ok(SavingsReport {
+            total_files: row.0,
+            files_skipped: row.1,
+            files_minimal: row.2,
+            files_standard: row.3,
+            files_deep_dive: row.4,
+            total_estimated_savings_usd: row.5,
+            total_actual_cost_usd: row.6,
+            llm_calls_avoided: row.7,
+            total_static_issues: row.8,
+            savings_percent: savings_pct,
+            period: period_label.to_string(),
+        })
+    }
+
+    /// Estimate what an LLM call would cost for a file of the given size (in chars).
+    /// Used to calculate savings when a file is skipped.
+    /// Based on Grok 4.1 Fast pricing with ~30% output ratio.
+    pub fn estimate_file_cost(char_count: usize) -> f64 {
+        let input_tokens = char_count as f64 / 4.0; // ~4 chars per token
+        let output_tokens = input_tokens * 0.3;
+        let input_cost = (input_tokens / 1_000_000.0) * GROK_COST_PER_MILLION_INPUT;
+        let output_cost = (output_tokens / 1_000_000.0) * GROK_COST_PER_MILLION_OUTPUT;
+        input_cost + output_cost
     }
 
     /// Get statistics for all time (useful for testing)
@@ -454,7 +686,7 @@ impl CostTracker {
         Ok(())
     }
 
-    /// Generate daily report
+    /// Generate daily report (now includes static analysis savings)
     pub async fn daily_report(&self) -> Result<String> {
         let stats = self.get_daily_stats().await?;
         let status = self.get_budget_status().await?;
@@ -481,6 +713,37 @@ impl CostTracker {
             stats.total_output_tokens / 1_000_000,
             stats.total_cached_tokens / 1_000_000
         ));
+
+        // Include static analysis savings
+        if let Ok(savings) = self.get_daily_savings_report().await {
+            if savings.total_files > 0 {
+                report.push_str("\n📉 Static Analysis Savings:\n");
+                report.push_str(&format!(
+                    "  Files processed: {} (skip: {}, minimal: {}, standard: {}, deep: {})\n",
+                    savings.total_files,
+                    savings.files_skipped,
+                    savings.files_minimal,
+                    savings.files_standard,
+                    savings.files_deep_dive,
+                ));
+                report.push_str(&format!(
+                    "  LLM calls avoided: {}\n",
+                    savings.llm_calls_avoided
+                ));
+                report.push_str(&format!(
+                    "  Estimated savings: ${:.4}\n",
+                    savings.total_estimated_savings_usd
+                ));
+                report.push_str(&format!(
+                    "  Savings rate: {:.1}%\n",
+                    savings.savings_percent
+                ));
+                report.push_str(&format!(
+                    "  Static issues found: {}\n",
+                    savings.total_static_issues
+                ));
+            }
+        }
 
         if !status.alerts.is_empty() {
             report.push_str("\n⚠️  Alerts:\n");
@@ -535,6 +798,68 @@ impl CostTracker {
         info!("Cleared {} cost records older than {} days", deleted, days);
 
         Ok(deleted)
+    }
+
+    /// Clear old static decision records
+    pub async fn clear_old_static_decisions(&self, days: i64) -> Result<u64> {
+        let cutoff = (Utc::now() - Duration::days(days)).to_rfc3339();
+
+        let result = sqlx::query(
+            r#"
+            DELETE FROM static_decisions
+            WHERE timestamp < ?
+            "#,
+        )
+        .bind(cutoff)
+        .execute(&self.pool)
+        .await
+        .context("Failed to clear old static decisions")?;
+
+        let deleted = result.rows_affected();
+        if deleted > 0 {
+            info!(
+                "Cleared {} static decision records older than {} days",
+                deleted, days
+            );
+        }
+
+        Ok(deleted)
+    }
+
+    /// Get combined daily report as structured data (for API/UI consumption)
+    pub async fn get_combined_daily_report(
+        &self,
+    ) -> Result<(CostStats, SavingsReport, BudgetStatus)> {
+        let stats = self.get_daily_stats().await?;
+        let savings = self.get_daily_savings_report().await?;
+        let budget = self.get_budget_status().await?;
+        Ok((stats, savings, budget))
+    }
+}
+
+impl SavingsReport {
+    /// Format as a human-readable summary
+    pub fn format_summary(&self) -> String {
+        format!(
+            "Static Analysis Savings ({}): {} files ({} skipped, {} minimal, {} std, {} deep) | \
+             ${:.4} saved ({:.1}%) | {} LLM calls avoided | {} static issues",
+            self.period,
+            self.total_files,
+            self.files_skipped,
+            self.files_minimal,
+            self.files_standard,
+            self.files_deep_dive,
+            self.total_estimated_savings_usd,
+            self.savings_percent,
+            self.llm_calls_avoided,
+            self.total_static_issues,
+        )
+    }
+}
+
+impl std::fmt::Display for SavingsReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.format_summary())
     }
 }
 

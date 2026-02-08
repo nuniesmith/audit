@@ -2,11 +2,19 @@
 //!
 //! Provides database operations for notes, repositories, tasks, and queue system.
 
+pub mod chunks;
 pub mod config;
 pub mod core;
 pub mod documents;
 pub mod queue;
 pub mod scan_events;
+
+// Re-export chunk store types and functions
+pub use chunks::{
+    chunk_to_location, chunk_to_record, chunks_to_records, estimate_llm_cost_for_file,
+    ChunkLocationRecord, ChunkRecord, ChunkStore, CrossRepoDuplicate, DedupStats, SavingsSummary,
+    ScanSavingsRecord, StoredChunk, StoredLocation, StoredSavingsRecord,
+};
 
 // Re-export configuration types and functions
 pub use config::{

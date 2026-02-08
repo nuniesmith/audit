@@ -30,6 +30,7 @@ pub mod cache_layer;
 pub mod cache_migrate;
 pub mod chunking;
 pub mod cli;
+pub mod code_chunker;
 pub mod code_review;
 pub mod config;
 pub mod context;
@@ -54,6 +55,7 @@ pub mod metrics;
 pub mod multi_tenant;
 pub mod parser;
 pub mod prompt_hashes;
+pub mod prompt_router;
 pub mod query_analytics;
 pub mod query_router;
 pub mod query_templates;
@@ -69,6 +71,7 @@ pub mod scanner;
 pub mod scoring;
 pub mod search;
 pub mod server;
+pub mod static_analysis;
 pub mod tag_schema;
 pub mod tags;
 pub mod task;
@@ -104,13 +107,20 @@ pub use cli::{
     handle_queue_command, handle_report_command, handle_scan_command, handle_task_command,
     QueueCommands, ReportCommands, ScanCommands, TaskCommands,
 };
+pub use code_chunker::{
+    compute_chunking_stats, compute_content_hash, ChunkerConfig, ChunkingStats, CodeChunk,
+    CodeChunker, DedupEntry, DedupIndex, EntityType,
+};
 pub use code_review::{
     CodeReview, CodeReviewer, FileReview, IssueSeverity, ReviewIssue, ReviewStats,
 };
 pub use config::Config;
 pub use context::{ContextBuilder as OldContextBuilder, GlobalContextBundle};
 pub use context_builder::{Context, ContextBuilder, ContextFile, QueryBuilder};
-pub use cost_tracker::{BudgetStatus, CostStats, CostTracker, OperationCost, TokenUsage};
+pub use cost_tracker::{
+    BudgetStatus, CostStats, CostTracker, OperationCost, SavingsReport, StaticDecisionRecord,
+    TokenUsage,
+};
 pub use db::{
     add_repository, create_note, create_task, delete_note, get_next_task, get_note, get_repository,
     get_repository_by_path, get_stats, init_db, list_notes, list_repositories, list_tasks,
@@ -178,6 +188,9 @@ pub use metrics::{
     RequestTimer,
 };
 pub use multi_tenant::{QuotaType, Tenant, TenantManager, TenantQuota, TenantUsage, UsageMetric};
+pub use prompt_router::{
+    PromptRouter, PromptRouterConfig, PromptRoutingStats, PromptTier, TierKind,
+};
 pub use query_analytics::{
     AnalyticsConfig, AnalyticsStats, QueryAnalytics, QueryPattern, SearchAnalytics,
 };
@@ -196,6 +209,11 @@ pub use search::{
     SemanticSearcher,
 };
 pub use server::run_server;
+pub use static_analysis::{
+    analyze_batch, content_hash, run_clippy, strip_for_prompt, AnalysisRecommendation,
+    BatchAnalysisReport, ClippyResult, ClippyWarning, FindingConfidence, QualitySignals,
+    SecurityFinding, SkipReason, StaticAnalysisResult, StaticAnalyzer, StaticAnalyzerConfig,
+};
 pub use tag_schema::{
     CodeAge, CodeStatus, Complexity, DirectoryNode, IssuesSummary, NodeStats, NodeType, Priority,
     SimpleIssueDetector, TagCategory, TagSchema, TagValidation,
@@ -231,11 +249,15 @@ pub mod prelude {
         RateLimitConfig, SearchRequest, SearchType,
     };
     pub use crate::chunking::{chunk_document, ChunkConfig, ChunkData};
+    pub use crate::code_chunker::{
+        ChunkerConfig, ChunkingStats, CodeChunk, CodeChunker, DedupIndex, EntityType,
+    };
     pub use crate::config::Config;
     pub use crate::context::{ContextBuilder as OldContextBuilder, GlobalContextBundle};
     pub use crate::context_builder::{Context, ContextBuilder, ContextFile, QueryBuilder};
     pub use crate::cost_tracker::{
-        BudgetStatus, CostStats, CostTracker, OperationCost, TokenUsage,
+        BudgetStatus, CostStats, CostTracker, OperationCost, SavingsReport, StaticDecisionRecord,
+        TokenUsage,
     };
     pub use crate::db::{
         add_repository, create_note, create_task, delete_note, get_next_task, get_note,
@@ -291,6 +313,10 @@ pub mod prelude {
         SemanticSearcher,
     };
 
+    pub use crate::prompt_router::{PromptRouter, PromptRouterConfig, PromptTier, TierKind};
+    pub use crate::static_analysis::{
+        AnalysisRecommendation, StaticAnalysisResult, StaticAnalyzer,
+    };
     pub use crate::tag_schema::{
         CodeAge, CodeStatus, Complexity, DirectoryNode, IssuesSummary, NodeStats, NodeType,
         Priority, SimpleIssueDetector, TagCategory, TagSchema, TagValidation,
