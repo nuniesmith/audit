@@ -1,7 +1,17 @@
-//! Queue Processor
+//! Queue Processor (Legacy)
 //!
 //! Handles moving items through processing stages:
 //! Inbox → PendingAnalysis → Analyzing → PendingTagging → Ready
+//!
+//! **DEPRECATED:** The primary task system is now the `tasks` table
+//! (managed by `db::core::create_task` / `db::core::list_tasks`).
+//! The auto-scanner writes project review tasks directly to `tasks`,
+//! and the web UI dashboard + `/queue` page read from `tasks`.
+//!
+//! This module still operates on the `queue_items` table and is used
+//! for capturing notes, thoughts, and TODO comments via `capture_thought`,
+//! `capture_note`, and `capture_todo`. Consider migrating these to write
+//! to the `tasks` table as well, then retiring `queue_items` entirely.
 
 use crate::db::queue::{QueueItem, QueuePriority, QueueSource, QueueStage};
 use anyhow::Result;

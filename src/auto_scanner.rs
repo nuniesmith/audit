@@ -259,6 +259,83 @@ impl AutoScanner {
         let now = chrono::Utc::now().timestamp();
         let interval_secs = repo.scan_interval_minutes * 60;
 
+        // ── On-demand project review (bypasses interval check) ──────────
+        // The web UI sets review_requested = 1 when the user clicks
+        // "📋 Re-run Review".  We handle it here so it fires on the next
+        // 60-second loop iteration regardless of scan_interval_mins.
+        let review_requested = repo.review_requested.unwrap_or(0) == 1;
+        if review_requested {
+            info!(
+                "📋 Web-requested project review for {} — bypassing interval check",
+                repo.name
+            );
+
+            // Clear the flag immediately so we don't re-fire
+            sqlx::query("UPDATE repositories SET review_requested = 0 WHERE id = ?")
+                .bind(&repo.id)
+                .execute(&self.pool)
+                .await
+                .ok();
+
+            // Resolve repo path — try the stored path first, then the
+            // repos_dir clone location.
+            let primary = PathBuf::from(&repo.path);
+            let alt = self.repos_dir.join(&repo.name);
+            let resolved = if primary.exists() {
+                Some(primary.clone())
+            } else if alt.exists() {
+                Some(alt.clone())
+            } else {
+                None
+            };
+
+            match resolved {
+                Some(repo_path) => {
+                    match self
+                        .generate_project_review(&repo.id, &repo.name, &repo_path)
+                        .await
+                    {
+                        Ok(task_count) => {
+                            info!(
+                                "📋 Requested review complete for {}: {} tasks generated",
+                                repo.name, task_count
+                            );
+                            let _ = scan_events::log_info(
+                                &self.pool,
+                                Some(&repo.id),
+                                "project_review_complete",
+                                &format!("On-demand review generated {} tasks", task_count),
+                            )
+                            .await;
+                        }
+                        Err(e) => {
+                            error!("Requested project review failed for {}: {}", repo.name, e);
+                            let _ = scan_events::log_error(
+                                &self.pool,
+                                Some(&repo.id),
+                                "project_review_error",
+                                "On-demand project review failed",
+                                &e.to_string(),
+                            )
+                            .await;
+                        }
+                    }
+                }
+                None => {
+                    warn!(
+                        "Cannot run review for {} — repo path not found at {} or {}",
+                        repo.name,
+                        primary.display(),
+                        alt.display()
+                    );
+                }
+            }
+
+            // Update scan check time so we don't immediately re-scan
+            self.update_last_scan_check(&repo.id, now).await?;
+            return Ok(());
+        }
+
         // Check if enough time has passed since last scan
         if let Some(last_check) = repo.last_scan_check {
             if now - last_check < interval_secs {
@@ -1504,11 +1581,164 @@ Respond in ONLY valid JSON (no markdown fences):
         );
 
         // Parse the response and insert tasks into the queue
-        let task_count = self
+        match self
             .parse_review_into_tasks(&tracked.content, repo_id, repo_name)
-            .await?;
+            .await
+        {
+            Ok(count) => return Ok(count),
+            Err(first_err) => {
+                warn!(
+                    "Project review parse failed on full context ({} files with issues). \
+                     Retrying with reduced batch...",
+                    files_with_issues
+                );
 
-        Ok(task_count)
+                // Retry strategy: rebuild the prompt with only the top ~30 files
+                // (sorted by issue count descending) to produce a shorter, more
+                // reliable JSON response.
+                let retry_result = self
+                    .retry_project_review_with_reduced_context(
+                        repo_id,
+                        repo_name,
+                        &all_entries,
+                        &grok,
+                    )
+                    .await;
+
+                match retry_result {
+                    Ok(count) => {
+                        info!(
+                            "✅ Retry succeeded: {} tasks generated from reduced context",
+                            count
+                        );
+                        return Ok(count);
+                    }
+                    Err(retry_err) => {
+                        // Both attempts failed — return the original error with context
+                        return Err(first_err.context(format!(
+                            "Retry with reduced context also failed: {}",
+                            retry_err
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Retry the project review with a reduced set of files (top 30 by issue count).
+    /// Called when the full-context review produces unparseable JSON.
+    async fn retry_project_review_with_reduced_context(
+        &self,
+        repo_id: &str,
+        repo_name: &str,
+        all_entries: &[crate::repo_cache_sql::CacheEntry],
+        grok: &crate::grok_client::GrokClient,
+    ) -> Result<usize> {
+        // Collect files with issues, sorted by issue count descending
+        let mut files_with_issues: Vec<(&str, usize, f64, &str)> = Vec::new();
+
+        for entry in all_entries {
+            if entry.cache_type != "refactor" {
+                continue;
+            }
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&entry.result_json) {
+                let smells = parsed["code_smells"]
+                    .as_array()
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let suggestions = parsed["suggestions"]
+                    .as_array()
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let complexity = parsed["complexity_score"].as_f64().unwrap_or(50.0);
+                let issues = smells + suggestions;
+
+                if issues > 0 || complexity > 70.0 {
+                    files_with_issues.push((
+                        &entry.file_path,
+                        issues,
+                        complexity,
+                        &entry.result_json,
+                    ));
+                }
+            }
+        }
+
+        // Sort by issue count descending, take top 30
+        files_with_issues.sort_by(|a, b| b.1.cmp(&a.1));
+        let batch_size = 30;
+        let batch: Vec<_> = files_with_issues.into_iter().take(batch_size).collect();
+
+        if batch.is_empty() {
+            return Ok(0);
+        }
+
+        let total_issues: usize = batch.iter().map(|(_, count, _, _)| count).sum();
+        let mut project_context = String::new();
+        for (path, issues, complexity, analysis_json) in &batch {
+            let truncated = if analysis_json.len() > 2000 {
+                &analysis_json[..2000]
+            } else {
+                analysis_json
+            };
+            project_context.push_str(&format!(
+                "\n## {}\n- Complexity: {:.0}\n- Issues: {}\n- Analysis: {}\n",
+                path, complexity, issues, truncated
+            ));
+        }
+
+        info!(
+            "📊 Retry review with top {} files ({} issues)",
+            batch.len(),
+            total_issues
+        );
+
+        let prompt = format!(
+            r#"You are reviewing a codebase analysis for the "{repo_name}" project.
+
+This is a focused review of the {batch_len} highest-priority files ({total_issues} total issues).
+
+Group related issues into ACTIONABLE TASKS (1-4 hours each).
+Prioritize: Critical (security/crashes) > High (correctness) > Medium (quality) > Low (style).
+
+IMPORTANT: Respond with ONLY valid JSON. No markdown fences, no explanation text.
+The response must be a single JSON object with this exact structure:
+{{
+  "summary": "Brief overview",
+  "cross_cutting_concerns": ["..."],
+  "tasks": [
+    {{
+      "title": "...",
+      "description": "...",
+      "files": ["..."],
+      "priority": "critical|high|medium|low",
+      "effort": "small|medium|large",
+      "dependencies": [],
+      "category": "security|error-handling|performance|testing|refactoring|documentation"
+    }}
+  ]
+}}
+
+=== FILE ANALYSES ===
+{project_context}"#,
+            repo_name = repo_name,
+            batch_len = batch.len(),
+            total_issues = total_issues,
+            project_context = project_context,
+        );
+
+        let tracked = grok
+            .ask_tracked(&prompt, None, "project_review_retry")
+            .await
+            .context("Failed to generate project review (retry)")?;
+
+        info!(
+            "📊 Retry review API call: {} tokens, ${:.4}",
+            tracked.total_tokens, tracked.cost_usd
+        );
+
+        self.parse_review_into_tasks(&tracked.content, repo_id, repo_name)
+            .await
     }
 
     /// Parse the Grok project review JSON response and insert tasks into the DB queue.
@@ -1522,8 +1752,75 @@ Respond in ONLY valid JSON (no markdown fences):
         // Try to extract JSON from response (may be wrapped in markdown fences)
         let json_str = Self::extract_json_from_response(response);
 
-        let json: serde_json::Value = serde_json::from_str(&json_str)
-            .context("Failed to parse project review response as JSON")?;
+        // Debug logging: show the edges of the extracted JSON so we can diagnose parse failures
+        let preview_len = 500;
+        debug!(
+            "JSON extract preview — first {}: {}",
+            preview_len,
+            &json_str[..json_str.len().min(preview_len)]
+        );
+        debug!(
+            "JSON extract preview — last {}: {}",
+            preview_len,
+            &json_str[json_str.len().saturating_sub(preview_len)..]
+        );
+        debug!("JSON extract total length: {} chars", json_str.len());
+
+        // First attempt: parse directly
+        let json: serde_json::Value = match serde_json::from_str(&json_str) {
+            Ok(v) => v,
+            Err(parse_err) => {
+                warn!(
+                    "Initial JSON parse failed (line {}, col {}): {}",
+                    parse_err.line(),
+                    parse_err.column(),
+                    parse_err
+                );
+                // Log more context around the error position for diagnostics
+                let err_offset = json_str
+                    .lines()
+                    .take(parse_err.line().saturating_sub(1))
+                    .map(|l| l.len() + 1)
+                    .sum::<usize>()
+                    + parse_err.column().saturating_sub(1);
+                let ctx_start = err_offset.saturating_sub(200);
+                let ctx_end = json_str.len().min(err_offset + 200);
+                warn!(
+                    "Context around parse error (offset ~{}):\n...{}...",
+                    err_offset,
+                    &json_str[ctx_start..ctx_end]
+                );
+
+                // Second attempt: try to repair truncated JSON
+                info!("Attempting JSON truncation repair...");
+                match Self::repair_truncated_json(&json_str) {
+                    Some(repaired) => {
+                        info!(
+                            "Repaired JSON: added {} chars of closing delimiters",
+                            repaired.len() - json_str.len()
+                        );
+                        serde_json::from_str(&repaired).with_context(|| {
+                            format!(
+                                "Failed to parse project review response as JSON even after repair. \
+                                 Original error: {} (line {}, col {}). Response length: {} chars",
+                                parse_err, parse_err.line(), parse_err.column(), json_str.len()
+                            )
+                        })?
+                    }
+                    None => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to parse project review response as JSON: {} \
+                             (line {}, col {}). Response length: {} chars. \
+                             Repair not possible.",
+                            parse_err,
+                            parse_err.line(),
+                            parse_err.column(),
+                            json_str.len()
+                        ));
+                    }
+                }
+            }
+        };
 
         // Log the summary if present
         if let Some(summary) = json["summary"].as_str() {
@@ -1632,15 +1929,27 @@ Respond in ONLY valid JSON (no markdown fences):
     }
 
     /// Extract JSON from a response that might be wrapped in markdown code fences.
+    ///
+    /// Handles: ```json fences, generic ``` fences (with or without closing fence
+    /// for truncated responses), preamble/postamble text, and raw JSON objects.
     fn extract_json_from_response(response: &str) -> &str {
         let trimmed = response.trim();
 
-        // Try to find JSON block in markdown fences
+        // Try to find JSON block in ```json ... ``` fences
         if let Some(start) = trimmed.find("```json") {
             let json_start = start + 7; // skip ```json
+                                        // Skip any trailing whitespace/newline after the language tag
+            let json_start = trimmed[json_start..]
+                .find(|c: char| c == '{' || c == '[')
+                .map(|n| json_start + n)
+                .unwrap_or(json_start);
             if let Some(end) = trimmed[json_start..].find("```") {
                 return trimmed[json_start..json_start + end].trim();
             }
+            // No closing fence — response was likely truncated.
+            // Return everything from the JSON start to the end.
+            debug!("Found opening ```json fence but no closing fence — response may be truncated");
+            return trimmed[json_start..].trim();
         }
 
         // Try generic code fence
@@ -1654,16 +1963,102 @@ Respond in ONLY valid JSON (no markdown fences):
             if let Some(end) = trimmed[json_start..].find("```") {
                 return trimmed[json_start..json_start + end].trim();
             }
+            // No closing fence — truncated
+            debug!("Found opening ``` fence but no closing fence — response may be truncated");
+            return trimmed[json_start..].trim();
         }
 
         // Try to find raw JSON object
         if let Some(start) = trimmed.find('{') {
+            // Use rfind for '}' but validate it's not inside trailing text after JSON.
+            // For robustness: if there's a closing brace, use it; the JSON parser
+            // will catch structural issues inside.
             if let Some(end) = trimmed.rfind('}') {
-                return &trimmed[start..=end];
+                if end > start {
+                    return &trimmed[start..=end];
+                }
             }
+            // No closing brace — truncated response, return from '{' to end
+            debug!("Found opening '{{' but no closing '}}' — response may be truncated");
+            return &trimmed[start..];
         }
 
         trimmed
+    }
+
+    /// Attempt to repair truncated JSON by closing unclosed braces, brackets, and strings.
+    ///
+    /// This handles the common case where Grok hits its output token limit mid-response,
+    /// leaving the JSON structurally incomplete. We walk the string tracking nesting depth
+    /// and append the necessary closing delimiters.
+    fn repair_truncated_json(json_str: &str) -> Option<String> {
+        // Quick sanity check: must start with '{' or '['
+        let first_meaningful = json_str.trim_start().chars().next()?;
+        if first_meaningful != '{' && first_meaningful != '[' {
+            return None;
+        }
+
+        let mut stack: Vec<char> = Vec::new();
+        let mut in_string = false;
+        let mut escape_next = false;
+
+        for ch in json_str.chars() {
+            if escape_next {
+                escape_next = false;
+                continue;
+            }
+            if in_string {
+                match ch {
+                    '\\' => escape_next = true,
+                    '"' => in_string = false,
+                    _ => {}
+                }
+                continue;
+            }
+            match ch {
+                '"' => in_string = true,
+                '{' => stack.push('}'),
+                '[' => stack.push(']'),
+                '}' | ']' => {
+                    // Pop matching delimiter; ignore mismatches (best-effort)
+                    if let Some(&expected) = stack.last() {
+                        if expected == ch {
+                            stack.pop();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if stack.is_empty() && !in_string {
+            // JSON is already balanced — the parse error is something else
+            return None;
+        }
+
+        let mut repaired = json_str.to_string();
+
+        // If we were mid-string, close it
+        if in_string {
+            // Truncate back to last complete-looking field if possible,
+            // otherwise just close the string
+            repaired.push('"');
+        }
+
+        // Try to cleanly end the current value context.
+        // If the last non-whitespace char suggests we're mid-value (e.g., after a ':'),
+        // add a null placeholder.
+        let last_significant = repaired.trim_end().chars().last().unwrap_or(' ');
+        if last_significant == ':' || last_significant == ',' {
+            repaired.push_str("null");
+        }
+
+        // Close all unclosed delimiters in reverse order
+        for closer in stack.iter().rev() {
+            repaired.push(*closer);
+        }
+
+        Some(repaired)
     }
 
     // ========================================================================

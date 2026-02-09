@@ -1,0 +1,1 @@
+ALTER TABLE repositories ADD COLUMN review_requested INTEGER NOT NULL DEFAULT 0;

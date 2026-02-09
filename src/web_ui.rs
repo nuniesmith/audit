@@ -125,10 +125,10 @@ impl WebAppState {
 pub struct DashboardStats {
     pub total_repos: i64,
     pub auto_scan_enabled: i64,
-    pub queue_pending: i64,
-    pub queue_processing: i64,
-    pub queue_completed: i64,
-    pub queue_failed: i64,
+    pub tasks_pending: i64,
+    pub tasks_in_progress: i64,
+    pub tasks_completed: i64,
+    pub tasks_failed: i64,
 }
 
 /// Repository item for UI
@@ -184,9 +184,11 @@ pub struct QueueItemDisplay {
     pub stage: String,
     pub priority: String,
     pub content: String,
+    pub description: Option<String>,
     pub error_message: Option<String>,
     pub created_at: String,
-    pub processing_started_at: Option<String>,
+    pub repo_id: Option<String>,
+    pub file_path: Option<String>,
 }
 
 /// Form data for adding repository
@@ -284,7 +286,7 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
             <nav>
                 <a href="/dashboard" class="active">Dashboard</a>
                 <a href="/repos">Repositories</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
@@ -306,19 +308,19 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
                 <div class="value">{}</div>
             </div>
             <div class="stat-card warning">
-                <h3>Queue Pending</h3>
+                <h3>Tasks Pending</h3>
                 <div class="value">{}</div>
             </div>
             <div class="stat-card">
-                <h3>Queue Processing</h3>
+                <h3>Tasks In Progress</h3>
                 <div class="value">{}</div>
             </div>
             <div class="stat-card success">
-                <h3>Completed</h3>
+                <h3>Tasks Completed</h3>
                 <div class="value">{}</div>
             </div>
             <div class="stat-card danger">
-                <h3>Failed</h3>
+                <h3>Tasks Failed</h3>
                 <div class="value">{}</div>
             </div>
         </div>
@@ -327,7 +329,7 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
             <h2>Quick Actions</h2>
             <div class="action-buttons">
                 <a href="/repos/add" class="btn btn-primary">+ Add Repository</a>
-                <a href="/queue" class="btn btn-success">View Queue</a>
+                <a href="/queue" class="btn btn-success">View Tasks</a>
                 <a href="/scanner" class="btn btn-primary">Scanner Settings</a>
             </div>
         </div>
@@ -342,10 +344,10 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
         timezone_selector_html(),
         stats.total_repos,
         stats.auto_scan_enabled,
-        stats.queue_pending,
-        stats.queue_processing,
-        stats.queue_completed,
-        stats.queue_failed,
+        stats.tasks_pending,
+        stats.tasks_in_progress,
+        stats.tasks_completed,
+        stats.tasks_failed,
         timezone_js()
     )
 }
@@ -497,7 +499,7 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos" class="active">Repositories</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
@@ -585,7 +587,7 @@ fn render_add_repo_page() -> String {
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repositories</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
@@ -630,7 +632,8 @@ fn render_add_repo_page() -> String {
 fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
     let items_html = if items.is_empty() {
         r#"<div style="text-align: center; padding: 3rem; color: #64748b;">
-            <p style="font-size: 1.2rem;">Queue is empty</p>
+            <p style="font-size: 1.2rem;">No tasks yet</p>
+            <p style="color: #475569;">Tasks are generated automatically when the scanner completes a project review.</p>
         </div>"#
             .to_string()
     } else {
@@ -643,9 +646,36 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
                     String::new()
                 };
 
+                let desc_html = if let Some(desc) = &item.description {
+                    let preview = if desc.len() > 300 {
+                        format!("{}…", &desc[..300])
+                    } else {
+                        desc.clone()
+                    };
+                    format!(r#"<div class="queue-content"><pre>{}</pre></div>"#, preview)
+                } else {
+                    String::new()
+                };
+
+                let location_html = match (&item.repo_id, &item.file_path) {
+                    (Some(repo), Some(file)) => format!(r#"<span>📁 {}:{}</span>"#, repo, file),
+                    (Some(repo), None) => format!(r#"<span>📁 {}</span>"#, repo),
+                    (_, Some(file)) => format!(r#"<span>📁 {}</span>"#, file),
+                    _ => String::new(),
+                };
+
+                // Build a rich copy payload: title + description + file path
+                let mut copy_text = item.content.clone();
+                if let Some(ref desc) = item.description {
+                    copy_text.push_str("\\n\\n");
+                    copy_text.push_str(&desc.replace('\'', "\\'").replace('\n', "\\n"));
+                }
+                if let Some(ref fp) = item.file_path {
+                    copy_text.push_str(&format!("\\n\\nFile: {}", fp));
+                }
                 let copy_btn = format!(
                     r#"<button class="btn-small btn-primary" onclick="copyToClipboard('{}')">📋 Copy for IDE</button>"#,
-                    item.content.replace('\'', "\\'").replace('\n', "\\n")
+                    copy_text.replace('\'', "\\'").replace('\n', "\\n")
                 );
 
                 format!(
@@ -656,11 +686,13 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
                         <span class="queue-priority priority-{}">{}</span>
                     </div>
                     <div class="queue-content">
-                        <pre>{}</pre>
+                        <strong>{}</strong>
                     </div>
+                    {}
                     {}
                     <div class="queue-meta">
                         <span>Source: {}</span>
+                        {}
                         <span>Created: {}</span>
                     </div>
                     <div class="queue-actions">
@@ -669,13 +701,15 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
                     </div>
                 </div>"#,
                     item.stage.to_lowercase(),
-                    &item.id[..8],
+                    &item.id,
                     item.stage,
                     item.priority.to_lowercase(),
                     item.priority,
                     item.content,
+                    desc_html,
                     error_html,
                     item.source,
+                    location_html,
                     item.created_at,
                     copy_btn,
                     item.id
@@ -691,7 +725,7 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Queue - RustAssistant</title>
+    <title>Tasks - RustAssistant</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }}
@@ -706,6 +740,9 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
         .queue-item {{ background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #64748b; }}
         .queue-item.stage-pending {{ border-left-color: #f59e0b; }}
         .queue-item.stage-processing {{ border-left-color: #0ea5e9; }}
+        .queue-item.stage-review {{ border-left-color: #a78bfa; }}
+        .queue-item.stage-ready {{ border-left-color: #2dd4bf; }}
+        .queue-item.stage-done {{ border-left-color: #22c55e; }}
         .queue-item.stage-completed {{ border-left-color: #22c55e; }}
         .queue-item.stage-failed {{ border-left-color: #ef4444; }}
         .queue-header {{ display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }}
@@ -749,7 +786,7 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repositories</a>
-                <a href="/queue" class="active">Queue</a>
+                <a href="/queue" class="active">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
@@ -762,7 +799,7 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
         </header>
 
         <div class="page-header">
-            <h2 style="color: #e2e8f0;">Task Queue</h2>
+            <h2 style="color: #e2e8f0;">Tasks</h2>
         </div>
 
         <div class="queue-list">
@@ -1068,26 +1105,26 @@ pub async fn delete_repo_handler(
     }
 }
 
-/// Queue list handler
+/// Task queue handler — reads from the consolidated `tasks` table
 pub async fn queue_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
-    match get_queue_items(&state.db).await {
+    match get_task_items(&state.db).await {
         Ok(items) => Html(render_queue_page(items)),
         Err(e) => {
-            error!("Failed to get queue items: {}", e);
-            Html(format!("<h1>Error loading queue: {}</h1>", e))
+            error!("Failed to get tasks: {}", e);
+            Html(format!("<h1>Error loading tasks: {}</h1>", e))
         }
     }
 }
 
-/// Delete queue item handler
+/// Delete task handler
 pub async fn delete_queue_item_handler(
     State(state): State<Arc<WebAppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match delete_queue_item(&state.db, &id).await {
+    match delete_task_item(&state.db, &id).await {
         Ok(_) => (StatusCode::SEE_OTHER, [("Location", "/queue")], "OK"),
         Err(e) => {
-            error!("Failed to delete queue item: {}", e);
+            error!("Failed to delete task: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 [("Location", "/queue")],
@@ -1111,29 +1148,28 @@ async fn get_dashboard_stats(db: &Database) -> anyhow::Result<DashboardStats> {
             .await
             .unwrap_or(0);
 
-    // Get queue stats
-    let queue_pending = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM queue_items WHERE stage = 'pending' OR stage = 'inbox'",
-    )
-    .fetch_one(&db.pool)
-    .await
-    .unwrap_or(0);
-
-    let queue_processing =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM queue_items WHERE stage = 'processing'")
+    // Get task stats from the consolidated tasks table
+    let tasks_pending =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tasks WHERE status = 'pending'")
             .fetch_one(&db.pool)
             .await
             .unwrap_or(0);
 
-    let queue_completed = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM queue_items WHERE stage = 'completed' OR stage = 'done'",
+    let tasks_in_progress = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM tasks WHERE status = 'processing' OR status = 'review' OR status = 'ready'",
     )
     .fetch_one(&db.pool)
     .await
     .unwrap_or(0);
 
-    let queue_failed =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM queue_items WHERE stage = 'failed'")
+    let tasks_completed =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tasks WHERE status = 'done'")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap_or(0);
+
+    let tasks_failed =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tasks WHERE status = 'failed'")
             .fetch_one(&db.pool)
             .await
             .unwrap_or(0);
@@ -1141,10 +1177,10 @@ async fn get_dashboard_stats(db: &Database) -> anyhow::Result<DashboardStats> {
     Ok(DashboardStats {
         total_repos,
         auto_scan_enabled,
-        queue_pending,
-        queue_processing,
-        queue_completed,
-        queue_failed,
+        tasks_pending,
+        tasks_in_progress,
+        tasks_completed,
+        tasks_failed,
     })
 }
 
@@ -1190,22 +1226,32 @@ async fn update_repo_settings(
     Ok(())
 }
 
-async fn get_queue_items(db: &Database) -> anyhow::Result<Vec<QueueItemDisplay>> {
+/// Fetch tasks from the consolidated `tasks` table for the queue page.
+async fn get_task_items(db: &Database) -> anyhow::Result<Vec<QueueItemDisplay>> {
     #[derive(sqlx::FromRow)]
-    struct QueueItemRaw {
+    struct TaskRow {
         id: String,
-        source: String,
-        stage: String,
+        title: String,
+        description: Option<String>,
         priority: i32,
-        content: String,
-        last_error: Option<String>,
+        status: String,
+        source: String,
+        repo_id: Option<String>,
+        file_path: Option<String>,
         created_at: i64,
-        processed_at: Option<i64>,
     }
 
-    let items = sqlx::query_as::<_, QueueItemRaw>(
-        "SELECT id, source, stage, priority, content, last_error, created_at, processed_at
-         FROM queue_items
+    let items = sqlx::query_as::<_, TaskRow>(
+        "SELECT id,
+                COALESCE(title, content, 'Untitled') as title,
+                COALESCE(description, context) as description,
+                priority,
+                status,
+                COALESCE(source, source_type, 'unknown') as source,
+                COALESCE(repo_id, source_repo) as repo_id,
+                COALESCE(file_path, source_file) as file_path,
+                created_at
+         FROM tasks
          ORDER BY priority ASC, created_at DESC
          LIMIT 100",
     )
@@ -1226,29 +1272,27 @@ async fn get_queue_items(db: &Database) -> anyhow::Result<Vec<QueueItemDisplay>>
             QueueItemDisplay {
                 id: item.id,
                 source: item.source,
-                stage: item.stage,
+                stage: item.status,
                 priority: priority_label,
-                content: item.content,
-                error_message: item.last_error,
+                content: item.title,
+                description: item.description,
+                error_message: None,
                 created_at: {
                     let formatted = chrono::DateTime::from_timestamp(item.created_at, 0)
                         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                         .unwrap_or_else(|| "unknown".to_string());
                     ts(&formatted)
                 },
-                processing_started_at: item.processed_at.map(|t| {
-                    let formatted = chrono::DateTime::from_timestamp(t, 0)
-                        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    ts(&formatted)
-                }),
+                repo_id: item.repo_id,
+                file_path: item.file_path,
             }
         })
         .collect())
 }
 
-async fn delete_queue_item(db: &Database, id: &str) -> anyhow::Result<()> {
-    sqlx::query("DELETE FROM queue_items WHERE id = ?")
+/// Delete a task from the consolidated `tasks` table.
+async fn delete_task_item(db: &Database, id: &str) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM tasks WHERE id = ?")
         .bind(id)
         .execute(&db.pool)
         .await?;
@@ -1305,6 +1349,35 @@ pub async fn force_scan_handler(
         }
         Err(e) => {
             error!("Failed to force scan: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [("Location", "/scanner")],
+                "Error",
+            )
+        }
+    }
+}
+
+/// Request a project review re-run for a repo.
+///
+/// Sets the `review_requested` flag in the DB so the scanner loop picks it
+/// up on its next 60-second cycle and calls `generate_project_review` using
+/// the existing cached file analyses (no re-scan needed, ~$0.01).
+pub async fn request_review_handler(
+    State(state): State<Arc<WebAppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match sqlx::query("UPDATE repositories SET review_requested = 1 WHERE id = ?")
+        .bind(&id)
+        .execute(&state.db.pool)
+        .await
+    {
+        Ok(_) => {
+            info!("Project review requested for repo {}", id);
+            (StatusCode::SEE_OTHER, [("Location", "/scanner")], "OK")
+        }
+        Err(e) => {
+            error!("Failed to request review for repo {}: {}", id, e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 [("Location", "/scanner")],
@@ -1411,6 +1484,8 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         <a href="/repos/{}/toggle-scan" class="btn-small {}">{}</a>
                         <a href="/scanner/{}/force" class="btn-small btn-primary">🔄 Force Scan</a>
+                        <a href="/scanner/{}/review" class="btn-small btn-success">📋 Re-run Review</a>
+                        <a href="/queue?repo={}" class="btn-small" style="background:#6366f1;color:white;">📝 View Tasks</a>
                     </div>
                 </div>"#,
                     if repo.auto_scan_enabled { "#22c55e" } else { "#64748b" },
@@ -1425,6 +1500,8 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
                     if repo.auto_scan_enabled { "btn-danger" } else { "btn-success" },
                     if repo.auto_scan_enabled { "⏸ Disable Auto-Scan" } else { "▶ Enable Auto-Scan" },
                     repo.id,
+                    repo.id,
+                    repo.name,
                 )
             })
             .collect::<Vec<_>>()
@@ -1466,7 +1543,7 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repositories</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
@@ -1611,7 +1688,7 @@ pub async fn notes_handler(State(state): State<Arc<WebAppState>>) -> impl IntoRe
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repositories</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
@@ -1772,5 +1849,6 @@ pub fn create_router(state: WebAppState) -> Router {
         .route("/queue/:id/delete", get(delete_queue_item_handler))
         .route("/scanner", get(scanner_handler))
         .route("/scanner/:id/force", get(force_scan_handler))
+        .route("/scanner/:id/review", get(request_review_handler))
         .with_state(shared_state)
 }

@@ -137,6 +137,9 @@ pub struct Repository {
     pub last_scan_issues_found: Option<i64>,
     #[sqlx(default)]
     pub last_error: Option<String>,
+    /// Flag set by the web UI to request a project review re-run
+    #[sqlx(default)]
+    pub review_requested: Option<i64>,
 }
 
 impl Repository {
@@ -174,14 +177,23 @@ impl Repository {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Task {
     pub id: String,
+    /// Title — may be NULL for rows created by the legacy (migration-001) schema,
+    /// where the equivalent column is `content`.
+    #[sqlx(default)]
     pub title: String,
+    #[sqlx(default)]
     pub description: Option<String>,
     pub priority: i32, // 1=critical, 2=high, 3=medium, 4=low
     pub status: String,
-    pub source: String,            // "note", "analysis", "manual"
+    #[sqlx(default)]
+    pub source: String, // "note", "analysis", "manual"
+    #[sqlx(default)]
     pub source_id: Option<String>, // ID of note or file that generated this
+    #[sqlx(default)]
     pub repo_id: Option<String>,
+    #[sqlx(default)]
     pub file_path: Option<String>,
+    #[sqlx(default)]
     pub line_number: Option<i32>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -442,6 +454,11 @@ async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
     let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN last_sync_at INTEGER")
         .execute(pool)
         .await;
+    let _ = sqlx::query(
+        "ALTER TABLE repositories ADD COLUMN review_requested INTEGER NOT NULL DEFAULT 0",
+    )
+    .execute(pool)
+    .await;
 
     // Tasks table
     sqlx::query(
@@ -938,6 +955,7 @@ pub async fn add_repository(
         last_scan_files_found: Some(0),
         last_scan_issues_found: Some(0),
         last_error: None,
+        review_requested: None,
     })
 }
 
@@ -1364,7 +1382,21 @@ pub async fn list_tasks(
     priority: Option<i32>,
     repo_id: Option<&str>,
 ) -> DbResult<Vec<Task>> {
-    let mut query = String::from("SELECT * FROM tasks WHERE 1=1");
+    let mut query = String::from(
+        "SELECT id, \
+                COALESCE(title, content, 'Untitled') as title, \
+                COALESCE(description, context) as description, \
+                priority, \
+                status, \
+                COALESCE(source, source_type, 'manual') as source, \
+                source_id, \
+                COALESCE(repo_id, source_repo) as repo_id, \
+                COALESCE(file_path, source_file) as file_path, \
+                line_number, \
+                created_at, \
+                updated_at \
+         FROM tasks WHERE 1=1",
+    );
 
     if status.is_some() {
         query.push_str(" AND status = ?");
@@ -1416,7 +1448,19 @@ pub async fn update_task_status(pool: &SqlitePool, id: &str, status: &str) -> Db
 pub async fn get_next_task(pool: &SqlitePool) -> DbResult<Option<Task>> {
     Ok(sqlx::query_as::<_, Task>(
         r#"
-        SELECT * FROM tasks
+        SELECT id,
+               COALESCE(title, content, 'Untitled') as title,
+               COALESCE(description, context) as description,
+               priority,
+               status,
+               COALESCE(source, source_type, 'manual') as source,
+               source_id,
+               COALESCE(repo_id, source_repo) as repo_id,
+               COALESCE(file_path, source_file) as file_path,
+               line_number,
+               created_at,
+               updated_at
+        FROM tasks
         WHERE status = 'pending'
         ORDER BY priority ASC, created_at ASC
         LIMIT 1

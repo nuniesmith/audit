@@ -210,7 +210,7 @@ pub async fn ideas_handler(
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repos</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas" class="active">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
@@ -472,7 +472,7 @@ pub async fn docs_handler(
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repos</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs" class="active">Docs</a>
                 <a href="/activity">Activity</a>
@@ -541,7 +541,7 @@ pub async fn new_doc_form_handler() -> impl IntoResponse {
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repos</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs" class="active">Docs</a>
                 <a href="/activity">Activity</a>
@@ -827,7 +827,7 @@ pub async fn activity_handler(State(state): State<Arc<WebAppState>>) -> impl Int
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos">Repos</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity" class="active">Activity</a>
@@ -947,7 +947,7 @@ pub async fn repo_settings_handler(
             <nav>
                 <a href="/dashboard">Dashboard</a>
                 <a href="/repos" class="active">Repos</a>
-                <a href="/queue">Queue</a>
+                <a href="/queue">Tasks</a>
                 <a href="/ideas">Ideas</a>
                 <a href="/docs">Docs</a>
                 <a href="/activity">Activity</a>
@@ -1206,7 +1206,7 @@ pub struct HealthResponse {
 pub struct ScannerHealth {
     pub repos_tracked: i64,
     pub repos_scanning: i64,
-    pub total_queue_items: i64,
+    pub total_tasks: i64,
     pub last_scan_event: Option<String>,
 }
 

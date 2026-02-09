@@ -752,7 +752,7 @@ pub async fn db_query_handler(
         ("Tables & sizes", "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') ORDER BY type, name"),
         ("Repositories", "SELECT id, name, auto_scan, scan_status, scan_files_processed, scan_files_total FROM repositories"),
         ("Recent scan events", "SELECT * FROM scan_events ORDER BY created_at DESC LIMIT 20"),
-        ("Queue items", "SELECT id, source, stage, priority, substr(content,1,80) as content_preview FROM queue_items ORDER BY priority, created_at DESC LIMIT 50"),
+        ("Tasks", "SELECT id, COALESCE(title, content, 'Untitled') as title, priority, status, COALESCE(source, source_type, 'unknown') as source, COALESCE(repo_id, source_repo) as repo_id, substr(COALESCE(description, context, ''),1,80) as description_preview FROM tasks ORDER BY priority ASC, created_at DESC LIMIT 50"),
         ("LLM cost log", "SELECT model, SUM(cost) as total_cost, COUNT(*) as calls, SUM(tokens_used) as total_tokens FROM llm_usage GROUP BY model"),
         ("Notes", "SELECT id, substr(content,1,100) as preview, status, created_at FROM notes ORDER BY created_at DESC LIMIT 20"),
     ];

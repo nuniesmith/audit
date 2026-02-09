@@ -1,7 +1,17 @@
-//! Task Queue and Analysis Pipeline Database Schema
+//! Task Queue and Analysis Pipeline Database Schema (Legacy)
 //!
 //! Handles staged processing of content from raw input through
 //! LLM analysis to tagged, searchable knowledge.
+//!
+//! **DEPRECATED:** The primary task system is now the `tasks` table
+//! (managed by `db::core::create_task` / `db::core::list_tasks`).
+//! The auto-scanner writes project review tasks directly to `tasks`,
+//! and the web UI dashboard + `/queue` page read from `tasks`.
+//!
+//! This module defines the `queue_items` table schema and types used
+//! by the legacy staged pipeline in `queue/processor.rs`. It is still
+//! active for note/thought/TODO capture but should eventually be
+//! consolidated into the `tasks` table.
 
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
