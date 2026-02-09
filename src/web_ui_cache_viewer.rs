@@ -24,7 +24,7 @@ use axum::{
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::repo_cache_sql::RepoCacheSql;
 use crate::web_ui::WebAppState;
@@ -36,9 +36,9 @@ use crate::web_ui::WebAppState;
 pub fn create_cache_viewer_router(state: Arc<WebAppState>) -> Router {
     Router::new()
         .route("/cache", get(cache_overview_handler))
-        .route("/cache/:repo_id", get(cache_repo_detail_handler))
-        .route("/cache/:repo_id/file", get(cache_file_detail_handler))
-        .route("/cache/:repo_id/gaps", get(cache_gaps_handler))
+        .route("/cache/{repo_id}", get(cache_repo_detail_handler))
+        .route("/cache/{repo_id}/file", get(cache_file_detail_handler))
+        .route("/cache/{repo_id}/gaps", get(cache_gaps_handler))
         .with_state(state)
 }
 
@@ -229,7 +229,19 @@ struct CacheOverviewStats {
 }
 
 /// Open the per-repo cache DB. Returns None if not found.
-async fn open_repo_cache(repo_path: &str) -> Option<RepoCacheSql> {
+async fn open_repo_cache(repo_path: &str, cache_hash: Option<&str>) -> Option<RepoCacheSql> {
+    // Try opening with the stored cache_hash first (if available)
+    // This works even if the web server can't access the repo path
+    if let Some(hash) = cache_hash {
+        match RepoCacheSql::new_with_hash(hash).await {
+            Ok(cache) => return Some(cache),
+            Err(e) => {
+                debug!("Could not open cache with hash {}: {}", hash, e);
+            }
+        }
+    }
+
+    // Fallback: try computing hash from path
     match RepoCacheSql::new_for_repo(std::path::Path::new(repo_path)).await {
         Ok(cache) => Some(cache),
         Err(e) => {
@@ -383,20 +395,21 @@ fn format_bytes(bytes: i64) -> String {
 pub async fn cache_overview_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     let pool = &state.db.pool;
 
-    // Get all repositories
-    let repos: Vec<(String, String, String, Option<String>)> =
-        sqlx::query_as("SELECT id, name, path, git_url FROM repositories ORDER BY name")
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
+    // Get all repositories with cache_hash
+    let repos: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, name, path, git_url, cache_hash FROM repositories ORDER BY name",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
 
     let mut repo_cards = String::new();
     let mut grand_total_entries = 0i64;
     let mut grand_total_tokens = 0i64;
     let mut grand_total_cost = 0.0f64;
 
-    for (repo_id, repo_name, repo_path, _git_url) in &repos {
-        if let Some(cache) = open_repo_cache(repo_path).await {
+    for (repo_id, repo_name, repo_path, _git_url, cache_hash) in &repos {
+        if let Some(cache) = open_repo_cache(repo_path, cache_hash.as_deref()).await {
             let stats = get_cache_overview(&cache).await;
             grand_total_entries += stats.total_entries;
             grand_total_tokens += stats.total_tokens;
@@ -543,20 +556,20 @@ pub async fn cache_repo_detail_handler(
     let pool = &state.db.pool;
 
     // Get repo info
-    let repo: Option<(String, String)> =
-        sqlx::query_as("SELECT name, path FROM repositories WHERE id = ?")
+    let repo: Option<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT name, path, cache_hash FROM repositories WHERE id = ?")
             .bind(&repo_id)
             .fetch_optional(pool)
             .await
             .ok()
             .flatten();
 
-    let (repo_name, repo_path) = match repo {
+    let (repo_name, repo_path, cache_hash) = match repo {
         Some(r) => r,
         None => return Html("<h1>Repository not found</h1>".to_string()),
     };
 
-    let cache = match open_repo_cache(&repo_path).await {
+    let cache = match open_repo_cache(&repo_path, cache_hash.as_deref()).await {
         Some(c) => c,
         None => {
             return Html(format!(
@@ -806,20 +819,21 @@ pub async fn cache_file_detail_handler(
 ) -> impl IntoResponse {
     let pool = &state.db.pool;
 
-    let repo: Option<(String, String)> =
-        sqlx::query_as("SELECT name, path FROM repositories WHERE id = ?")
+    // Get repo info
+    let repo: Option<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT name, path, cache_hash FROM repositories WHERE id = ?")
             .bind(&repo_id)
             .fetch_optional(pool)
             .await
             .ok()
             .flatten();
 
-    let (repo_name, repo_path) = match repo {
+    let (repo_name, repo_path, cache_hash) = match repo {
         Some(r) => r,
         None => return Html("<h1>Repository not found</h1>".to_string()),
     };
 
-    let cache = match open_repo_cache(&repo_path).await {
+    let cache = match open_repo_cache(&repo_path, cache_hash.as_deref()).await {
         Some(c) => c,
         None => return Html("<h1>No cache found</h1>".to_string()),
     };
@@ -988,21 +1002,21 @@ pub async fn cache_gaps_handler(
 ) -> impl IntoResponse {
     let pool = &state.db.pool;
 
-    let repo: Option<(String, String)> =
-        sqlx::query_as("SELECT name, path FROM repositories WHERE id = ?")
+    // Get repo info
+    let repo: Option<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT name, path, cache_hash FROM repositories WHERE id = ?")
             .bind(&repo_id)
             .fetch_optional(pool)
             .await
             .ok()
             .flatten();
 
-    let (repo_name, repo_path) = match repo {
+    let (repo_name, repo_path, cache_hash) = match repo {
         Some(r) => r,
         None => return Html("<h1>Repository not found</h1>".to_string()),
     };
 
-    // Get set of analyzed files from cache
-    let cache = open_repo_cache(&repo_path).await;
+    let cache = open_repo_cache(&repo_path, cache_hash.as_deref()).await;
     let analyzed_files: std::collections::HashSet<String> = if let Some(ref c) = cache {
         sqlx::query_scalar::<_, String>("SELECT DISTINCT file_path FROM cache_entries")
             .fetch_all(&c.pool)

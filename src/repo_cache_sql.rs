@@ -159,9 +159,10 @@ pub struct RepoCacheSql {
 }
 
 impl RepoCacheSql {
-    /// Create a new SQLite cache for a specific repository
-    /// Uses XDG cache directory: ~/.cache/rustassistant/repos/<repo-hash>/cache.db
-    pub async fn new_for_repo(repo_path: impl AsRef<Path>) -> Result<Self> {
+    /// Compute the cache hash for a repository path without opening the database.
+    /// This is the same hash used to locate the cache DB directory.
+    /// Returns the 8-character hex hash.
+    pub fn compute_repo_hash(repo_path: impl AsRef<Path>) -> String {
         use sha2::{Digest, Sha256};
 
         let repo_path = repo_path.as_ref();
@@ -175,7 +176,13 @@ impl RepoCacheSql {
         let mut hasher = Sha256::new();
         hasher.update(path_str.as_bytes());
         let hash = hasher.finalize();
-        let repo_hash = format!("{:x}", hash)[..8].to_string();
+        format!("{:x}", hash)[..8].to_string()
+    }
+
+    /// Create a new SQLite cache for a repository using path-based hashing
+    pub async fn new_for_repo(repo_path: impl AsRef<Path>) -> Result<Self> {
+        let repo_path = repo_path.as_ref();
+        let repo_hash = Self::compute_repo_hash(repo_path);
 
         // Get XDG cache directory
         let cache_dir = if let Some(cache_home) = std::env::var_os("XDG_CACHE_HOME") {
@@ -190,6 +197,28 @@ impl RepoCacheSql {
             .join("rustassistant")
             .join("repos")
             .join(&repo_hash)
+            .join("cache.db");
+
+        Self::new(&db_path).await
+    }
+
+    /// Create a new SQLite cache using a precomputed cache hash.
+    /// This is useful when the web server doesn't have access to the repo path
+    /// but has the hash stored in the database.
+    pub async fn new_with_hash(cache_hash: &str) -> Result<Self> {
+        // Get XDG cache directory
+        let cache_dir = if let Some(cache_home) = std::env::var_os("XDG_CACHE_HOME") {
+            PathBuf::from(cache_home)
+        } else if let Some(home) = dirs::home_dir() {
+            home.join(".cache")
+        } else {
+            anyhow::bail!("Cannot determine cache directory");
+        };
+
+        let db_path = cache_dir
+            .join("rustassistant")
+            .join("repos")
+            .join(cache_hash)
             .join("cache.db");
 
         Self::new(&db_path).await

@@ -256,6 +256,7 @@ impl AutoScanner {
 
     /// Check if repo needs scanning and scan if necessary
     async fn check_and_scan_repo(&self, repo: &Repository) -> Result<()> {
+        let repo_name = &repo.name;
         let now = chrono::Utc::now().timestamp();
         let interval_secs = repo.scan_interval_minutes * 60;
 
@@ -502,7 +503,7 @@ impl AutoScanner {
 
         // Analyze changed files with progress tracking
         let result = self
-            .analyze_changed_files_with_progress(&repo.id, &repo_path, &changed_files)
+            .analyze_changed_files_with_progress(&repo.id, repo_name, &repo_path, &changed_files)
             .await;
 
         match result {
@@ -888,9 +889,19 @@ impl AutoScanner {
     async fn analyze_changed_files_with_progress(
         &self,
         repo_id: &str,
+        repo_name: &str,
         repo_path: &Path,
         files: &[PathBuf],
     ) -> Result<(i64, i64, bool)> {
+        // Compute and store cache hash in DB if not already set
+        let cache_hash = RepoCacheSql::compute_repo_hash(repo_path);
+        sqlx::query("UPDATE repositories SET cache_hash = ? WHERE id = ? AND cache_hash IS NULL")
+            .bind(&cache_hash)
+            .bind(repo_id)
+            .execute(&self.pool)
+            .await
+            .ok();
+
         let cache = RepoCacheSql::new_for_repo(repo_path).await?;
         let mut files_analyzed = 0i64;
         let mut issues_found = 0i64;
@@ -981,7 +992,15 @@ impl AutoScanner {
                 .to_string();
 
             match self
-                .analyze_file(repo_path, file, &cache, idx, filtered_count)
+                .analyze_file(
+                    repo_id,
+                    repo_name,
+                    repo_path,
+                    file,
+                    &cache,
+                    idx,
+                    filtered_count,
+                )
                 .await
             {
                 Ok(file_result) => {
@@ -1068,21 +1087,144 @@ impl AutoScanner {
         Ok((files_analyzed, issues_found, budget_halted))
     }
 
+    /// Create tasks from file analysis results if critical/high severity issues are found.
+    /// This provides incremental task creation during scans, not just at the final review.
+    async fn create_tasks_from_file_analysis(
+        &self,
+        repo_id: &str,
+        _repo_name: &str,
+        file_path: &str,
+        analysis: &crate::refactor_assistant::RefactoringAnalysis,
+    ) -> Result<usize> {
+        use crate::refactor_assistant::{RefactoringType, SmellSeverity};
+
+        let mut task_count = 0;
+
+        // Only create tasks for critical/high severity code smells to avoid noise
+        for smell in &analysis.code_smells {
+            if !matches!(
+                smell.severity,
+                SmellSeverity::Critical | SmellSeverity::High
+            ) {
+                continue;
+            }
+
+            let priority = match smell.severity {
+                SmellSeverity::Critical => 1,
+                SmellSeverity::High => 2,
+                SmellSeverity::Medium => 3,
+                SmellSeverity::Low => 4,
+            };
+
+            let line_number = smell
+                .location
+                .as_ref()
+                .and_then(|loc| loc.line_start.map(|l| l as i32));
+
+            let title = format!("{}: {}", smell.smell_type, file_path);
+            let description = format!(
+                "**Severity:** {:?}\n\n{}\n\n**File:** {}\n**Lines:** {}\n\n*Source: File scan analysis*",
+                smell.severity,
+                smell.description,
+                file_path,
+                line_number.map(|l| l.to_string()).unwrap_or_else(|| "unknown".to_string())
+            );
+
+            match crate::db::core::create_task(
+                &self.pool,
+                &title,
+                Some(&description),
+                priority,
+                "file_scan",
+                None,
+                Some(repo_id),
+                Some(file_path),
+                line_number,
+            )
+            .await
+            {
+                Ok(_) => {
+                    task_count += 1;
+                    debug!("Created task for {} in {}", smell.smell_type, file_path);
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to create task for code smell in {}: {}",
+                        file_path, e
+                    );
+                }
+            }
+        }
+
+        // Also create tasks for high-impact refactoring suggestions
+        for suggestion in &analysis.suggestions {
+            // Only create tasks for certain high-value refactoring types
+            let should_create_task = matches!(
+                suggestion.refactoring_type,
+                RefactoringType::ExtractFunction
+                    | RefactoringType::ExtractModule
+                    | RefactoringType::ImproveErrorHandling
+                    | RefactoringType::ReduceCoupling
+                    | RefactoringType::SplitFunction
+            );
+
+            if !should_create_task {
+                continue;
+            }
+
+            let priority = 3; // Medium priority for refactoring suggestions
+            let line_number: Option<i32> = None; // RefactoringSuggestion doesn't have location
+
+            let title = format!("Refactor: {} in {}", suggestion.title, file_path);
+            let description = format!(
+                "**Type:** {:?}\n**Effort:** {:?}\n\n{}\n\n**File:** {}\n\n*Source: File scan analysis*",
+                suggestion.refactoring_type,
+                suggestion.effort,
+                suggestion.description,
+                file_path
+            );
+
+            match crate::db::core::create_task(
+                &self.pool,
+                &title,
+                Some(&description),
+                priority,
+                "file_scan",
+                None,
+                Some(repo_id),
+                Some(file_path),
+                line_number,
+            )
+            .await
+            {
+                Ok(_) => {
+                    task_count += 1;
+                    debug!(
+                        "Created refactoring task for {} in {}",
+                        suggestion.title, file_path
+                    );
+                }
+                Err(e) => {
+                    warn!("Failed to create refactoring task in {}: {}", file_path, e);
+                }
+            }
+        }
+
+        Ok(task_count)
+    }
+
     /// Analyze a single file with progress-aware logging.
     /// Returns `FileAnalysisResult` with issues, cost, tokens, and cache-hit flag.
     async fn analyze_file(
         &self,
+        repo_id: &str,
+        repo_name: &str,
         repo_path: &Path,
         file_path: &Path,
         cache: &RepoCacheSql,
         progress_idx: usize,
         progress_total: usize,
     ) -> Result<FileAnalysisResult> {
-        // Extract repo_id for savings tracking (best-effort from repo path)
-        let repo_id = repo_path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
         let rel_path = file_path
             .strip_prefix(repo_path)
             .unwrap_or(file_path)
@@ -1208,7 +1350,7 @@ impl AutoScanner {
                     let _ = tracker
                         .log_static_decision(&StaticDecisionRecord {
                             file_path: rel_path.clone(),
-                            repo_id: repo_id.clone(),
+                            repo_id: repo_id.to_string(),
                             recommendation: "SKIP".to_string(),
                             skip_reason: static_result.skip_reason.as_ref().map(|r| r.to_string()),
                             static_issue_count: static_result.static_issue_count as i64,
@@ -1338,6 +1480,29 @@ impl AutoScanner {
             tier_kind,
         );
 
+        // Create tasks immediately for critical/high severity issues
+        if issues_count > 0 {
+            match self
+                .create_tasks_from_file_analysis(repo_id, repo_name, &rel_path, &analysis)
+                .await
+            {
+                Ok(tasks_created) => {
+                    if tasks_created > 0 {
+                        info!(
+                            "{} 📋 Created {} task(s) for issues in {}",
+                            progress_tag, tasks_created, rel_path
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "{} Failed to create tasks for {}: {}",
+                        progress_tag, rel_path, e
+                    );
+                }
+            }
+        }
+
         // Log the LLM decision with actual cost for savings tracking
         if let Some(ref tracker) = self.cost_tracker {
             // Calculate savings vs what a standard prompt would have cost
@@ -1351,7 +1516,7 @@ impl AutoScanner {
             let _ = tracker
                 .log_static_decision(&StaticDecisionRecord {
                     file_path: rel_path.clone(),
-                    repo_id: repo_id.clone(),
+                    repo_id: repo_id.to_string(),
                     recommendation: static_result.recommendation.to_string(),
                     skip_reason: None,
                     static_issue_count: static_result.static_issue_count as i64,
