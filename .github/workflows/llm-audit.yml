@@ -236,6 +236,9 @@ jobs:
                   echo "## 📦 Cloning \`$TARGET\` @ \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
                   echo "" >> $GITHUB_STEP_SUMMARY
 
+                  # ── Set up Git LFS so repos with large files clone cleanly ──
+                  git lfs install --skip-repo 2>/dev/null || true
+
                   if [ -n "$GH_PAT" ]; then
                       CLONE_URL="https://x-access-token:${GH_PAT}@github.com/${TARGET}.git"
                       echo "🔐 Using PAT authentication" >> $GITHUB_STEP_SUMMARY
@@ -246,6 +249,16 @@ jobs:
 
                   # Full depth needed so we can branch and push from the clone
                   git clone --branch "$BRANCH" "$CLONE_URL" "${{ env.REPO_DIR }}"
+
+                  # ── Ensure LFS files are properly checked out as pointers ──
+                  cd "${{ env.REPO_DIR }}"
+                  if [ -f .gitattributes ] && grep -q "filter=lfs" .gitattributes 2>/dev/null; then
+                      echo "ℹ️ Repo uses Git LFS — pulling LFS objects..."
+                      git lfs install 2>/dev/null || true
+                      git lfs pull 2>/dev/null || true
+                      echo "- Git LFS : ✅ configured" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  cd "$GITHUB_WORKSPACE"
 
                   FILE_COUNT=$(find "${{ env.REPO_DIR }}" -type f \
                       -not -path "*/.git/*" -not -path "*/target/*" | wc -l)
@@ -1360,6 +1373,8 @@ jobs:
 
                   # ── Commit everything (code changes + todo.md + cache) ────
                   cd "$REPO"
+                  # Ensure LFS pointer files are clean before committing
+                  git lfs checkout 2>/dev/null || true
                   git add -A
                   COMMIT_MSG="🤖 Batch $BATCH_NUM: $BATCH_TITLE [skip ci]"
                   git commit -m "$COMMIT_MSG" || echo "Nothing to commit"
@@ -1769,10 +1784,21 @@ jobs:
                       fi
                       RETRY=$((RETRY + 1))
                       echo "⚠️ Push attempt $RETRY/$MAX_RETRIES failed — rebasing..."
-                      git pull --rebase --autostash origin "${{ inputs.target_branch }}" || {
+
+                      # Reset any LFS pointer mismatches that block rebase
+                      git lfs checkout 2>/dev/null || true
+                      STASHED=false
+                      if ! git diff --quiet 2>/dev/null; then
+                          echo "  ℹ️ Stashing unstaged changes (likely LFS pointer files)..."
+                          git stash --include-untracked 2>/dev/null && STASHED=true
+                      fi
+
+                      git pull --rebase --no-autostash origin "${{ inputs.target_branch }}" || {
                           git rebase --abort 2>/dev/null || true
+                          [ "$STASHED" = "true" ] && git stash pop 2>/dev/null || true
                           break
                       }
+                      [ "$STASHED" = "true" ] && git stash pop 2>/dev/null || true
                       sleep 2
                   done
 
