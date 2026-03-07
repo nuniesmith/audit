@@ -60,6 +60,12 @@ target/doc/
 
 # Cache directories
 .cache/
+.fastembed_cache/
+.ort_cache/
+ort_cache/
+models/
+*.onnx
+*.ort
 
 # .rustassistant/ is tracked — it stores cross-run cache state for the
 # LLM Audit workflow (llm-audit.yml in nuniesmith/actions).  The workflow
