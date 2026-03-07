@@ -238,6 +238,7 @@ jobs:
 
                   # ── Set up Git LFS so repos with large files clone cleanly ──
                   git lfs install --skip-repo 2>/dev/null || true
+                  export GIT_LFS_SKIP_SMUDGE=0
 
                   if [ -n "$GH_PAT" ]; then
                       CLONE_URL="https://x-access-token:${GH_PAT}@github.com/${TARGET}.git"
@@ -256,6 +257,19 @@ jobs:
                       echo "ℹ️ Repo uses Git LFS — pulling LFS objects..."
                       git lfs install 2>/dev/null || true
                       git lfs pull 2>/dev/null || true
+                      # Force-reset any remaining LFS smudge-filter mismatches
+                      git checkout -- . 2>/dev/null || true
+                      # If files are STILL dirty (missing LFS objects on server),
+                      # tell git to ignore the smudge filter diff for them
+                      if ! git diff --quiet 2>/dev/null; then
+                          echo "  ⚠️ LFS files still show as modified after pull — checking status..."
+                          git diff --name-only 2>/dev/null || true
+                          # Mark these files as assume-unchanged so they don't block operations
+                          git diff --name-only 2>/dev/null | while read -r f; do
+                              git update-index --assume-unchanged "$f" 2>/dev/null || true
+                          done
+                          echo "  ℹ️ Marked LFS-dirty files as assume-unchanged"
+                      fi
                       echo "- Git LFS : ✅ configured" >> $GITHUB_STEP_SUMMARY
                   fi
                   cd "$GITHUB_WORKSPACE"
@@ -1373,8 +1387,13 @@ jobs:
 
                   # ── Commit everything (code changes + todo.md + cache) ────
                   cd "$REPO"
+                  # Un-assume-unchanged LFS files so git add sees our real changes
+                  git ls-files -v 2>/dev/null | grep '^h ' | awk '{print $2}' | while read -r f; do
+                      git update-index --no-assume-unchanged "$f" 2>/dev/null || true
+                  done
                   # Ensure LFS pointer files are clean before committing
                   git lfs checkout 2>/dev/null || true
+                  git checkout -- models/ 2>/dev/null || true
                   git add -A
                   COMMIT_MSG="🤖 Batch $BATCH_NUM: $BATCH_TITLE [skip ci]"
                   git commit -m "$COMMIT_MSG" || echo "Nothing to commit"
@@ -1388,7 +1407,14 @@ jobs:
                       exit 0
                   fi
 
-                  git push origin "$BRANCH_NAME" || {
+                  # Re-mark any LFS-dirty files as assume-unchanged before push
+                  git diff --name-only 2>/dev/null | while read -r f; do
+                      git update-index --assume-unchanged "$f" 2>/dev/null || true
+                  done
+
+                  # Skip LFS pre-push hook — we haven't changed LFS files,
+                  # but pointer mismatches cause the hook to fail
+                  GIT_LFS_SKIP_PUSH=1 git push origin "$BRANCH_NAME" || {
                       echo "::error::Failed to push branch $BRANCH_NAME"
                       exit 1
                   }
@@ -1759,8 +1785,19 @@ jobs:
                   cp ../audit-workspace/todo-plan.json                docs/audit/ 2>/dev/null || true
 
                   # ── Always update .rustassistant cache ────────────────────
+                  # Un-assume-unchanged LFS files before staging
+                  git ls-files -v 2>/dev/null | grep '^h ' | awk '{print $2}' | while read -r f; do
+                      git update-index --no-assume-unchanged "$f" 2>/dev/null || true
+                  done
+
                   git add docs/audit/ 2>/dev/null || true
                   git add -f .rustassistant/ 2>/dev/null || true
+
+                  # Re-assume-unchanged LFS-dirty files we don't want to commit
+                  git diff --staged --name-only 2>/dev/null | grep -E '\.(onnx|pt|bin|h5|safetensors)$' | while read -r f; do
+                      git reset HEAD "$f" 2>/dev/null || true
+                      git update-index --assume-unchanged "$f" 2>/dev/null || true
+                  done
 
                   if git diff --staged --quiet; then
                       echo "ℹ️ No changes to commit"
@@ -1773,32 +1810,36 @@ jobs:
                   git commit -m "🤖 $MODE report + cache update ($PROVIDER_TAG) [skip ci]"
 
                   # Push with retry + rebase
+                  # Skip the LFS pre-push hook — we haven't changed any LFS files,
+                  # but pointer mismatches cause the hook to fail.
                   MAX_RETRIES=3
                   RETRY=0
                   PUSH_OK=false
+
+                  # Mark any remaining LFS-dirty files as assume-unchanged
+                  # so they don't interfere with rebase/pull
+                  git diff --name-only 2>/dev/null | while read -r f; do
+                      git update-index --assume-unchanged "$f" 2>/dev/null || true
+                  done
+
                   while [ "$RETRY" -lt "$MAX_RETRIES" ]; do
-                      if git push 2>/dev/null; then
+                      echo "  ℹ️ Push attempt $((RETRY + 1))/$MAX_RETRIES..."
+                      PUSH_ERR=$(GIT_LFS_SKIP_PUSH=1 git push 2>&1) && {
                           PUSH_OK=true
                           echo "✅ Pushed to ${{ inputs.target_repo }}"
                           break
-                      fi
-                      RETRY=$((RETRY + 1))
-                      echo "⚠️ Push attempt $RETRY/$MAX_RETRIES failed — rebasing..."
-
-                      # Reset any LFS pointer mismatches that block rebase
-                      git lfs checkout 2>/dev/null || true
-                      STASHED=false
-                      if ! git diff --quiet 2>/dev/null; then
-                          echo "  ℹ️ Stashing unstaged changes (likely LFS pointer files)..."
-                          git stash --include-untracked 2>/dev/null && STASHED=true
-                      fi
-
-                      git pull --rebase --no-autostash origin "${{ inputs.target_branch }}" || {
-                          git rebase --abort 2>/dev/null || true
-                          [ "$STASHED" = "true" ] && git stash pop 2>/dev/null || true
-                          break
                       }
-                      [ "$STASHED" = "true" ] && git stash pop 2>/dev/null || true
+                      RETRY=$((RETRY + 1))
+                      echo "⚠️ Push attempt $RETRY/$MAX_RETRIES failed:"
+                      # Sanitize output to prevent PAT leakage in logs
+                      echo "$PUSH_ERR" | sed 's|https://[^@]*@|https://***@|g' | head -5
+
+                      # Fetch + rebase to catch up with remote
+                      git fetch origin "${{ inputs.target_branch }}" 2>/dev/null || true
+                      git rebase "origin/${{ inputs.target_branch }}" 2>/dev/null || {
+                          echo "  ⚠️ Rebase failed — aborting and retrying..."
+                          git rebase --abort 2>/dev/null || true
+                      }
                       sleep 2
                   done
 
