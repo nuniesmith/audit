@@ -121,7 +121,7 @@ jobs:
               uses: docker/build-push-action@v5
               with:
                   context: .
-                  file: docker/Dockerfile.web
+                  file: docker/Dockerfile
                   platforms: linux/amd64
                   push: true
                   tags: ${{ steps.meta.outputs.tags }}
@@ -188,7 +188,7 @@ jobs:
               uses: docker/build-push-action@v5
               with:
                   context: .
-                  file: docker/Dockerfile.web
+                  file: docker/Dockerfile
                   platforms: linux/arm64
                   push: true
                   tags: ${{ steps.meta.outputs.tags }}
@@ -268,7 +268,9 @@ jobs:
         needs: create-manifest
         runs-on: ubuntu-latest
         timeout-minutes: 15
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # Deployment disabled — images are pulled by llm-audit workflow from Docker Hub.
+        # Re-enable when Raspberry Pi deployment is needed again.
+        if: false && github.event_name == 'push' && github.ref == 'refs/heads/main'
         steps:
             - name: 📥 Checkout code
               uses: actions/checkout@v4

@@ -224,39 +224,37 @@ jobs:
                   token: ${{ secrets.GITHUB_TOKEN }}
 
             # ================================================================
-            # 1b. Build rustassistant Rust binary
+            # 1b. Pull rustassistant from Docker Hub (built by ci-cd.yml)
             # ================================================================
-            - name: 🔨 Build rustassistant
+            - name: 🐳 Pull rustassistant image
+              id: pull_image
               continue-on-error: true
               run: |
-                  echo "## 🔨 Building rustassistant" >> $GITHUB_STEP_SUMMARY
+                  IMAGE="docker.io/nuniesmith/rustassistant:latest"
+                  echo "## 🐳 Pulling rustassistant" >> $GITHUB_STEP_SUMMARY
                   echo "" >> $GITHUB_STEP_SUMMARY
 
-                  # Install Rust toolchain (runner usually has it, but be explicit)
-                  rustup show active-toolchain || rustup default stable
+                  if docker pull "$IMAGE" 2>&1 | tail -5; then
+                      # Extract the server binary from the image
+                      docker create --name ra-extract "$IMAGE" true >/dev/null 2>&1
+                      docker cp ra-extract:/usr/local/bin/rustassistant-server ./rustassistant-bin 2>/dev/null
+                      docker rm ra-extract >/dev/null 2>&1
+                      chmod +x ./rustassistant-bin 2>/dev/null || true
 
-                  # Build in release mode — the binary can be used by later steps.
-                  # Disable errexit for cargo so we can capture its exit code
-                  # without the script terminating early on failure.
-                  set +e
-                  cargo build --release 2>&1 | tee /tmp/cargo-build.log | tail -30
-                  BUILD_EXIT=${PIPESTATUS[0]}
-                  set -e
-
-                  if [ $BUILD_EXIT -eq 0 ]; then
-                      BIN_SIZE=$(du -h target/release/rustassistant 2>/dev/null | cut -f1 || echo "?")
-                      echo "- Build : ✅ success" >> $GITHUB_STEP_SUMMARY
-                      echo "- Binary : \`target/release/rustassistant\` ($BIN_SIZE)" >> $GITHUB_STEP_SUMMARY
-                      echo "" >> $GITHUB_STEP_SUMMARY
+                      if [ -x ./rustassistant-bin ]; then
+                          BIN_SIZE=$(du -h ./rustassistant-bin | cut -f1)
+                          echo "- Image  : ✅ \`$IMAGE\`" >> $GITHUB_STEP_SUMMARY
+                          echo "- Binary : \`./rustassistant-bin\` ($BIN_SIZE)" >> $GITHUB_STEP_SUMMARY
+                          echo "ra_available=true" >> $GITHUB_OUTPUT
+                      else
+                          echo "- Image  : ⚠️ pulled but binary extraction failed" >> $GITHUB_STEP_SUMMARY
+                          echo "ra_available=false" >> $GITHUB_OUTPUT
+                      fi
                   else
-                      echo "- Build : ❌ failed (exit $BUILD_EXIT)" >> $GITHUB_STEP_SUMMARY
-                      echo "" >> $GITHUB_STEP_SUMMARY
-                      # Show last few errors in the summary for quick debugging
-                      echo '```' >> $GITHUB_STEP_SUMMARY
-                      grep -E "^error" /tmp/cargo-build.log | tail -10 >> $GITHUB_STEP_SUMMARY || true
-                      echo '```' >> $GITHUB_STEP_SUMMARY
-                      echo "::warning::Rust build failed — workflow will continue with Python-only audit"
+                      echo "- Image  : ⏭️ not available — continuing with Python-only audit" >> $GITHUB_STEP_SUMMARY
+                      echo "ra_available=false" >> $GITHUB_OUTPUT
                   fi
+                  echo "" >> $GITHUB_STEP_SUMMARY
 
             # ================================================================
             # 2. Clone the TARGET repo
