@@ -396,6 +396,7 @@ pub async fn cache_overview_handler(State(state): State<Arc<WebAppState>>) -> im
     let pool = &state.db.pool;
 
     // Get all repositories with cache_hash
+    #[allow(clippy::type_complexity)]
     let repos: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT id, name, path, git_url, cache_hash FROM repositories ORDER BY name",
     )
@@ -839,6 +840,7 @@ pub async fn cache_file_detail_handler(
     };
 
     // Fetch the specific file entry
+    #[allow(clippy::type_complexity)]
     let entry: Option<(
         String,
         Option<i64>,
@@ -978,9 +980,7 @@ pub async fn cache_file_detail_handler(
         repo_name = html_escape(&repo_name),
         score_html = score_html,
         cache_type = cache_type,
-        tokens = tokens
-            .map(|t| format_tokens(t))
-            .unwrap_or_else(|| "—".to_string()),
+        tokens = tokens.map(format_tokens).unwrap_or_else(|| "—".to_string()),
         file_size = format_bytes(file_size),
         provider = html_escape(&provider),
         model = html_escape(&model),

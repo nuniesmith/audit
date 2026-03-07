@@ -128,6 +128,7 @@ struct ScanRepoInfo {
 
 async fn get_scan_repos(pool: &sqlx::SqlitePool) -> Vec<ScanRepoInfo> {
     // Try with new columns first, fall back to without them
+    #[allow(clippy::type_complexity)]
     let rows: Vec<(
         String,
         String,
@@ -555,6 +556,7 @@ pub async fn scan_repo_status_handler(
 ) -> impl IntoResponse {
     let pool = &state.db.pool;
 
+    #[allow(clippy::type_complexity)]
     let row: Option<(
         String,
         String,
@@ -623,9 +625,10 @@ pub async fn scan_repo_status_handler(
             };
             Html(render_repo_progress_card(&repo))
         }
-        None => Html(format!(
+        None => Html(
             r#"<div class="scan-card"><p style="color:#64748b;">Repo not found</p></div>"#
-        )),
+                .to_string(),
+        ),
     }
 }
 

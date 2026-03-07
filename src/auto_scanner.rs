@@ -953,7 +953,7 @@ impl AutoScanner {
             cumulative_cost = cp.cumulative_cost;
             files_analyzed = cp.files_analyzed;
             cache_hits = cp.files_cached;
-            (cp.last_completed_index + 1) as usize
+            cp.last_completed_index + 1
         } else {
             0
         };
@@ -1215,6 +1215,7 @@ impl AutoScanner {
 
     /// Analyze a single file with progress-aware logging.
     /// Returns `FileAnalysisResult` with issues, cost, tokens, and cache-hit flag.
+    #[allow(clippy::too_many_arguments)]
     async fn analyze_file(
         &self,
         repo_id: &str,
@@ -1750,7 +1751,7 @@ Respond in ONLY valid JSON (no markdown fences):
             .parse_review_into_tasks(&tracked.content, repo_id, repo_name)
             .await
         {
-            Ok(count) => return Ok(count),
+            Ok(count) => Ok(count),
             Err(first_err) => {
                 warn!(
                     "Project review parse failed on full context ({} files with issues). \
@@ -1776,14 +1777,14 @@ Respond in ONLY valid JSON (no markdown fences):
                             "✅ Retry succeeded: {} tasks generated from reduced context",
                             count
                         );
-                        return Ok(count);
+                        Ok(count)
                     }
                     Err(retry_err) => {
                         // Both attempts failed — return the original error with context
-                        return Err(first_err.context(format!(
+                        Err(first_err.context(format!(
                             "Retry with reduced context also failed: {}",
                             retry_err
-                        )));
+                        )))
                     }
                 }
             }
@@ -1932,7 +1933,7 @@ The response must be a single JSON object with this exact structure:
         debug!("JSON extract total length: {} chars", json_str.len());
 
         // First attempt: parse directly
-        let json: serde_json::Value = match serde_json::from_str(&json_str) {
+        let json: serde_json::Value = match serde_json::from_str(json_str) {
             Ok(v) => v,
             Err(parse_err) => {
                 warn!(
@@ -1958,7 +1959,7 @@ The response must be a single JSON object with this exact structure:
 
                 // Second attempt: try to repair truncated JSON
                 info!("Attempting JSON truncation repair...");
-                match Self::repair_truncated_json(&json_str) {
+                match Self::repair_truncated_json(json_str) {
                     Some(repaired) => {
                         info!(
                             "Repaired JSON: added {} chars of closing delimiters",
@@ -2105,7 +2106,7 @@ The response must be a single JSON object with this exact structure:
             let json_start = start + 7; // skip ```json
                                         // Skip any trailing whitespace/newline after the language tag
             let json_start = trimmed[json_start..]
-                .find(|c: char| c == '{' || c == '[')
+                .find(['{', '['])
                 .map(|n| json_start + n)
                 .unwrap_or(json_start);
             if let Some(end) = trimmed[json_start..].find("```") {
@@ -2276,6 +2277,7 @@ The response must be a single JSON object with this exact structure:
     }
 
     /// Persist a scan checkpoint after each successfully analyzed file.
+    #[allow(clippy::too_many_arguments)]
     async fn save_scan_checkpoint(
         &self,
         repo_id: &str,

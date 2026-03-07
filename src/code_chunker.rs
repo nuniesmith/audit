@@ -136,6 +136,7 @@ pub struct CodeChunk {
 impl CodeChunk {
     /// Create a new CodeChunk with the minimum required fields.
     /// Analysis metadata and embedding are left as defaults.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         content: String,
         repo_id: String,
@@ -712,7 +713,7 @@ impl CodeChunker {
                     let parts: Vec<&str> = line.split(" for ").collect();
                     if parts.len() >= 2 {
                         let impl_part = parts[0].trim().trim_start_matches("impl").trim();
-                        let type_part = parts[1].trim().split_whitespace().next().unwrap_or("");
+                        let type_part = parts[1].split_whitespace().next().unwrap_or("");
                         let type_part = type_part.trim_end_matches('{').trim();
                         format!("{} for {}", impl_part, type_part)
                     } else {
@@ -828,10 +829,11 @@ impl CodeChunker {
                         || lines[i + 1].trim().is_empty())
                 {
                     i += 1;
-                    if lines[i].trim().is_empty() && i + 1 < lines.len() {
-                        if !self.kotlin_patterns.import_stmt.is_match(lines[i + 1]) {
-                            break;
-                        }
+                    if lines[i].trim().is_empty()
+                        && i + 1 < lines.len()
+                        && !self.kotlin_patterns.import_stmt.is_match(lines[i + 1])
+                    {
+                        break;
                     }
                 }
                 boundaries.push(Boundary {
@@ -996,7 +998,7 @@ impl CodeChunker {
                         EntityType::Function
                     },
                     entity_name: name.to_string(),
-                    is_public: name.chars().next().map_or(false, |c| c.is_uppercase()),
+                    is_public: name.chars().next().is_some_and(|c| c.is_uppercase()),
                     is_test,
                 });
                 continue;
@@ -1015,7 +1017,7 @@ impl CodeChunker {
                         EntityType::Struct
                     },
                     entity_name: name.to_string(),
-                    is_public: name.chars().next().map_or(false, |c| c.is_uppercase()),
+                    is_public: name.chars().next().is_some_and(|c| c.is_uppercase()),
                     is_test: false,
                 });
             }
@@ -1205,8 +1207,7 @@ impl CodeChunker {
                 if idx + 1 < boundaries.len() {
                     // Walk backward from next boundary to skip trailing blank lines
                     let mut end = boundaries[idx + 1].start_line;
-                    while end > start + 1
-                        && lines.get(end - 1).map_or(true, |l| l.trim().is_empty())
+                    while end > start + 1 && lines.get(end - 1).is_none_or(|l| l.trim().is_empty())
                     {
                         end -= 1;
                     }
@@ -1277,8 +1278,8 @@ impl CodeChunker {
         let mut depth: i32 = 0;
         let mut found_open = false;
 
-        for i in start..lines.len() {
-            let line = lines[i];
+        for (i, line) in lines.iter().enumerate().skip(start) {
+            let line = *line;
 
             // Skip string literals (simplified — doesn't handle all edge cases)
             let mut in_string = false;

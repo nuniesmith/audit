@@ -645,13 +645,12 @@ pub async fn db_query_handler(
         let allowed = matches!(first_keyword, "SELECT" | "PRAGMA" | "EXPLAIN" | "WITH");
 
         if !allowed {
-            results_html = format!(
-                r#"<div class="card" style="border-color: #ef4444;">
+            results_html = r#"<div class="card" style="border-color: #ef4444;">
                     <p style="color: #f87171;">⛔ Only SELECT, PRAGMA, EXPLAIN, and WITH queries are allowed.</p>
                     <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem;">
                         This is a read-only explorer. Use the CLI for write operations.</p>
                 </div>"#
-            );
+                .to_string();
         } else {
             match sqlx::query(sql).fetch_all(pool).await {
                 Ok(rows) => {

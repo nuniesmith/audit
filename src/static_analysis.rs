@@ -1515,15 +1515,17 @@ pub fn strip_for_prompt(content: &str, language: FileLanguage) -> (String, f64) 
         .lines()
         .filter(|line| {
             let trimmed = line.trim();
+            #[allow(clippy::nonminimal_bool)]
             // Keep non-empty, non-comment lines
-            !trimmed.is_empty()
+            let keep = !trimmed.is_empty()
                 && !trimmed.starts_with(comment_prefix)
                 && !trimmed.starts_with("/*")
                 && !trimmed.starts_with("*/")
                 && !(trimmed.starts_with('*') && !trimmed.starts_with("*/"))
                 // Keep doc comments (they carry semantic value)
                 || trimmed.starts_with("///")
-                || trimmed.starts_with("//!")
+                || trimmed.starts_with("//!");
+            keep
         })
         .collect::<Vec<_>>()
         .join("\n");
