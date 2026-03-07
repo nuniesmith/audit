@@ -483,6 +483,28 @@ async fn create_tables(pool: &SqlitePool) -> DbResult<()> {
     .execute(pool)
     .await?;
 
+    // Note tags table (normalized tags for notes)
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS note_tags (
+            note_id TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            PRIMARY KEY (note_id, tag),
+            FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_note_tags_note_id ON note_tags(note_id)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag)")
+        .execute(pool)
+        .await?;
+
     // Create indexes for common queries
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_status ON notes(status)")
         .execute(pool)
@@ -1384,14 +1406,14 @@ pub async fn list_tasks(
 ) -> DbResult<Vec<Task>> {
     let mut query = String::from(
         "SELECT id, \
-                COALESCE(title, content, 'Untitled') as title, \
-                COALESCE(description, context) as description, \
+                COALESCE(title, 'Untitled') as title, \
+                description, \
                 priority, \
                 status, \
-                COALESCE(source, source_type, 'manual') as source, \
+                COALESCE(source, 'manual') as source, \
                 source_id, \
-                COALESCE(repo_id, source_repo) as repo_id, \
-                COALESCE(file_path, source_file) as file_path, \
+                repo_id, \
+                file_path, \
                 line_number, \
                 created_at, \
                 updated_at \
@@ -1449,14 +1471,14 @@ pub async fn get_next_task(pool: &SqlitePool) -> DbResult<Option<Task>> {
     Ok(sqlx::query_as::<_, Task>(
         r#"
         SELECT id,
-               COALESCE(title, content, 'Untitled') as title,
-               COALESCE(description, context) as description,
+               COALESCE(title, 'Untitled') as title,
+               description,
                priority,
                status,
-               COALESCE(source, source_type, 'manual') as source,
+               COALESCE(source, 'manual') as source,
                source_id,
-               COALESCE(repo_id, source_repo) as repo_id,
-               COALESCE(file_path, source_file) as file_path,
+               repo_id,
+               file_path,
                line_number,
                created_at,
                updated_at

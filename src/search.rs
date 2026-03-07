@@ -100,7 +100,7 @@ pub struct SearchQuery {
 }
 
 /// Filters for search queries
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchFilters {
     /// Filter by document type
     pub doc_type: Option<String>,
@@ -127,6 +127,20 @@ pub struct SearchFilters {
 
 fn default_indexed_only() -> bool {
     true
+}
+
+impl Default for SearchFilters {
+    fn default() -> Self {
+        Self {
+            doc_type: None,
+            tags: None,
+            repo_id: None,
+            source_type: None,
+            created_after: None,
+            created_before: None,
+            indexed_only: true,
+        }
+    }
 }
 
 // ============================================================================

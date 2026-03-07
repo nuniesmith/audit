@@ -321,7 +321,7 @@ impl QueryAnalytics {
 
     /// Get popular queries
     pub async fn get_popular_queries(&self, limit: i64) -> Result<Vec<QueryPattern>> {
-        let patterns = sqlx::query_as::<_, (String, i64, f64, f64, String, String)>(
+        let patterns = sqlx::query_as::<_, (String, i64, f64, f64, i64, i64)>(
             r#"
             SELECT
                 query,
@@ -331,7 +331,7 @@ impl QueryAnalytics {
                 MIN(timestamp) as first_seen,
                 MAX(timestamp) as last_seen
             FROM search_analytics
-            WHERE timestamp > datetime('now', '-30 days')
+            WHERE timestamp > unixepoch('now', '-30 days')
             GROUP BY query
             ORDER BY count DESC
             LIMIT ?
@@ -361,8 +361,8 @@ impl QueryAnalytics {
                 count,
                 avg_execution_time_ms: avg_time,
                 avg_results,
-                first_seen: DateTime::parse_from_rfc3339(&first_seen)?.with_timezone(&Utc),
-                last_seen: DateTime::parse_from_rfc3339(&last_seen)?.with_timezone(&Utc),
+                first_seen: DateTime::from_timestamp(first_seen, 0).unwrap_or(Utc::now()),
+                last_seen: DateTime::from_timestamp(last_seen, 0).unwrap_or(Utc::now()),
                 search_types,
             });
         }
@@ -372,18 +372,18 @@ impl QueryAnalytics {
 
     /// Get trending queries (increasing in popularity)
     pub async fn get_trending_queries(&self, limit: i64) -> Result<Vec<QueryPattern>> {
-        let patterns = sqlx::query_as::<_, (String, i64, i64, f64, f64, String, String)>(
+        let patterns = sqlx::query_as::<_, (String, i64, i64, f64, f64, i64, i64)>(
             r#"
             WITH recent AS (
                 SELECT query, COUNT(*) as recent_count
                 FROM search_analytics
-                WHERE timestamp > datetime('now', '-7 days')
+                WHERE timestamp > unixepoch('now', '-7 days')
                 GROUP BY query
             ),
             older AS (
                 SELECT query, COUNT(*) as older_count
                 FROM search_analytics
-                WHERE timestamp BETWEEN datetime('now', '-14 days') AND datetime('now', '-7 days')
+                WHERE timestamp BETWEEN unixepoch('now', '-14 days') AND unixepoch('now', '-7 days')
                 GROUP BY query
             )
             SELECT
@@ -397,7 +397,7 @@ impl QueryAnalytics {
             FROM search_analytics sa
             LEFT JOIN recent ON sa.query = recent.query
             LEFT JOIN older ON sa.query = older.query
-            WHERE sa.timestamp > datetime('now', '-30 days')
+            WHERE sa.timestamp > unixepoch('now', '-30 days')
             GROUP BY sa.query
             HAVING trend > 0
             ORDER BY trend DESC
@@ -427,8 +427,8 @@ impl QueryAnalytics {
                 count: _total,
                 avg_execution_time_ms: avg_time,
                 avg_results,
-                first_seen: DateTime::parse_from_rfc3339(&first_seen)?.with_timezone(&Utc),
-                last_seen: DateTime::parse_from_rfc3339(&last_seen)?.with_timezone(&Utc),
+                first_seen: DateTime::from_timestamp(first_seen, 0).unwrap_or(Utc::now()),
+                last_seen: DateTime::from_timestamp(last_seen, 0).unwrap_or(Utc::now()),
                 search_types,
             });
         }

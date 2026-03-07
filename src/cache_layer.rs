@@ -138,7 +138,7 @@ impl<T> CacheEntry<T> {
 
     fn is_expired(&self) -> bool {
         if let Some(expires_at) = self.expires_at {
-            now_timestamp() > expires_at
+            now_timestamp() >= expires_at
         } else {
             false
         }
@@ -719,10 +719,10 @@ mod tests {
     fn test_cache_expiration() {
         let mut cache = LRUCache::new(10);
 
-        cache.set("key1".to_string(), "value1".to_string(), Some(0)); // Expired immediately
+        cache.set("key1".to_string(), "value1".to_string(), Some(1)); // Expires in 1 second
 
         // Should return None for expired entry
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::sleep(std::time::Duration::from_secs(2));
         assert!(cache.get(&"key1".to_string()).is_none());
     }
 

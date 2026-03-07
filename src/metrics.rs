@@ -416,7 +416,7 @@ impl Histogram {
         let mut sorted = self.values.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        let index = ((sorted.len() - 1) as f64 * q).round() as usize;
+        let index = ((sorted.len() - 1) as f64 * q).floor() as usize;
         sorted[index]
     }
 

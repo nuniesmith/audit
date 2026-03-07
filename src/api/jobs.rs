@@ -447,7 +447,7 @@ mod tests {
         assert_eq!(progress.success_rate(), 0.0);
 
         progress.completed = 7;
-        progress.failed = 2;
+        progress.failed = 3;
         assert!(progress.is_complete());
         assert_eq!(progress.success_rate(), 0.7);
     }

@@ -301,7 +301,7 @@ impl TenantManager {
                 i32,
                 i32,
                 bool,
-                String,
+                i64,
                 Option<String>,
             ),
         >(
@@ -342,7 +342,7 @@ impl TenantManager {
                     max_webhooks: max_hooks,
                 },
                 enabled,
-                created_at: created.parse().unwrap_or(Utc::now()),
+                created_at: DateTime::from_timestamp(created, 0).unwrap_or(Utc::now()),
                 custom_domain: domain,
             }))
         } else {
@@ -381,7 +381,7 @@ impl TenantManager {
 
     /// Get current usage for tenant
     pub async fn get_usage(&self, tenant_id: &str) -> Result<TenantUsage> {
-        let row = sqlx::query_as::<_, (i64, i64, i64, i32, i32, String)>(
+        let row = sqlx::query_as::<_, (i64, i64, i64, i32, i32, i64)>(
             r#"
             SELECT document_count, storage_mb, searches_today, api_key_count, webhook_count, last_updated
             FROM tenant_usage
@@ -400,7 +400,7 @@ impl TenantManager {
             searches_today: row.2,
             api_key_count: row.3,
             webhook_count: row.4,
-            last_updated: row.5.parse().unwrap_or(Utc::now()),
+            last_updated: DateTime::from_timestamp(row.5, 0).unwrap_or(Utc::now()),
         })
     }
 
@@ -485,7 +485,7 @@ impl TenantManager {
 
         sqlx::query(&query)
             .bind(value)
-            .bind(Utc::now().to_rfc3339())
+            .bind(Utc::now().timestamp())
             .bind(tenant_id)
             .execute(&self.db_pool)
             .await?;
@@ -510,7 +510,7 @@ impl TenantManager {
 
         sqlx::query(&query)
             .bind(value)
-            .bind(Utc::now().to_rfc3339())
+            .bind(Utc::now().timestamp())
             .bind(tenant_id)
             .execute(&self.db_pool)
             .await?;
@@ -521,7 +521,7 @@ impl TenantManager {
     /// Reset daily search counter (call this daily)
     pub async fn reset_daily_searches(&self) -> Result<u64> {
         let result = sqlx::query("UPDATE tenant_usage SET searches_today = 0, last_updated = ?")
-            .bind(Utc::now().to_rfc3339())
+            .bind(Utc::now().timestamp())
             .execute(&self.db_pool)
             .await?;
 
