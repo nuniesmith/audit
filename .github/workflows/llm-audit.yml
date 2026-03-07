@@ -224,6 +224,41 @@ jobs:
                   token: ${{ secrets.GITHUB_TOKEN }}
 
             # ================================================================
+            # 1b. Build rustassistant Rust binary
+            # ================================================================
+            - name: 🔨 Build rustassistant
+              continue-on-error: true
+              run: |
+                  echo "## 🔨 Building rustassistant" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+
+                  # Install Rust toolchain (runner usually has it, but be explicit)
+                  rustup show active-toolchain || rustup default stable
+
+                  # Build in release mode — the binary can be used by later steps.
+                  # Disable errexit for cargo so we can capture its exit code
+                  # without the script terminating early on failure.
+                  set +e
+                  cargo build --release 2>&1 | tee /tmp/cargo-build.log | tail -30
+                  BUILD_EXIT=${PIPESTATUS[0]}
+                  set -e
+
+                  if [ $BUILD_EXIT -eq 0 ]; then
+                      BIN_SIZE=$(du -h target/release/rustassistant 2>/dev/null | cut -f1 || echo "?")
+                      echo "- Build : ✅ success" >> $GITHUB_STEP_SUMMARY
+                      echo "- Binary : \`target/release/rustassistant\` ($BIN_SIZE)" >> $GITHUB_STEP_SUMMARY
+                      echo "" >> $GITHUB_STEP_SUMMARY
+                  else
+                      echo "- Build : ❌ failed (exit $BUILD_EXIT)" >> $GITHUB_STEP_SUMMARY
+                      echo "" >> $GITHUB_STEP_SUMMARY
+                      # Show last few errors in the summary for quick debugging
+                      echo '```' >> $GITHUB_STEP_SUMMARY
+                      grep -E "^error" /tmp/cargo-build.log | tail -10 >> $GITHUB_STEP_SUMMARY || true
+                      echo '```' >> $GITHUB_STEP_SUMMARY
+                      echo "::warning::Rust build failed — workflow will continue with Python-only audit"
+                  fi
+
+            # ================================================================
             # 2. Clone the TARGET repo
             # ================================================================
             - name: 📦 Clone target repo — ${{ inputs.target_repo }}
@@ -236,9 +271,12 @@ jobs:
                   echo "## 📦 Cloning \`$TARGET\` @ \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
                   echo "" >> $GITHUB_STEP_SUMMARY
 
-                  # ── Set up Git LFS so repos with large files clone cleanly ──
+                  # ── Skip LFS smudge filter entirely ──────────────────────
+                  # Target repos may have large pre-trained models (.onnx, .pt, etc.)
+                  # that are tracked by LFS. We don't need to download them — they're
+                  # production artifacts, not source code to audit.
+                  export GIT_LFS_SKIP_SMUDGE=1
                   git lfs install --skip-repo 2>/dev/null || true
-                  export GIT_LFS_SKIP_SMUDGE=0
 
                   if [ -n "$GH_PAT" ]; then
                       CLONE_URL="https://x-access-token:${GH_PAT}@github.com/${TARGET}.git"
@@ -251,26 +289,22 @@ jobs:
                   # Full depth needed so we can branch and push from the clone
                   git clone --branch "$BRANCH" "$CLONE_URL" "${{ env.REPO_DIR }}"
 
-                  # ── Ensure LFS files are properly checked out as pointers ──
+                  # ── Handle LFS-tracked files (skipped via SKIP_SMUDGE) ───
+                  # With SKIP_SMUDGE=1, LFS files are checked out as pointer stubs
+                  # (tiny text files). Mark them assume-unchanged so git never
+                  # considers them dirty during commit/push/rebase.
                   cd "${{ env.REPO_DIR }}"
                   if [ -f .gitattributes ] && grep -q "filter=lfs" .gitattributes 2>/dev/null; then
-                      echo "ℹ️ Repo uses Git LFS — pulling LFS objects..."
-                      git lfs install 2>/dev/null || true
-                      git lfs pull 2>/dev/null || true
-                      # Force-reset any remaining LFS smudge-filter mismatches
-                      git checkout -- . 2>/dev/null || true
-                      # If files are STILL dirty (missing LFS objects on server),
-                      # tell git to ignore the smudge filter diff for them
-                      if ! git diff --quiet 2>/dev/null; then
-                          echo "  ⚠️ LFS files still show as modified after pull — checking status..."
-                          git diff --name-only 2>/dev/null || true
-                          # Mark these files as assume-unchanged so they don't block operations
-                          git diff --name-only 2>/dev/null | while read -r f; do
+                      LFS_FILES=$(git lfs ls-files -n 2>/dev/null || true)
+                      if [ -n "$LFS_FILES" ]; then
+                          echo "$LFS_FILES" | while read -r f; do
                               git update-index --assume-unchanged "$f" 2>/dev/null || true
                           done
-                          echo "  ℹ️ Marked LFS-dirty files as assume-unchanged"
+                          LFS_COUNT=$(echo "$LFS_FILES" | wc -l)
+                          echo "- Git LFS : ⏭️ $LFS_COUNT large files skipped (pre-trained models)" >> $GITHUB_STEP_SUMMARY
+                      else
+                          echo "- Git LFS : ✅ no LFS objects" >> $GITHUB_STEP_SUMMARY
                       fi
-                      echo "- Git LFS : ✅ configured" >> $GITHUB_STEP_SUMMARY
                   fi
                   cd "$GITHUB_WORKSPACE"
 
@@ -354,7 +388,13 @@ jobs:
                       # Skip hidden dirs and build artifacts
                       dirnames[:] = [d for d in dirnames
                                      if d not in (".git", "target", "node_modules", ".rustassistant")]
+                      # Extensions to skip — large binary / pre-trained model files
+                      SKIP_EXT = {".onnx", ".pt", ".pth", ".bin", ".h5", ".safetensors",
+                                  ".pkl", ".pickle", ".pb", ".tflite", ".mlmodel",
+                                  ".ckpt", ".weights", ".npy", ".npz"}
                       for fname in filenames:
+                          if os.path.splitext(fname)[1].lower() in SKIP_EXT:
+                              continue
                           fpath = os.path.join(dirpath, fname)
                           rel   = os.path.relpath(fpath, repo_root)
                           try:
@@ -447,13 +487,14 @@ jobs:
                   REPO="${{ env.REPO_DIR }}"
                   mkdir -p audit-workspace
 
-                  # Source file list
+                  # Source file list (code only — skip binary/model files)
                   find "$REPO" \
                       -type f \
                       \( -name "*.rs" -o -name "*.toml" -o -name "*.proto" -o -name "*.md" \) \
                       -not -path "*/target/*" \
                       -not -path "*/.git/*" \
                       -not -path "*/.rustassistant/*" \
+                      -not -path "*/models/*" \
                       > audit-workspace/file-list.txt
 
                   FILE_COUNT=$(wc -l < audit-workspace/file-list.txt)
@@ -1387,14 +1428,11 @@ jobs:
 
                   # ── Commit everything (code changes + todo.md + cache) ────
                   cd "$REPO"
-                  # Un-assume-unchanged LFS files so git add sees our real changes
-                  git ls-files -v 2>/dev/null | grep '^h ' | awk '{print $2}' | while read -r f; do
-                      git update-index --no-assume-unchanged "$f" 2>/dev/null || true
-                  done
-                  # Ensure LFS pointer files are clean before committing
-                  git lfs checkout 2>/dev/null || true
-                  git checkout -- models/ 2>/dev/null || true
                   git add -A
+                  # Unstage any LFS pointer files — we never want to modify those
+                  git diff --staged --name-only 2>/dev/null | grep -E '\.(onnx|pt|pth|bin|h5|safetensors|pkl|pb|tflite|ckpt|weights)$' | while read -r f; do
+                      git reset HEAD "$f" 2>/dev/null || true
+                  done
                   COMMIT_MSG="🤖 Batch $BATCH_NUM: $BATCH_TITLE [skip ci]"
                   git commit -m "$COMMIT_MSG" || echo "Nothing to commit"
 
@@ -1407,13 +1445,8 @@ jobs:
                       exit 0
                   fi
 
-                  # Re-mark any LFS-dirty files as assume-unchanged before push
-                  git diff --name-only 2>/dev/null | while read -r f; do
-                      git update-index --assume-unchanged "$f" 2>/dev/null || true
-                  done
-
-                  # Skip LFS pre-push hook — we haven't changed LFS files,
-                  # but pointer mismatches cause the hook to fail
+                  # Skip LFS pre-push hook — LFS files are pointer-only stubs
+                  # (marked assume-unchanged at clone time)
                   GIT_LFS_SKIP_PUSH=1 git push origin "$BRANCH_NAME" || {
                       echo "::error::Failed to push branch $BRANCH_NAME"
                       exit 1
@@ -1785,19 +1818,9 @@ jobs:
                   cp ../audit-workspace/todo-plan.json                docs/audit/ 2>/dev/null || true
 
                   # ── Always update .rustassistant cache ────────────────────
-                  # Un-assume-unchanged LFS files before staging
-                  git ls-files -v 2>/dev/null | grep '^h ' | awk '{print $2}' | while read -r f; do
-                      git update-index --no-assume-unchanged "$f" 2>/dev/null || true
-                  done
-
+                  # Only stage the directories we care about — never touch LFS files
                   git add docs/audit/ 2>/dev/null || true
                   git add -f .rustassistant/ 2>/dev/null || true
-
-                  # Re-assume-unchanged LFS-dirty files we don't want to commit
-                  git diff --staged --name-only 2>/dev/null | grep -E '\.(onnx|pt|bin|h5|safetensors)$' | while read -r f; do
-                      git reset HEAD "$f" 2>/dev/null || true
-                      git update-index --assume-unchanged "$f" 2>/dev/null || true
-                  done
 
                   if git diff --staged --quiet; then
                       echo "ℹ️ No changes to commit"
@@ -1810,17 +1833,11 @@ jobs:
                   git commit -m "🤖 $MODE report + cache update ($PROVIDER_TAG) [skip ci]"
 
                   # Push with retry + rebase
-                  # Skip the LFS pre-push hook — we haven't changed any LFS files,
-                  # but pointer mismatches cause the hook to fail.
+                  # GIT_LFS_SKIP_PUSH=1 skips the pre-push hook that fails on
+                  # pointer-only checkouts (we never modify LFS content).
                   MAX_RETRIES=3
                   RETRY=0
                   PUSH_OK=false
-
-                  # Mark any remaining LFS-dirty files as assume-unchanged
-                  # so they don't interfere with rebase/pull
-                  git diff --name-only 2>/dev/null | while read -r f; do
-                      git update-index --assume-unchanged "$f" 2>/dev/null || true
-                  done
 
                   while [ "$RETRY" -lt "$MAX_RETRIES" ]; do
                       echo "  ℹ️ Push attempt $((RETRY + 1))/$MAX_RETRIES..."

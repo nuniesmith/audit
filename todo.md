@@ -1,11 +1,26 @@
 # RustAssistant — TODO Backlog
 
-> Maintained manually + updated by the LLM Audit workflow (`todo-plan`, `todo-work`, `todo-review`).
+> This is a **living document** — it grows with the repo and is the primary interface between
+> you and RustAssistant. Items are added manually, by the LLM Audit workflow (`todo-plan`,
+> `todo-work`, `todo-review`), and by the Rust CLI. Each target repo gets its own `todo.md`
+> that evolves over time, making it easy to pick up work during downtime.
+>
 > Items marked with ✅ have been completed. Items with ⚠️ are partial. Items with ❌ are blocked.
 
 ---
 
 ## 🔴 High Priority
+
+### Build & CI
+- [ ] **Rust build step in workflow** — `cargo build --release` now runs in `llm-audit.yml` before the audit. Binary is built but not yet used by any step. Next: wire audit logic through the Rust binary instead of inline Python.
+- [ ] **PAT permissions for target repos** — `GH_PAT` needs `repo` scope (or fine-grained `Contents: Read and write`) on each target repo. Current failure: `403 Permission to nuniesmith/futures.git denied`. This is a settings fix, not a code fix.
+
+### Rust-Native TODO System
+- [ ] **`todo-scan` CLI command** — Add a `rustassistant todo-scan <repo-path>` command that scans inline `TODO/FIXME/HACK/XXX` comments, parses them with context, and outputs structured JSON. Replace the Python grep+LLM approach in the workflow with a call to this binary.
+- [ ] **`todo-plan` CLI command** — Generate a GAMEPLAN from a `todo.md` file using the Rust LLM client (`src/grok_client.rs`). Should read `todo.md` + source context, call xAI, and output batched work items as JSON.
+- [ ] **`todo-work` CLI command** — Execute a single batch from the gameplan: read the batch JSON, generate code changes via LLM, apply them, update `todo.md` status markers. This is the big one — replaces ~500 lines of inline Python in the workflow.
+- [ ] **`todo.md` sync** — Build a `TodoFile` struct in Rust that can parse, update, and write back `todo.md` with proper status tracking (checkbox states, ✅/⚠️/❌ markers, timestamps). The workflow should call `rustassistant todo-sync` after each operation.
+- [ ] **Wire workflow to Rust binary** — Replace the Python `todo-analyze`, `todo-plan`, and `todo-work` steps in `llm-audit.yml` with calls to the compiled `target/release/rustassistant` binary. Keep Python only as a fallback if the build fails.
 
 ### API & Data Layer
 - [ ] Fix admin module — `pub mod admin` is commented out due to accessing non-existent `ApiState` fields (`src/api/mod.rs`)
@@ -37,6 +52,10 @@
 
 ## 🟢 Low Priority / Enhancements
 
+### Large File Handling
+- [x] ~~Skip LFS-tracked files (pre-trained models) during clone/audit~~ ✅ Fixed — `GIT_LFS_SKIP_SMUDGE=1` at clone time, LFS pointer files marked `assume-unchanged`, binary extensions excluded from file hashing and static scan
+- [ ] Make the skip-extensions list configurable per-repo (currently hardcoded: `.onnx`, `.pt`, `.pth`, `.bin`, `.h5`, `.safetensors`, `.pkl`, `.pb`, `.tflite`, `.ckpt`, `.weights`, `.npy`, `.npz`)
+
 ### Docker & Compose
 - [x] ~~Align `docker-compose.yml` README quick-start with actual SQLite-based setup~~ ✅ Fixed — README now references SQLite, port 3000, `docker compose`
 - [ ] Add `docker-compose.yml` healthcheck for Redis connectivity from rustassistant container
@@ -44,7 +63,9 @@
 ### Workflow & CI/CD
 - [x] ~~Move `llm-audit.yml` workflow to `nuniesmith/actions` repo where it belongs~~ ✅ Removed from rustassistant; see actions repo outline below
 - [x] ~~Add a `docs/audit/` directory with `.gitkeep` so workflow report commits don't need to `mkdir`~~ ✅ Created
+- [x] ~~Add `cargo build --release` step to `llm-audit.yml`~~ ✅ Added — builds before cloning target repo, non-blocking (warns on failure)
 - [ ] Expose an `/api/audit` endpoint so the LLM audit workflow can leverage the Rust API + Redis cache instead of raw Python API calls
+- [ ] Add `todo.md` generation to the `regular` audit mode — after the LLM audit, auto-append new findings as TODO items to the target repo's `todo.md`
 
 ### Code Quality
 - [ ] Consolidate `todo_items` DB table usage with the `tasks` table — currently two parallel systems (`src/db/queue.rs:13`)
@@ -57,3 +78,6 @@
 - The `auto_scanner` module already integrates `StaticAnalyzer` + `TodoScanner` + `PromptRouter` for smart file triage before LLM calls. The audit workflow should eventually call into this rather than reimplementing analysis in Python.
 - Redis is configured in `docker-compose.yml` for LLM response caching (`allkeys-lru`, 256 MB). The workflow currently bypasses this entirely.
 - The `.rustassistant/` directory is **tracked in git** (removed from `.gitignore`). It stores both the CLI analysis cache (`cache/`) and the LLM audit workflow's cross-run state (`cache.json`, `batches/`). See `.rustassistant/README.md` for details.
+- **`todo.md` philosophy:** Each repo managed by RustAssistant has its own `todo.md` that serves as the single source of truth for pending work. It's meant to be an ever-changing document that grows with the repo — items get added by audits, completed by `todo-work`, and refined manually. Think of it as a living backlog that makes it easy to optimize downtime.
+- **Migration path:** The current workflow is ~1900 lines of YAML+Python. The goal is to progressively move logic into the Rust binary (`src/llm_audit.rs`, `src/todo_scanner.rs`, `src/auto_scanner.rs`) so the workflow becomes a thin orchestrator that just calls `rustassistant <command>`. This keeps the complex logic testable, cacheable, and reusable across CLI and CI.
+- **Pre-trained model files** (`.onnx`, `.pt`, etc.) in target repos are production artifacts, not source code. The workflow now skips them entirely via `GIT_LFS_SKIP_SMUDGE=1` at clone time. They're never downloaded, hashed, or included in the audit context.
