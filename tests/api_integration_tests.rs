@@ -9,9 +9,8 @@
 //! - Cache behavior
 
 use reqwest::StatusCode;
-use rustassistant::{
-    api::{ApiConfig, ApiResponse, SearchRequest, SearchType, UploadDocumentRequest},
-    init_db,
+use rustassistant::api::{
+    ApiConfig, ApiResponse, SearchRequest, SearchType, UploadDocumentRequest,
 };
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -34,9 +33,6 @@ async fn setup_test_env() -> (SqlitePool, String) {
         .run(&pool)
         .await
         .expect("Failed to run migrations");
-
-    // Initialize database
-    init_db(&pool).await.expect("Failed to initialize database");
 
     // Generate test API key
     let api_key = "test_api_key_12345".to_string();

@@ -8,10 +8,7 @@
 //! - Health checks and monitoring
 
 use axum::{routing::get, Router};
-use rustassistant::{
-    api::{create_api_router, ApiConfig},
-    init_db,
-};
+use rustassistant::{api::ApiConfig, init_db};
 use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
