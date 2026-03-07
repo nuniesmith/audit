@@ -624,7 +624,7 @@ Some text after code."#;
         let chunks = chunk_document(content, &config).unwrap();
 
         // Should preserve code block
-        assert!(chunks.len() >= 1);
+        assert!(!chunks.is_empty());
         let full_content = chunks
             .iter()
             .map(|c| c.content.as_str())
@@ -647,7 +647,7 @@ Content under subheading."#;
 
         let chunks = chunk_document(content, &config).unwrap();
 
-        assert!(chunks.len() >= 1);
+        assert!(!chunks.is_empty());
         // First chunk should have heading context
         assert!(chunks[0].heading.is_some());
     }
@@ -730,7 +730,7 @@ Content under subheading."#;
 
         // Only 5 words - below min_chunk_size
         let content = "Just five words here now";
-        let chunks = chunk_document(&content, &config).unwrap();
+        let chunks = chunk_document(content, &config).unwrap();
 
         // Should still create one chunk
         assert_eq!(chunks.len(), 1, "Very short doc should produce 1 chunk");

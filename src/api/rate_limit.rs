@@ -348,7 +348,7 @@ mod tests {
 
         // Should have refilled approximately 2 tokens
         let remaining = bucket.remaining();
-        assert!(remaining >= 1 && remaining <= 3); // Allow some variance
+        assert!((1..=3).contains(&remaining)); // Allow some variance
     }
 
     #[tokio::test]

@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn test_repo_manager_creation() {
         let temp_dir = TempDir::new().unwrap();
-        let manager = RepoManager::new(temp_dir.path(), None).unwrap();
+        let _manager = RepoManager::new(temp_dir.path(), None).unwrap();
         assert!(temp_dir.path().exists());
     }
 
