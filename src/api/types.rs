@@ -104,7 +104,7 @@ impl<T> PaginatedResponse<T> {
 // ============================================================================
 
 /// Request to upload a document
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UploadDocumentRequest {
     pub title: String,
     pub content: String,
@@ -169,7 +169,7 @@ pub struct ListDocumentsQuery {
 // ============================================================================
 
 /// Search request
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
     pub query: String,
     #[serde(default = "default_search_limit")]
@@ -195,7 +195,7 @@ pub enum SearchType {
 }
 
 /// Search filters
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SearchFiltersRequest {
     pub doc_type: Option<String>,
     pub tags: Option<Vec<String>>,

@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     // Setup test database
     println!("📋 Setting up test database...");
     let db_config = rustassistant::db::DatabaseConfig {
-        url: "sqlite::memory:".to_string(),
+        path: std::path::PathBuf::from(":memory:"),
         ..Default::default()
     };
     let pool = init_pool(&db_config).await?;
@@ -77,7 +77,6 @@ async fn main() -> anyhow::Result<()> {
 async fn create_sample_documents(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<String>> {
     let documents = vec![
         (
-            "rust-async",
             "Asynchronous Programming in Rust",
             "Rust provides powerful async/await syntax for writing concurrent code. \
              The async keyword transforms a function into an asynchronous function that returns a Future. \
@@ -87,7 +86,6 @@ async fn create_sample_documents(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<
             vec!["rust", "async", "programming"],
         ),
         (
-            "rust-ownership",
             "Ownership and Borrowing in Rust",
             "Rust's ownership system ensures memory safety without garbage collection. \
              Each value has a single owner, and when the owner goes out of scope, the value is dropped. \
@@ -97,7 +95,6 @@ async fn create_sample_documents(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<
             vec!["rust", "ownership", "memory-safety"],
         ),
         (
-            "python-async",
             "Async/Await in Python",
             "Python's asyncio library enables asynchronous programming using async and await keywords. \
              Coroutines are defined with async def and can be awaited. \
@@ -107,7 +104,6 @@ async fn create_sample_documents(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<
             vec!["python", "async", "asyncio"],
         ),
         (
-            "web-frameworks",
             "Modern Web Frameworks",
             "Web frameworks simplify building web applications by providing routing, templating, and database integration. \
              Popular frameworks include Django and Flask for Python, Express for Node.js, and Axum for Rust. \
@@ -117,7 +113,6 @@ async fn create_sample_documents(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<
             vec!["web", "frameworks", "comparison"],
         ),
         (
-            "database-design",
             "Database Design Best Practices",
             "Good database design is crucial for application performance and maintainability. \
              Normalize your schema to reduce redundancy and improve data integrity. \
@@ -131,22 +126,22 @@ async fn create_sample_documents(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<
 
     let mut doc_ids = Vec::new();
 
-    for (id, title, content, doc_type, tags) in documents {
+    for (title, content, doc_type, tags) in documents {
         let tags_vec: Vec<String> = tags.iter().map(|t| t.to_string()).collect();
 
-        create_document(
+        let doc = create_document(
             pool,
-            id.to_string(),
             title.to_string(),
             content.to_string(),
             "text".to_string(),
             "manual".to_string(),
             doc_type.to_string(),
-            tags_vec,
+            None::<String>,
+            Some(tags_vec),
         )
         .await?;
 
-        doc_ids.push(id.to_string());
+        doc_ids.push(doc.id);
     }
 
     Ok(doc_ids)

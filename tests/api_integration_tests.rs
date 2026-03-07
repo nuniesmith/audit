@@ -8,7 +8,7 @@
 //! - Webhook delivery
 //! - Cache behavior
 
-use axum::http::StatusCode;
+use reqwest::StatusCode;
 use rustassistant::{
     api::{ApiConfig, ApiResponse, SearchRequest, SearchType, UploadDocumentRequest},
     init_db,
@@ -44,28 +44,26 @@ async fn setup_test_env() -> (SqlitePool, String) {
     (pool, api_key)
 }
 
-/// Create test server
+/// Create test server and return its base URL
 async fn create_test_server(pool: SqlitePool, api_key: String) -> String {
-    use axum::Router;
-    use rustassistant::api::create_api_router;
     use std::net::TcpListener;
+    use tokio::net::TcpListener as TokioTcpListener;
 
     let config = ApiConfig::development().with_api_key(api_key);
+    let app = config.build_router(pool).await;
 
-    let app = Router::new().nest("/api", config.build_router(pool).await);
-
-    // Find available port
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind");
-    let addr = listener.local_addr().unwrap();
+    // Find available port using a std listener, then drop it so tokio can bind
+    let std_listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind");
+    let addr = std_listener.local_addr().unwrap();
     let url = format!("http://{}", addr);
+    drop(std_listener);
 
-    // Start server in background
+    let listener = TokioTcpListener::bind(addr)
+        .await
+        .expect("Failed to bind tokio listener");
+
     tokio::spawn(async move {
-        axum::Server::from_tcp(listener)
-            .unwrap()
-            .serve(app.into_make_service())
-            .await
-            .unwrap();
+        axum::serve(listener, app).await.unwrap();
     });
 
     // Give server time to start
@@ -90,7 +88,6 @@ async fn test_upload_document() {
         content: "This is a test document about Rust programming.".to_string(),
         doc_type: "markdown".to_string(),
         tags: vec!["rust".to_string(), "test".to_string()],
-        metadata: serde_json::json!({"author": "test"}),
         repo_id: None,
         source_type: None,
         source_url: None,
@@ -129,7 +126,6 @@ async fn test_list_documents() {
             content: format!("Content {}", i),
             doc_type: "markdown".to_string(),
             tags: vec![],
-            metadata: serde_json::json!({}),
             repo_id: None,
             source_type: None,
             source_url: None,
@@ -170,7 +166,6 @@ async fn test_get_document_by_id() {
         content: "Test content".to_string(),
         doc_type: "markdown".to_string(),
         tags: vec![],
-        metadata: serde_json::json!({}),
         repo_id: None,
         source_type: None,
         source_url: None,
@@ -214,7 +209,6 @@ async fn test_delete_document() {
         content: "Delete me".to_string(),
         doc_type: "markdown".to_string(),
         tags: vec![],
-        metadata: serde_json::json!({}),
         repo_id: None,
         source_type: None,
         source_url: None,
@@ -275,7 +269,6 @@ async fn test_search_documents() {
             content: content.to_string(),
             doc_type: "markdown".to_string(),
             tags: vec![],
-            metadata: serde_json::json!({}),
             repo_id: None,
             source_type: None,
             source_url: None,
@@ -331,7 +324,6 @@ async fn test_auth_missing_key() {
         content: "Test".to_string(),
         doc_type: "markdown".to_string(),
         tags: vec![],
-        metadata: serde_json::json!({}),
         repo_id: None,
         source_type: None,
         source_url: None,
@@ -359,7 +351,6 @@ async fn test_auth_invalid_key() {
         content: "Test".to_string(),
         doc_type: "markdown".to_string(),
         tags: vec![],
-        metadata: serde_json::json!({}),
         repo_id: None,
         source_type: None,
         source_url: None,
@@ -446,7 +437,6 @@ async fn test_index_job_lifecycle() {
         content: "Test content for indexing".to_string(),
         doc_type: "markdown".to_string(),
         tags: vec![],
-        metadata: serde_json::json!({}),
         repo_id: None,
         source_type: None,
         source_url: None,
@@ -605,7 +595,6 @@ async fn test_pagination() {
             content: format!("Content {}", i),
             doc_type: "markdown".to_string(),
             tags: vec![],
-            metadata: serde_json::json!({}),
             repo_id: None,
             source_type: None,
             source_url: None,
