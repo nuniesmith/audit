@@ -35,9 +35,11 @@ use rustassistant::sync_scheduler::{SyncScheduler, SyncSchedulerConfig};
 use rustassistant::web_api::{web_api_router, WebState};
 use rustassistant::web_ui::{create_router as create_web_ui_router, WebAppState};
 use rustassistant::web_ui_cache_viewer::create_cache_viewer_router;
+use rustassistant::web_ui_chat::create_chat_router;
 use rustassistant::web_ui_db_explorer::create_db_explorer_router;
 use rustassistant::web_ui_extensions::create_extension_router;
 use rustassistant::web_ui_scan_progress::create_scan_progress_router;
+use rustassistant::web_ui_settings::create_settings_router;
 
 // ============================================================================
 // Application State
@@ -393,8 +395,9 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Get configuration
-    let database_url =
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgresql://rustassistant:changeme@localhost:5432/rustassistant.db".into());
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgresql://rustassistant:changeme@localhost:5432/rustassistant.db".into()
+    });
     let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port = std::env::var("PORT").unwrap_or_else(|_| "3000".into());
     let repos_dir = std::env::var("REPOS_DIR").unwrap_or_else(|_| "/app/repos".into());
@@ -496,6 +499,8 @@ async fn main() -> anyhow::Result<()> {
     let cache_viewer_router = create_cache_viewer_router(Arc::new(web_state.clone()));
     let db_explorer_router = create_db_explorer_router(Arc::new(web_state.clone()));
     let scan_progress_router = create_scan_progress_router(Arc::new(web_state.clone()));
+    let chat_router = create_chat_router(Arc::new(web_state.clone()));
+    let settings_router = create_settings_router(Arc::new(web_state.clone()));
 
     let app = Router::new()
         .merge(web_router)
@@ -503,6 +508,8 @@ async fn main() -> anyhow::Result<()> {
         .merge(cache_viewer_router)
         .merge(db_explorer_router)
         .merge(scan_progress_router)
+        .merge(chat_router)
+        .merge(settings_router)
         .merge(api_router)
         // Pipeline dispatch + chat + SSE + job history
         .merge(web_api_router(web_pipeline_state))

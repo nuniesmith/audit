@@ -5,6 +5,7 @@
 
 use crate::db::{add_repository, remove_repository, Database, Repository};
 use crate::git::GitManager;
+use crate::web_ui_nav;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -237,66 +238,12 @@ impl<T> ApiResponse<T> {
 // ============================================================================
 
 fn render_dashboard_page(stats: DashboardStats) -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RustAssistant - Dashboard</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background: #0f172a; color: #e2e8f0; }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 2rem; }}
-        header {{ background: #1e293b; padding: 1.5rem; margin-bottom: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
-        h1 {{ color: #38bdf8; font-size: 2rem; margin-bottom: 0.5rem; }}
-        .subtitle {{ color: #94a3b8; font-size: 0.9rem; }}
-        nav {{ display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }}
-        nav a {{ background: #334155; color: #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; transition: all 0.3s; }}
-        nav a:hover {{ background: #475569; transform: translateY(-2px); }}
-        nav a.active {{ background: #0ea5e9; color: white; }}
-        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
-        .stat-card {{ background: #1e293b; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); border-left: 4px solid #38bdf8; }}
-        .stat-card h3 {{ color: #94a3b8; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.5rem; text-transform: uppercase; }}
-        .stat-card .value {{ color: #38bdf8; font-size: 2rem; font-weight: bold; }}
-        .stat-card.success {{ border-left-color: #22c55e; }}
-        .stat-card.success .value {{ color: #22c55e; }}
-        .stat-card.warning {{ border-left-color: #f59e0b; }}
-        .stat-card.warning .value {{ color: #f59e0b; }}
-        .stat-card.danger {{ border-left-color: #ef4444; }}
-        .stat-card.danger .value {{ color: #ef4444; }}
-        .action-section {{ background: #1e293b; padding: 2rem; border-radius: 8px; margin-bottom: 2rem; }}
-        .action-section h2 {{ color: #e2e8f0; margin-bottom: 1rem; }}
-        .action-buttons {{ display: flex; gap: 1rem; flex-wrap: wrap; }}
-        .btn {{ padding: 0.75rem 1.5rem; border-radius: 6px; border: none; cursor: pointer; font-size: 1rem; font-weight: 500; transition: all 0.3s; text-decoration: none; display: inline-block; }}
-        .btn-primary {{ background: #0ea5e9; color: white; }}
-        .btn-primary:hover {{ background: #0284c7; transform: translateY(-2px); }}
-        .btn-success {{ background: #22c55e; color: white; }}
-        .btn-success:hover {{ background: #16a34a; transform: translateY(-2px); }}
-        .btn-danger {{ background: #ef4444; color: white; }}
-        .btn-danger:hover {{ background: #dc2626; transform: translateY(-2px); }}
-        footer {{ margin-top: 3rem; text-align: center; color: #64748b; font-size: 0.9rem; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <p class="subtitle">Developer Workflow Management System</p>
-            <nav>
-                <a href="/dashboard" class="active">Dashboard</a>
-                <a href="/repos">Repositories</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/scanner">Auto-Scanner</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {}
-            </nav>
-        </header>
+    let content = format!(
+        r#"
+        <div class="page-header" style="margin-bottom: 1.5rem;">
+            <h1 style="font-size: 1.6rem; color: #f1f5f9; margin-bottom: 0.25rem;">📊 Dashboard</h1>
+            <p style="color: #94a3b8; font-size: 0.9rem;">Developer Workflow Management System — Overview</p>
+        </div>
 
         <div class="stats-grid">
             <div class="stat-card">
@@ -330,26 +277,21 @@ fn render_dashboard_page(stats: DashboardStats) -> String {
             <div class="action-buttons">
                 <a href="/repos/add" class="btn btn-primary">+ Add Repository</a>
                 <a href="/queue" class="btn btn-success">View Tasks</a>
+                <a href="/chat" class="btn btn-primary">💬 Chat</a>
                 <a href="/scanner" class="btn btn-primary">Scanner Settings</a>
+                <a href="/settings" class="btn btn-muted">⚙️ Settings</a>
             </div>
         </div>
-
-        <footer>
-            <p>RustAssistant v0.1.0 | Powered by Rust & Axum</p>
-        </footer>
-    </div>
-    {}
-</body>
-</html>"#,
-        timezone_selector_html(),
+        "#,
         stats.total_repos,
         stats.auto_scan_enabled,
         stats.tasks_pending,
         stats.tasks_in_progress,
         stats.tasks_completed,
         stats.tasks_failed,
-        timezone_js()
-    )
+    );
+
+    web_ui_nav::page_shell("Dashboard", "Dashboard", "", &content)
 }
 
 fn render_repos_page(repos: Vec<RepoItem>) -> String {

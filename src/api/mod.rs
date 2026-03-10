@@ -11,6 +11,8 @@ pub mod admin;
 pub mod auth;
 pub mod handlers;
 pub mod jobs;
+pub mod proxy;
+pub mod proxy_client;
 pub mod rate_limit;
 pub mod repos;
 pub mod types;
@@ -29,6 +31,10 @@ use sqlx::PgPool;
 pub use auth::{generate_api_key, hash_api_key, AuthConfig, AuthResult};
 pub use handlers::ApiState;
 pub use jobs::{JobQueue, JobQueueConfig, JobStatus};
+pub use proxy::{proxy_router, ProxyState};
+pub use proxy_client::{
+    ChatMessage, ChatReply, ChatRequestBuilder, ProxyClient, ProxyClientConfig,
+};
 pub use rate_limit::{RateLimitConfig, RateLimiter};
 pub use types::*;
 

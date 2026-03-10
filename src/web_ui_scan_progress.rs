@@ -49,6 +49,7 @@ use std::sync::Arc;
 use tracing::error;
 
 use crate::web_ui::WebAppState;
+use crate::web_ui_nav;
 
 // ============================================================================
 // Router
@@ -75,35 +76,7 @@ fn html_escape(s: &str) -> String {
 }
 
 fn nav(active: &str) -> String {
-    let items = [
-        ("Dashboard", "/dashboard"),
-        ("Repos", "/repos"),
-        ("Scan Progress", "/scan/dashboard"),
-        ("Cache Viewer", "/cache"),
-        ("DB Explorer", "/db"),
-        ("Queue", "/queue"),
-        ("Ideas", "/ideas"),
-        ("Docs", "/docs"),
-        ("Activity", "/activity"),
-    ];
-    let links: String = items
-        .iter()
-        .map(|(label, href)| {
-            let class = if *label == active {
-                " class=\"active\""
-            } else {
-                ""
-            };
-            format!(r#"<a href="{href}"{class}>{label}</a>"#)
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        r#"<nav>
-        <span style="font-weight:700;color:#0ea5e9;margin-right:1rem;">🦀 RustAssistant</span>
-        {links}
-    </nav>"#
-    )
+    web_ui_nav::nav(active)
 }
 
 // ============================================================================

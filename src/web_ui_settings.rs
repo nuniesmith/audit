@@ -131,32 +131,28 @@ pub struct CacheSettingsForm {
 // ============================================================================
 
 /// GET /settings — Render the full settings page
-async fn settings_page_handler(
-    State(state): State<Arc<WebAppState>>,
-) -> impl IntoResponse {
+async fn settings_page_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     // Read current configuration from environment / defaults
-    let ollama_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
-    let ollama_model = std::env::var("LOCAL_MODEL")
-        .unwrap_or_else(|_| "qwen2.5-coder:7b".to_string());
-    let ollama_timeout = std::env::var("OLLAMA_TIMEOUT_SECS")
-        .unwrap_or_else(|_| "120".to_string());
-    let grok_model = std::env::var("REMOTE_MODEL")
-        .unwrap_or_else(|_| "grok-2-latest".to_string());
+    let ollama_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let ollama_model =
+        std::env::var("LOCAL_MODEL").unwrap_or_else(|_| "qwen2.5-coder:7b".to_string());
+    let ollama_timeout = std::env::var("OLLAMA_TIMEOUT_SECS").unwrap_or_else(|_| "120".to_string());
+    let grok_model = std::env::var("REMOTE_MODEL").unwrap_or_else(|_| "grok-2-latest".to_string());
     let grok_key_set = std::env::var("XAI_API_KEY")
         .map(|k| !k.is_empty())
         .unwrap_or(false);
     let force_remote = std::env::var("FORCE_REMOTE_MODEL")
         .map(|v| v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let sync_interval = std::env::var("REPO_SYNC_INTERVAL_SECS")
-        .unwrap_or_else(|_| "300".to_string());
+    let sync_interval =
+        std::env::var("REPO_SYNC_INTERVAL_SECS").unwrap_or_else(|_| "300".to_string());
 
     // Fetch some DB stats for the database section
     let db_info = get_db_info(&state).await;
 
     let content = format!(
-        r#"
+        r##"
         <div class="settings-page">
             <div class="page-header">
                 <h1>⚙️ Settings</h1>
@@ -533,13 +529,25 @@ node_modules/
                 </div>
             </div>
         </div>
-        "#,
+        "##,
         ollama_url = html_escape(&ollama_url),
         ollama_model = html_escape(&ollama_model),
         ollama_timeout = html_escape(&ollama_timeout),
-        grok_key_status = if grok_key_set { "••••••••••• (key configured)" } else { "Not set" },
-        grok_model_sel_2 = if grok_model == "grok-2-latest" { "selected" } else { "" },
-        grok_model_sel_41 = if grok_model.contains("4-1") || grok_model.contains("4.1") { "selected" } else { "" },
+        grok_key_status = if grok_key_set {
+            "••••••••••• (key configured)"
+        } else {
+            "Not set"
+        },
+        grok_model_sel_2 = if grok_model == "grok-2-latest" {
+            "selected"
+        } else {
+            ""
+        },
+        grok_model_sel_41 = if grok_model.contains("4-1") || grok_model.contains("4.1") {
+            "selected"
+        } else {
+            ""
+        },
         routing_auto = if !force_remote { "checked" } else { "" },
         routing_local = "",
         routing_remote = if force_remote { "checked" } else { "" },
@@ -553,9 +561,14 @@ node_modules/
         db_tasks = db_info.tasks,
         db_ideas = db_info.ideas,
         db_documents = db_info.documents,
-        server_host = html_escape(&std::env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0:3000".to_string())),
-        workspace_dir = html_escape(&std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "data/workspaces".to_string())),
-        static_dir = html_escape(&std::env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string())),
+        server_host = html_escape(
+            &std::env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0:3000".to_string())
+        ),
+        workspace_dir = html_escape(
+            &std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "data/workspaces".to_string())
+        ),
+        static_dir =
+            html_escape(&std::env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string())),
         env_vars_html = render_env_vars(),
     );
 
@@ -565,17 +578,15 @@ node_modules/
 }
 
 /// GET /settings/status — Return live service status as HTML partial
-async fn status_partial_handler(
-    State(state): State<Arc<WebAppState>>,
-) -> impl IntoResponse {
+async fn status_partial_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     let mut items = Vec::new();
 
     // Ollama
     let ollama_ok = check_ollama().await;
     items.push(if ollama_ok {
-        r#"<span class="status-chip online">🦙 Ollama Online</span>"#.to_string()
+        r##"<span class="status-chip online">🦙 Ollama Online</span>"##.to_string()
     } else {
-        r#"<span class="status-chip offline">🦙 Ollama Offline</span>"#.to_string()
+        r##"<span class="status-chip offline">🦙 Ollama Offline</span>"##.to_string()
     });
 
     // Grok
@@ -583,17 +594,17 @@ async fn status_partial_handler(
         .map(|k| !k.is_empty())
         .unwrap_or(false);
     items.push(if grok_ok {
-        r#"<span class="status-chip online">⚡ Grok Configured</span>"#.to_string()
+        r##"<span class="status-chip online">⚡ Grok Configured</span>"##.to_string()
     } else {
-        r#"<span class="status-chip offline">⚡ Grok No Key</span>"#.to_string()
+        r##"<span class="status-chip offline">⚡ Grok No Key</span>"##.to_string()
     });
 
     // Database
     let db_ok = check_db(&state).await;
     items.push(if db_ok {
-        r#"<span class="status-chip online">🛢️ Database Connected</span>"#.to_string()
+        r##"<span class="status-chip online">🛢️ Database Connected</span>"##.to_string()
     } else {
-        r#"<span class="status-chip offline">🛢️ Database Error</span>"#.to_string()
+        r##"<span class="status-chip offline">🛢️ Database Error</span>"##.to_string()
     });
 
     // RAG
@@ -604,17 +615,12 @@ async fn status_partial_handler(
         embed_count,
     ));
 
-    let html = format!(
-        r#"<div class="status-chips">{}</div>"#,
-        items.join("\n")
-    );
+    let html = format!(r##"<div class="status-chips">{}</div>"##, items.join("\n"));
     Html(html)
 }
 
 /// POST /settings/llm — Update LLM settings
-async fn update_llm_handler(
-    Form(form): Form<LlmSettingsForm>,
-) -> impl IntoResponse {
+async fn update_llm_handler(Form(form): Form<LlmSettingsForm>) -> impl IntoResponse {
     info!(
         ollama_url = %form.ollama_base_url,
         ollama_model = %form.ollama_model,
@@ -645,16 +651,14 @@ async fn update_llm_handler(
     }
 
     Html(
-        r#"<div class="alert alert-success">✅ LLM settings updated successfully.
-           <br><small>Note: Some changes may require a server restart to take full effect.</small></div>"#
+        r##"<div class="alert alert-success">✅ LLM settings updated successfully.
+           <br><small>Note: Some changes may require a server restart to take full effect.</small></div>"##
             .to_string(),
     )
 }
 
 /// POST /settings/rag — Update RAG settings
-async fn update_rag_handler(
-    Form(form): Form<RagSettingsForm>,
-) -> impl IntoResponse {
+async fn update_rag_handler(Form(form): Form<RagSettingsForm>) -> impl IntoResponse {
     info!(
         embedding_model = %form.embedding_model,
         chunk_size = %form.chunk_size,
@@ -676,16 +680,14 @@ async fn update_rag_handler(
     }
 
     Html(
-        r#"<div class="alert alert-success">✅ RAG settings updated.
-           Consider re-indexing if you changed the embedding model or chunk size.</div>"#
+        r##"<div class="alert alert-success">✅ RAG settings updated.
+           Consider re-indexing if you changed the embedding model or chunk size.</div>"##
             .to_string(),
     )
 }
 
 /// POST /settings/scanner — Update scanner settings
-async fn update_scanner_handler(
-    Form(form): Form<ScannerSettingsForm>,
-) -> impl IntoResponse {
+async fn update_scanner_handler(Form(form): Form<ScannerSettingsForm>) -> impl IntoResponse {
     info!(
         interval = %form.default_interval_minutes,
         concurrency = %form.max_concurrent_scans,
@@ -698,25 +700,21 @@ async fn update_scanner_handler(
     }
 
     Html(
-        r#"<div class="alert alert-success">✅ Scanner settings updated.
-           Changes will apply to the next scan cycle.</div>"#
+        r##"<div class="alert alert-success">✅ Scanner settings updated.
+           Changes will apply to the next scan cycle.</div>"##
             .to_string(),
     )
 }
 
 /// POST /settings/cache — Update cache settings
-async fn update_cache_handler(
-    Form(form): Form<CacheSettingsForm>,
-) -> impl IntoResponse {
+async fn update_cache_handler(Form(form): Form<CacheSettingsForm>) -> impl IntoResponse {
     info!(
         response_ttl = %form.response_cache_ttl,
         eviction = %form.eviction_policy,
         "Updating cache settings"
     );
 
-    Html(
-        r#"<div class="alert alert-success">✅ Cache settings updated.</div>"#.to_string(),
-    )
+    Html(r##"<div class="alert alert-success">✅ Cache settings updated.</div>"##.to_string())
 }
 
 /// POST /settings/test-ollama — Test Ollama connection
@@ -730,25 +728,23 @@ async fn test_ollama_handler() -> impl IntoResponse {
             models.join(", ")
         };
         Html(format!(
-            r#"<div class="alert alert-success">✅ Ollama is reachable!<br>Available models: {}</div>"#,
+            r##"<div class="alert alert-success">✅ Ollama is reachable!<br>Available models: {}</div>"##,
             html_escape(&model_list)
         ))
     } else {
         Html(
-            r#"<div class="alert alert-danger">❌ Cannot reach Ollama. Check that it's running and the URL is correct.</div>"#.to_string()
+            r##"<div class="alert alert-danger">❌ Cannot reach Ollama. Check that it's running and the URL is correct.</div>"##.to_string()
         )
     }
 }
 
 /// POST /settings/test-grok — Test Grok API key
-async fn test_grok_handler(
-    State(state): State<Arc<WebAppState>>,
-) -> impl IntoResponse {
+async fn test_grok_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     let api_key = match std::env::var("XAI_API_KEY") {
         Ok(k) if !k.is_empty() => k,
         _ => {
             return Html(
-                r#"<div class="alert alert-danger">❌ No API key configured. Please save a key first.</div>"#.to_string()
+                r##"<div class="alert alert-danger">❌ No API key configured. Please save a key first.</div>"##.to_string()
             );
         }
     };
@@ -756,46 +752,45 @@ async fn test_grok_handler(
     let db = crate::db::Database::from_pool(state.db.pool.clone());
     let grok = crate::grok_client::GrokClient::new(api_key, db);
 
-    match grok.ask_tracked("Say 'API key is valid' in exactly those words.", None, "settings_test").await {
-        Ok(resp) => {
-            Html(format!(
-                r#"<div class="alert alert-success">✅ Grok API key is valid!<br>Model: {}<br>Tokens used: {}</div>"#,
-                "grok", resp.total_tokens
-            ))
-        }
-        Err(e) => {
-            Html(format!(
-                r#"<div class="alert alert-danger">❌ Grok API test failed: {}</div>"#,
-                html_escape(&e.to_string())
-            ))
-        }
+    match grok
+        .ask_tracked(
+            "Say 'API key is valid' in exactly those words.",
+            None,
+            "settings_test",
+        )
+        .await
+    {
+        Ok(resp) => Html(format!(
+            r##"<div class="alert alert-success">✅ Grok API key is valid!<br>Model: {}<br>Tokens used: {}</div>"##,
+            "grok", resp.total_tokens
+        )),
+        Err(e) => Html(format!(
+            r##"<div class="alert alert-danger">❌ Grok API test failed: {}</div>"##,
+            html_escape(&e.to_string())
+        )),
     }
 }
 
 /// POST /settings/reindex — Trigger a RAG re-index
-async fn reindex_handler(
-    State(state): State<Arc<WebAppState>>,
-) -> impl IntoResponse {
+async fn reindex_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     info!("RAG re-index requested from settings UI");
 
     // Spawn the re-index in the background
     let pool = state.db.pool.clone();
     tokio::spawn(async move {
-        match crate::scanner::refresh_rag_index(&pool).await {
+        match crate::research::worker::refresh_rag_index(&pool).await {
             Ok(n) => info!(vectors = n, "RAG re-index completed from settings"),
             Err(e) => error!(error = %e, "RAG re-index failed"),
         }
     });
 
     Html(
-        r#"<div class="alert alert-info">🔄 Re-indexing started in the background. Check back in a few minutes.</div>"#.to_string()
+        r##"<div class="alert alert-info">🔄 Re-indexing started in the background. Check back in a few minutes.</div>"##.to_string()
     )
 }
 
 /// POST /settings/clear-cache — Clear all caches
-async fn clear_cache_handler(
-    State(state): State<Arc<WebAppState>>,
-) -> impl IntoResponse {
+async fn clear_cache_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     info!("Cache clear requested from settings UI");
 
     // Attempt to clear response cache via the GrokClient path
@@ -808,9 +803,7 @@ async fn clear_cache_handler(
         }
     }
 
-    Html(
-        r#"<div class="alert alert-success">✅ Caches cleared successfully.</div>"#.to_string()
-    )
+    Html(r##"<div class="alert alert-success">✅ Caches cleared successfully.</div>"##.to_string())
 }
 
 // ============================================================================
@@ -859,8 +852,8 @@ async fn get_db_info(state: &WebAppState) -> DbInfo {
 }
 
 async fn check_ollama() -> bool {
-    let base_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let url = format!("{}/api/tags", base_url);
 
     let client = reqwest::Client::builder()
@@ -877,8 +870,8 @@ async fn check_ollama() -> bool {
 }
 
 async fn list_ollama_models() -> Vec<String> {
-    let base_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let url = format!("{}/api/tags", base_url);
 
     #[derive(serde::Deserialize)]
@@ -913,17 +906,11 @@ async fn check_db(state: &WebAppState) -> bool {
 
 async fn get_embedding_count(state: &WebAppState) -> i64 {
     sqlx::query_scalar(
-        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'file_embeddings'"
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'file_embeddings'",
     )
     .fetch_one(&state.db.pool)
     .await
-    .and_then(|exists: i64| {
-        if exists > 0 {
-            Ok(exists)
-        } else {
-            Ok(0)
-        }
-    })
+    .and_then(|exists: i64| if exists > 0 { Ok(exists) } else { Ok(0) })
     .unwrap_or(0)
 }
 
@@ -933,11 +920,7 @@ fn mask_db_url() -> String {
     if let Some(at_pos) = url.find('@') {
         if let Some(colon_pos) = url[..at_pos].rfind(':') {
             if let Some(slash_pos) = url[..colon_pos].rfind('/') {
-                return format!(
-                    "{}:****@{}",
-                    &url[..slash_pos + 1],
-                    &url[at_pos + 1..]
-                );
+                return format!("{}:****@{}", &url[..slash_pos + 1], &url[at_pos + 1..]);
             }
         }
     }
@@ -964,23 +947,24 @@ fn render_env_vars() -> String {
         .iter()
         .map(|(name, desc)| {
             let val = std::env::var(name).unwrap_or_else(|_| "—".to_string());
-            let display_val = if name.contains("KEY") || name.contains("SECRET") || name.contains("PASSWORD") {
-                if val == "—" {
-                    "—".to_string()
+            let display_val =
+                if name.contains("KEY") || name.contains("SECRET") || name.contains("PASSWORD") {
+                    if val == "—" {
+                        "—".to_string()
+                    } else {
+                        "••••••••".to_string()
+                    }
+                } else if val.len() > 60 {
+                    format!("{}…", &val[..57])
                 } else {
-                    "••••••••".to_string()
-                }
-            } else if val.len() > 60 {
-                format!("{}…", &val[..57])
-            } else {
-                val
-            };
+                    val
+                };
             format!(
-                r#"<div class="env-row">
+                r##"<div class="env-row">
                     <span class="env-name"><code>{name}</code></span>
                     <span class="env-value">{value}</span>
                     <span class="env-desc">{desc}</span>
-                </div>"#,
+                </div>"##,
                 name = name,
                 value = html_escape(&display_val),
                 desc = desc,
@@ -1003,7 +987,7 @@ fn html_escape(s: &str) -> String {
 // ============================================================================
 
 fn settings_extra_styles() -> String {
-    r#"<style>
+    r##"<style>
     /* ── Settings Page Layout ─────────────────────────────────────── */
     .settings-page {
         padding: 1rem 0;
@@ -1445,6 +1429,6 @@ fn settings_extra_styles() -> String {
             }
         }
     });
-    </script>"#
+    </script>"##
         .to_string()
 }

@@ -30,7 +30,7 @@
 //     .merge(create_chat_router(web_app_state))
 
 use axum::{
-    extract::{Query, State},
+    extract::State,
     response::{Html, IntoResponse},
     routing::{get, post},
     Form, Router,
@@ -84,9 +84,7 @@ pub struct ModelsQuery {
 // ============================================================================
 
 /// GET /chat — Render the full chat page
-async fn chat_page_handler(
-    State(state): State<Arc<WebAppState>>,
-) -> impl IntoResponse {
+async fn chat_page_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     // Load repos for the context selector dropdown
     let repos = load_repos(&state).await;
 
@@ -97,7 +95,7 @@ async fn chat_page_handler(
         .join("\n");
 
     let content = format!(
-        r#"
+        r##"
         <div class="chat-layout">
             <!-- Sidebar: Settings & Context -->
             <aside class="chat-sidebar">
@@ -228,7 +226,7 @@ async fn chat_page_handler(
                 </div>
             </div>
         </div>
-        "#
+        "##
     );
 
     let extra_head = chat_extra_styles();
@@ -256,7 +254,8 @@ async fn chat_send_handler(
     );
 
     // Parse conversation history
-    let history: Vec<(String, String)> = serde_json::from_str(&form.history_json).unwrap_or_default();
+    let history: Vec<(String, String)> =
+        serde_json::from_str(&form.history_json).unwrap_or_default();
 
     // Build the full prompt with context
     let mut context_parts: Vec<String> = Vec::new();
@@ -290,9 +289,15 @@ async fn chat_send_handler(
     full_prompt.push_str(&format!("**user**: {}", message));
 
     // Route to appropriate model
-    let model_id = if form.model.is_empty() { "auto" } else { &form.model };
+    let model_id = if form.model.is_empty() {
+        "auto"
+    } else {
+        &form.model
+    };
 
-    let result = match dispatch_to_model(&state, model_id, &system_prompt, &message, &full_prompt).await {
+    let result = match dispatch_to_model(&state, model_id, &system_prompt, &message, &full_prompt)
+        .await
+    {
         Ok(resp) => resp,
         Err(e) => {
             error!(error = %e, "Chat model call failed");
@@ -310,7 +315,7 @@ async fn chat_send_handler(
     let rendered_reply = simple_markdown_to_html(&escaped_reply);
 
     let html = format!(
-        r#"
+        r##"
         <div class="user-message">
             <div class="message-icon">👤</div>
             <div class="message-body">
@@ -332,7 +337,7 @@ async fn chat_send_handler(
             updateTokenCounter({tokens}, {cost});
             scrollToBottom();
         </script>
-        "#,
+        "##,
         user_msg = html_escape(&message),
         model = html_escape(&result.model_used),
         tokens = result.tokens_used,
@@ -345,9 +350,7 @@ async fn chat_send_handler(
 }
 
 /// GET /chat/models — Check available models and return status HTML
-async fn chat_models_handler(
-    State(state): State<Arc<WebAppState>>,
-) -> impl IntoResponse {
+async fn chat_models_handler(State(state): State<Arc<WebAppState>>) -> impl IntoResponse {
     let mut statuses = Vec::new();
 
     // Check Ollama
@@ -359,9 +362,7 @@ async fn chat_models_handler(
             models.len()
         ));
     } else {
-        statuses.push(
-            r#"<span class="status-dot offline"></span> Ollama: offline"#.to_string()
-        );
+        statuses.push(r#"<span class="status-dot offline"></span> Ollama: offline"#.to_string());
     }
 
     // Check Grok
@@ -370,12 +371,10 @@ async fn chat_models_handler(
         .unwrap_or(false);
     if grok_available {
         statuses.push(
-            r#"<span class="status-dot online"></span> Grok: API key configured"#.to_string()
+            r#"<span class="status-dot online"></span> Grok: API key configured"#.to_string(),
         );
     } else {
-        statuses.push(
-            r#"<span class="status-dot offline"></span> Grok: no API key"#.to_string()
-        );
+        statuses.push(r#"<span class="status-dot offline"></span> Grok: no API key"#.to_string());
     }
 
     // Check RAG index
@@ -388,13 +387,13 @@ async fn chat_models_handler(
 /// POST /chat/clear — Clear conversation and return empty chat area
 async fn chat_clear_handler() -> impl IntoResponse {
     Html(
-        r#"<div class="system-message">
+        r##"<div class="system-message">
             <div class="message-icon">🦀</div>
             <div class="message-body">
                 <p>Conversation cleared. Ready for a new chat!</p>
             </div>
         </div>
-        <script>clearHistory();</script>"#
+        <script>clearHistory();</script>"##
             .to_string(),
     )
 }
@@ -422,9 +421,7 @@ async fn dispatch_to_model(
             let model_name = id.strip_prefix("ollama:").unwrap_or("qwen2.5-coder:7b");
             dispatch_ollama(model_name, system_prompt, user_message).await
         }
-        id if id.starts_with("grok:") => {
-            dispatch_grok(state, full_prompt).await
-        }
+        id if id.starts_with("grok:") => dispatch_grok(state, full_prompt).await,
         "auto" | "" => {
             // Try Ollama first, fall back to Grok
             match dispatch_ollama("qwen2.5-coder:7b", system_prompt, user_message).await {
@@ -433,20 +430,16 @@ async fn dispatch_to_model(
                     warn!(error = %ollama_err, "Ollama failed, trying Grok fallback");
                     match dispatch_grok(state, full_prompt).await {
                         Ok(result) => Ok(result),
-                        Err(grok_err) => {
-                            Err(anyhow::anyhow!(
-                                "Both models failed. Ollama: {}. Grok: {}",
-                                ollama_err,
-                                grok_err
-                            ))
-                        }
+                        Err(grok_err) => Err(anyhow::anyhow!(
+                            "Both models failed. Ollama: {}. Grok: {}",
+                            ollama_err,
+                            grok_err
+                        )),
                     }
                 }
             }
         }
-        _ => {
-            Err(anyhow::anyhow!("Unknown model: {}", model_id))
-        }
+        _ => Err(anyhow::anyhow!("Unknown model: {}", model_id)),
     }
 }
 
@@ -456,7 +449,6 @@ async fn dispatch_ollama(
     user_message: &str,
 ) -> anyhow::Result<ChatResult> {
     use crate::ollama_client::{OllamaClient, OllamaClientConfig};
-    use std::time::Duration;
 
     let config = OllamaClientConfig {
         model: model.to_string(),
@@ -468,8 +460,8 @@ async fn dispatch_ollama(
         .complete(Some(system_prompt), user_message, 0.3, 4096)
         .await?;
 
-    let tokens = resp.prompt_tokens.unwrap_or(0) as i64
-        + resp.completion_tokens.unwrap_or(0) as i64;
+    let tokens =
+        resp.prompt_tokens.unwrap_or(0) as i64 + resp.completion_tokens.unwrap_or(0) as i64;
 
     Ok(ChatResult {
         reply: resp.content,
@@ -479,12 +471,9 @@ async fn dispatch_ollama(
     })
 }
 
-async fn dispatch_grok(
-    state: &WebAppState,
-    full_prompt: &str,
-) -> anyhow::Result<ChatResult> {
-    let api_key = std::env::var("XAI_API_KEY")
-        .map_err(|_| anyhow::anyhow!("XAI_API_KEY not set"))?;
+async fn dispatch_grok(state: &WebAppState, full_prompt: &str) -> anyhow::Result<ChatResult> {
+    let api_key =
+        std::env::var("XAI_API_KEY").map_err(|_| anyhow::anyhow!("XAI_API_KEY not set"))?;
 
     if api_key.is_empty() {
         return Err(anyhow::anyhow!("XAI_API_KEY is empty"));
@@ -493,9 +482,7 @@ async fn dispatch_grok(
     let db = crate::db::Database::from_pool(state.db.pool.clone());
     let grok = crate::grok_client::GrokClient::new(api_key, db);
 
-    let resp = grok
-        .ask_tracked(full_prompt, None, "web_chat")
-        .await?;
+    let resp = grok.ask_tracked(full_prompt, None, "web_chat").await?;
 
     Ok(ChatResult {
         reply: resp.content,
@@ -548,7 +535,9 @@ You control a TODO-driven pipeline with these steps:
 }
 
 async fn load_repo_context(state: &WebAppState, repo_id: &str) -> Option<String> {
-    let repo = crate::db::get_repository(&state.db.pool, repo_id).await.ok()?;
+    let repo = crate::db::get_repository(&state.db.pool, repo_id)
+        .await
+        .ok()?;
 
     let mut context = format!("### Repository: {}\n", repo.name);
     context.push_str(&format!("- Path: `{}`\n", repo.path));
@@ -564,11 +553,18 @@ async fn load_repo_context(state: &WebAppState, repo_id: &str) -> Option<String>
         if p.exists() {
             if let Ok(contents) = std::fs::read_to_string(&p) {
                 let truncated = if contents.len() > 8000 {
-                    format!("{}...\n\n(truncated, {} bytes total)", &contents[..8000], contents.len())
+                    format!(
+                        "{}...\n\n(truncated, {} bytes total)",
+                        &contents[..8000],
+                        contents.len()
+                    )
                 } else {
                     contents
                 };
-                context.push_str(&format!("\n### todo.md\n\n```markdown\n{}\n```\n", truncated));
+                context.push_str(&format!(
+                    "\n### todo.md\n\n```markdown\n{}\n```\n",
+                    truncated
+                ));
             }
             break;
         }
@@ -610,7 +606,7 @@ async fn retrieve_rag_context(state: &WebAppState, query: &str) -> Option<String
         }
     };
 
-    let query_embedding = match generator.generate(query) {
+    let _query_embedding = match generator.embed(query).await {
         Ok(emb) => emb,
         Err(e) => {
             warn!(error = %e, "Failed to generate query embedding for RAG");
@@ -619,6 +615,8 @@ async fn retrieve_rag_context(state: &WebAppState, query: &str) -> Option<String
     };
 
     // Search the database for similar embeddings
+    // TODO: use actual vector similarity search once the index supports it;
+    // for now, fall back to a random sample so the feature path is exercised.
     let pool = &state.db.pool;
     let rows: Vec<(String, String, f64)> = sqlx::query_as(
         r#"SELECT file_path, content_snippet, 1.0 as score
@@ -650,8 +648,8 @@ async fn retrieve_rag_context(state: &WebAppState, query: &str) -> Option<String
 // ============================================================================
 
 async fn check_ollama_health() -> bool {
-    let base_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let url = format!("{}/api/tags", base_url);
 
     let client = reqwest::Client::builder()
@@ -668,8 +666,8 @@ async fn check_ollama_health() -> bool {
 }
 
 async fn list_ollama_models() -> Vec<String> {
-    let base_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let url = format!("{}/api/tags", base_url);
 
     #[derive(serde::Deserialize)]
@@ -700,7 +698,7 @@ async fn check_rag_status(state: &WebAppState) -> String {
 
     // Check if embeddings table exists and has data
     let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'file_embeddings'"
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'file_embeddings'",
     )
     .fetch_one(pool)
     .await
@@ -726,12 +724,11 @@ async fn check_rag_status(state: &WebAppState) -> String {
 
 async fn load_repos(state: &WebAppState) -> Vec<(String, String)> {
     let pool = &state.db.pool;
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, name FROM registered_repos ORDER BY name"
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT id, name FROM registered_repos ORDER BY name")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
     rows
 }
 
@@ -777,7 +774,11 @@ fn simple_markdown_to_html(text: &str) -> String {
         }
 
         // Close list if current line isn't a list item
-        if in_list && !trimmed.starts_with("- ") && !trimmed.starts_with("* ") && !trimmed.starts_with("• ") {
+        if in_list
+            && !trimmed.starts_with("- ")
+            && !trimmed.starts_with("* ")
+            && !trimmed.starts_with("• ")
+        {
             result.push_str("</ul>\n");
             in_list = false;
         }
@@ -815,7 +816,13 @@ fn simple_markdown_to_html(text: &str) -> String {
         }
 
         // Numbered list items
-        if trimmed.len() > 2 && trimmed.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        if trimmed.len() > 2
+            && trimmed
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+        {
             if let Some(rest) = trimmed.split_once(". ") {
                 if !in_list {
                     result.push_str("<ul>\n");
@@ -963,13 +970,13 @@ fn extract_action_buttons(reply: &str) -> String {
 // ============================================================================
 
 fn chat_extra_styles() -> String {
-    r#"<style>
+    r##"<style>
     /* ── Chat Layout ──────────────────────────────────────────────── */
     .chat-layout {
         display: grid;
         grid-template-columns: 280px 1fr;
         gap: 0;
-        height: calc(100vh - 120px);
+        height: calc(100vh - 80px);
         margin: -1rem -2rem;
     }
 
@@ -1413,6 +1420,6 @@ fn chat_extra_styles() -> String {
                        ' on this repository.';
         sendMessage(new Event('submit'));
     }
-    </script>"#
+    </script>"##
         .to_string()
 }

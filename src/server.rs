@@ -1,5 +1,6 @@
 //! Axum API server for the audit service + RustAssistant dashboard
 
+use crate::api::proxy::{proxy_router, ProxyState};
 use crate::api::repos::{repo_router, RepoAppState};
 use crate::audit::endpoint::{audit_router, AuditState};
 use crate::config::Config;
@@ -280,7 +281,9 @@ pub async fn run_server(config: Config) -> Result<()> {
         // New dashboard API (separate state)
         .merge(web_api_router(web_state))
         // Repo management + chat API at /api/v1
-        .nest("/api/v1", repo_router(repo_app_state))
+        .nest("/api/v1", repo_router(repo_app_state.clone()))
+        // OpenAI-compatible proxy at /v1  (for external apps e.g. futures trading bot)
+        .nest("/v1", proxy_router(ProxyState::new(repo_app_state)))
         // Serve static files (dashboard HTML/CSS/JS) at /static and /
         .nest_service("/static", serve_static.clone())
         .fallback_service(serve_static)
@@ -291,6 +294,10 @@ pub async fn run_server(config: Config) -> Result<()> {
     info!("Dashboard available at  http://{}/", socket_addr);
     info!(
         "API docs at             http://{}/api/web/health",
+        socket_addr
+    );
+    info!(
+        "OpenAI-compatible proxy http://{}/v1/chat/completions",
         socket_addr
     );
     info!("Security: Restrictive CORS enabled, Git URL whitelist active");

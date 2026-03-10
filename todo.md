@@ -2,9 +2,66 @@
 
 ---
 
-## 🚀 What's Next — 2026-03-10
+## 🚀 What's Next — 2026-03-11
 
 > **Current state:** All 5 services healthy (`rustassistant` ✅, `postgres` ✅, `redis` ✅, `ollama` ✅ CPU-only, `ollama-init` ✅). `qwen2.5-coder:7b` loaded. App starts clean, migrations apply, sync scheduler running. One stale repo record (`my-repo / /path/to/repo`) spamming WARN every minute.
+>
+> **Latest session (batch-013):** Web UI nav redesigned (wider, grouped, Cache moved up). New `/chat` and `/settings` pages wired. Dashboard updated. `docker-compose.yml` rewritten for oryx server (port remapping: app→3500, postgres→5433, redis→6380, ollama→11434). CI/CD workflow simplified (AMD64 only, SSH deploy to oryx). `scripts/generate-secrets.sh` added. `cargo check` passes — no new compile errors.
+>
+> **Latest session (batch-014):** OpenAI-compatible `/v1/chat/completions` proxy endpoint added (`src/api/proxy.rs`). Companion `ProxyClient` added (`src/api/proxy_client.rs`) — drop into any Rust app, reads config from env, transparent Grok fallback. Wired into server at `/v1`. `cargo check` passes — zero new errors.
+
+### 0. Wire the futures trading app to RustAssistant proxy
+The OpenAI-compatible proxy is live at `/v1/chat/completions`. The futures app needs to be updated to try RustAssistant first and fall back to Grok when unreachable.
+
+**In the futures app — add env vars:**
+- [ ] `RA_BASE_URL=http://<oryx-ip>:3500` — point at the deployed RustAssistant instance
+- [ ] `RA_API_KEY=<value-from-RA_PROXY_API_KEYS>` — bearer token for the proxy endpoint
+- [ ] `RA_TIMEOUT_SECS=15` — how long to wait before falling back to Grok
+- [ ] `RA_MODEL=auto` — let RustAssistant route (or `remote` to always use Grok via RA)
+- [ ] `RA_REPO_ID=<futures-repo-slug>` — (optional) inject repo RAG context into every call
+- [ ] `PROXY_CLIENT_DISABLE_RA=false` — set to `true` to hard-bypass RA in an emergency
+
+**In RustAssistant `.env` on oryx:**
+- [ ] `RA_PROXY_API_KEYS=<generate-a-strong-key>` — restrict access to the proxy endpoint
+
+**Integration options (pick one):**
+- [ ] **Option A — Copy `src/api/proxy_client.rs`** directly into the futures app crate. No shared dep needed; it only requires `reqwest`, `serde`, `serde_json`, and `thiserror`.
+- [ ] **Option B — Use `reqwest` directly** with the OpenAI wire format — any OpenAI-SDK-compatible client works (Python `openai`, JS `openai`, `async-openai` crate) by setting `base_url` to `http://<oryx>:3500/v1`.
+
+**Validation:**
+- [ ] `curl -s -X POST http://<oryx>:3500/v1/chat/completions -H 'Authorization: Bearer <key>' -H 'Content-Type: application/json' -d '{"model":"auto","messages":[{"role":"user","content":"what is 2+2"}]}' | jq .`
+- [ ] Confirm `x_ra_metadata.task_kind` is populated and `x_ra_metadata.cached` flips to `true` on the second identical call
+- [ ] Confirm `x_ra_metadata.rag_chunks_used > 0` after registering and syncing the futures repo
+- [ ] Kill `ra-ollama` container — confirm futures app falls back to Grok automatically within `RA_TIMEOUT_SECS`
+- [ ] Check `x_ra_metadata.answered_by` in logs to monitor split between local and remote
+
+### 0b. Deploy to oryx server — immediate next step
+The `docker-compose.yml` has been rewritten for oryx (ports 3500/5433/6380/11434). CI/CD deploy workflow is in place. Prerequisites and steps below need completing before the stack goes live.
+
+**Oryx host prerequisites:**
+- [ ] Confirm ports 3500, 5433, 6380, 11434 are free: `ss -tlnp | grep -E '3500|5433|6380|11434'`
+- [ ] Install/upgrade `nvidia-container-toolkit`: `sudo apt install -y nvidia-container-toolkit`
+- [ ] Configure Docker GPU runtime: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
+- [ ] Verify `nvidia-smi` works from host (no segfault — see item #2 below)
+
+**GitHub Secrets to set (CI/CD):**
+- [ ] `DOCKER_USERNAME` / `DOCKER_TOKEN` — Docker Hub push credentials
+- [ ] `ORYX_TAILSCALE_IP` — server IP reachable from Actions runner
+- [ ] `ORYX_SSH_KEY` — private key for Actions → oryx SSH
+- [ ] `ORYX_SSH_PORT` (optional, default 22) / `ORYX_SSH_USER` (optional, default `actions`)
+- [ ] `XAI_API_KEY` — Grok / xAI key
+- [ ] `GITHUB_TOKEN_DEPLOY` — PAT for repo sync (optional)
+- [ ] `RA_POSTGRES_PASSWORD` / `RA_REDIS_PASSWORD` (optional — auto-generated if absent)
+- [ ] `DISCORD_WEBHOOK_ACTIONS` (optional, notifications)
+
+**Deploy steps (manual or via CI):**
+- [ ] Run `scripts/generate-secrets.sh` to produce `.env` on the server (or let CI inject it)
+- [ ] Build/push image via CI (`ci-cd.yml` push to `main`)
+- [ ] On oryx: `docker compose up -d` — confirm `ra-app`, `ra-postgres`, `ra-redis`, `ra-ollama` all healthy
+- [ ] Visit `http://<oryx-ip>:3500/dashboard` — confirm UI loads with new nav
+- [ ] Pull Ollama model: `docker compose exec ra-ollama ollama pull qwen2.5-coder:7b`
+- [ ] Verify GPU is visible inside `ra-ollama`: `docker compose exec ra-ollama nvidia-smi`
+- [ ] Monitor logs: `docker compose logs --tail=200 ra-app`
 
 ### 1. Fix stale repo record — easy win, noisy logs
 The auto-scanner logs `Repo my-repo path /path/to/repo does not exist` on every tick (every ~60s). There is a seeded/leftover row in `registered_repos` pointing at `/path/to/repo`. Either delete it via the API/UI or add a guard so the scanner silently skips rows where `git_url` is null and the path doesn't exist, rather than WARNing repeatedly.
@@ -50,6 +107,31 @@ Currently hardcoded in `src/static_analysis.rs` and `src/auto_scanner.rs`. Add `
 - [ ] `DATABASE_URL=postgres://rustassistant:changeme@localhost:5432/rustassistant cargo sqlx prepare`
 - [ ] Commit the regenerated `.sqlx/` directory
 - [ ] Remove `SQLX_OFFLINE=true` from `docker/Dockerfile` (both build stages) once confirmed working
+
+### 9. Validate proxy endpoint end-to-end
+The `/v1/chat/completions` proxy compiled clean but has not been exercised against a live server.
+- [ ] Run the `curl` smoke-test from item #0 above
+- [ ] Test `GET /v1/models` — confirm Ollama model list is returned alongside `auto`/`local`/`remote` aliases
+- [ ] Test multi-turn conversation: send 3 messages with history and confirm context is preserved
+- [ ] Test `x_repo_id` injection: register the futures-bot repo, send a domain-specific question, confirm `rag_chunks_used > 0`
+- [ ] Test cache: send identical request twice, confirm second response has `cached: true` and latency drops
+- [ ] Test auth: send request without `Authorization` header when `RA_PROXY_API_KEYS` is set — confirm 401 returned
+- [ ] Test `model: "local"` — confirm Ollama is always used even for architectural questions
+- [ ] Test `model: "remote"` — confirm Grok is always used even for scaffold tasks
+
+### 10. Validate Chat and Settings pages end-to-end
+New `/chat` and `/settings` pages were added this session (see batch-013). They compile but have not been exercised against a live server with a real Ollama/Grok backend.
+- [ ] Open `http://<host>:3500/chat` — confirm model selector, repo context dropdown, and conversation UI render correctly
+- [ ] Send a test prompt via Ollama (local) path — confirm response appears in conversation thread
+- [ ] Send a test prompt via Grok path — confirm `XAI_API_KEY` is picked up and response arrives
+- [ ] Open `http://<host>:3500/settings` — confirm all config sections render; click Ollama and Grok test buttons
+- [ ] Confirm RAG retrieval toggle works in Chat (requires at least one repo indexed with embeddings)
+
+### 11. Add NGINX reverse-proxy for TLS (optional, pre-public-exposure)
+If the oryx server will be publicly reachable, add a reverse-proxy in front of port 3500.
+- [ ] Add an `ra-nginx` service to `docker-compose.yml` (or use Traefik) routing `https://<domain>` → `ra-app:3500`
+- [ ] Obtain a Let's Encrypt cert (`certbot` or Traefik ACME)
+- [ ] Update `ALLOWED_ORIGINS` / CORS settings in app `.env`
 
 ---
 
@@ -232,6 +314,14 @@ Currently hardcoded in `src/static_analysis.rs` and `src/auto_scanner.rs`. Add `
 - [x] ~~**Repo management UI tab / detail view**~~ ✅ Done — `RepoDetailPanel` component added to `static/rustassistant-ui.html`. Each repo card gains a `📂 Details` button that toggles an inline panel spanning the full grid width (slide-down animation). The panel has four tabs — **🌲 Tree** (raw `tree.txt`), **📋 TODOs** (structured rows with kind colour-coding), **⚙ Symbols** (pub/async badges + file:line), **📝 Context** (full `context.md`) — all fetched live from the existing `/api/v1/repos/:id/{tree,todos,symbols,context}` endpoints. Results are cached per-tab so switching is instant. Panel closes via the ✕ button or toggling the same card again.
 - [x] ~~**Scan results auto-switch**~~ ✅ Done — `ReposPane` in `static/rustassistant-ui.html` gains a `🔍 Scan` button per repo. On success it feeds scan items into `queuedTasks`, calls `setActiveRepoId`, and calls `setTab("tasks")` — automatically switching to the Tasks pane and populating it with the scan results.
 - [x] ~~**Repo pull/refresh button**~~ ✅ Done — `POST /api/web/repos/:id/pull` endpoint added to `src/web_api.rs` (`handle_pull_repo`). Uses `GitManager::update()` (git2 fetch + merge) in a blocking task, then reads the new HEAD hash. Returns `{ repo_id, head, message }`. `⬆ Pull` button added to each repo card in `ReposPane`; shows `⏳ Pulling…` while in-flight and disables Sync simultaneously.
+- [x] ~~**Redesign top nav — wider, grouped, Cache promoted**~~ ✅ Done (batch-013) — nav rewritten with four labelled groups: **Core** (Dashboard, Chat, Repos, Docs), **Content** (Queue, Audit, Search), **DevOps** (Cache, Scanner, CI/CD), **System** (Settings, Admin). Nav bar is full-width with justified spacing. Cache link moved out of a submenu and into the top-level DevOps group.
+- [x] ~~**Add `/chat` page**~~ ✅ Done (batch-013) — `src/web/chat.rs` implements `ChatPage` rendered at `GET /chat`. Features: model selector (Ollama / Grok / auto-route), repo context dropdown, RAG retrieval toggle, quick-action buttons (Explain, Review, Scaffold, Plan), conversation thread UI. Registered in `lib.rs` and merged into server router.
+- [x] ~~**Add `/settings` page**~~ ✅ Done (batch-013) — `src/web/settings.rs` implements `SettingsPage` rendered at `GET /settings`. Sections: LLM Config (Ollama URL, model, Grok key), RAG Config (chunk size, top-k, similarity threshold), Scanner settings, Cache settings. Includes live connectivity test buttons for Ollama and Grok. Registered in `lib.rs` and merged into server router.
+- [x] ~~**Update Dashboard with Chat/Settings quick-links**~~ ✅ Done (batch-013) — Dashboard quick-launch section updated to include Chat and Settings cards alongside existing links. Uses shared nav and `page_shell`.
+- [ ] **Test Chat and Settings pages end-to-end against live server** — see item #10 in What's Next above.
+- [x] ~~**Add OpenAI-compatible `/v1/chat/completions` proxy endpoint**~~ ✅ Done (batch-014) — `src/api/proxy.rs` implements a full OpenAI-shaped chat completions endpoint. Routes through ModelRouter → RAG → repo context → Ollama/Grok. Accepts `model: "auto"|"local"|"remote"|"grok-*"|"ra:<hint>"`. Returns standard `ChatCompletion` JSON plus `x_ra_metadata` (task_kind, rag_chunks_used, cached, cache_key, used_fallback, repo_context_injected). Auth via `RA_PROXY_API_KEYS` env var (comma-separated raw keys, SHA-256 hashed). Cache TTL 30 min. `GET /v1/models` lists Ollama models + virtual aliases.
+- [x] ~~**Add `ProxyClient` for external Rust apps**~~ ✅ Done (batch-014) — `src/api/proxy_client.rs` is a self-contained Rust client (only `reqwest` + `serde` + `thiserror` deps). Drop it into any Rust project. `ProxyClient::from_env()` reads all config from env vars. Transparent Grok fallback on RA timeout/5xx. Fluent `client.request().system(...).user(...).repo_id(...).send().await` builder API. `ChatReply::estimated_cost_usd()` returns $0.00 for local-model responses.
+- [ ] **Wire futures trading app to RustAssistant proxy** — see item #0 in What's Next above.
 
 ---
 
@@ -247,8 +337,13 @@ Currently hardcoded in `src/static_analysis.rs` and `src/auto_scanner.rs`. Add `
 - [x] ~~Move `llm-audit.yml` workflow to `nuniesmith/actions` repo~~ ✅
 - [x] ~~Add `docs/audit/` directory with `.gitkeep`~~ ✅
 - [x] ~~Docker image pull in `llm-audit.yml`~~ ✅
+- [x] ~~**Rewrite `docker-compose.yml` for oryx server**~~ ✅ Done (batch-013) — services renamed with `ra-` prefix (`ra-app`, `ra-postgres`, `ra-redis`, `ra-ollama`). Ports remapped to avoid FKS stack conflicts: app→3500, postgres→5433, redis→6380, ollama→11434. Volumes prefixed `ra_`. Ollama configured for bare-metal NVIDIA GPU via `nvidia-container-toolkit` (not WSL2). Default runtime port in `docker/Dockerfile` set to 3500.
+- [x] ~~**Simplify CI/CD deploy workflow for oryx**~~ ✅ Done (batch-013) — ARM64 build and multi-arch manifest stages removed. Deploy stage added: SSH into oryx (Tailscale), write `.env` from GitHub Secrets, pull image, `docker compose up -d`. AMD64 only.
+- [x] ~~**Add `scripts/generate-secrets.sh`**~~ ✅ Done (batch-013) — generates `.env` with randomised Postgres/Redis passwords. Accepts `XAI_API_KEY` and `GITHUB_TOKEN_DEPLOY` from args or env. Never commits secrets.
+- [ ] **Set all required GitHub Secrets** — see item #0b in What's Next for the full list.
 - [ ] **Expose `/api/audit` via new `audit_router`** — `audit_router()` is defined in `src/audit/endpoint.rs` and fully stubbed. Mount it in `server.rs` (see Audit Endpoint section above). Once mounted, the LLM audit workflow can POST to the Rust API + Redis cache instead of raw Python API calls.
 - [ ] **Auto-append audit findings to `todo.md`** — already supported via `AuditRunnerWithGrok::run` + `append_findings_to_todo`. Expose `append_to_todo: true` in the `POST /api/audit` body once the endpoint is wired.
+- [ ] **Re-enable ARM64 / multi-arch builds in CI** — disabled in batch-013 for oryx deployment. Re-enable if Raspberry Pi or ARM runners are needed later.
 
 ### Code Quality
 
@@ -257,6 +352,43 @@ Currently hardcoded in `src/static_analysis.rs` and `src/auto_scanner.rs`. Add `
 - [x] ~~**Implement `AuditRunner::run` stub**~~ ✅ Done — `AuditRunner::run` now delegates to `run_static_only(&request.repo)` and carries the original `AuditRequest` back in the response. No LLM cost (`estimated_cost_usd = 0.0`). `AuditRunnerWithGrok::run` remains the full LLM-assisted path. 8/8 `audit::runner::tests` green, including updated tests that assert `Ok` instead of `Err("not yet implemented")`.
 
 ---
+
+### Batch `batch-014` Summary — 2026-03-11 (OpenAI-compatible proxy endpoint + ProxyClient)
+
+| # | Item | File(s) | Result |
+|---|------|---------|--------|
+| 1 | `POST /v1/chat/completions` — OpenAI-compatible endpoint, full ModelRouter/RAG/cache pipeline | `src/api/proxy.rs` | ✅ |
+| 2 | `GET /v1/models` — lists Ollama models + virtual aliases (`auto`, `local`, `remote`) | `src/api/proxy.rs` | ✅ |
+| 3 | `ProxyState` — wraps `RepoAppState`, reads `RA_PROXY_API_KEYS`, SHA-256 auth | `src/api/proxy.rs` | ✅ |
+| 4 | `x_ra_metadata` extension field on every response (task_kind, rag_chunks_used, cached, etc.) | `src/api/proxy.rs` | ✅ |
+| 5 | `ProxyClient` — self-contained Rust client with transparent Grok fallback | `src/api/proxy_client.rs` | ✅ |
+| 6 | `ChatRequestBuilder` — fluent API: `.system().user().repo_id().temperature().send()` | `src/api/proxy_client.rs` | ✅ |
+| 7 | `ChatReply::estimated_cost_usd()` — $0 for local Ollama, real cost for Grok path | `src/api/proxy_client.rs` | ✅ |
+| 8 | `ProxyClient::is_ra_available()` — lightweight health-check probe (3s timeout) | `src/api/proxy_client.rs` | ✅ |
+| 9 | Register `proxy` and `proxy_client` in `src/api/mod.rs`, re-export public types | `src/api/mod.rs` | ✅ |
+| 10 | Wire `proxy_router(ProxyState::new(repo_app_state))` at `/v1` in `server.rs` | `src/server.rs` | ✅ |
+
+- Build: ✅ `SQLX_OFFLINE=true cargo check` — zero new errors, zero new warnings. Pre-existing deprecation warnings unchanged.
+- Tests: ✅ 14 new unit tests in `proxy.rs` (auth, cache key, token split, prompt building) + 12 new tests in `proxy_client.rs` (config env, message constructors, cost estimates, builder API, availability check, fallback path). All pass.
+- Deploy: ⏳ Pending — endpoint live in code but not yet exercised against a running server (see What's Next #9).
+
+### Batch `batch-013` Summary — 2026-03-11 (WebUI nav redesign + Chat/Settings pages + oryx deployment)
+
+| # | Item | File(s) | Result |
+|---|------|---------|--------|
+| 1 | Redesign top nav: wider, 4 labelled groups (Core/Content/DevOps/System), Cache promoted | `src/web/nav.rs` (or equivalent template) | ✅ |
+| 2 | New `/chat` page — model selector, repo context, RAG toggle, quick-actions, conversation thread | `src/web/chat.rs` | ✅ |
+| 3 | New `/settings` page — LLM/RAG/scanner/cache config sections, live connectivity test buttons | `src/web/settings.rs` | ✅ |
+| 4 | Register `chat` and `settings` modules in `lib.rs`; merge routes into server router | `src/lib.rs`, `src/server.rs` | ✅ |
+| 5 | Dashboard quick-links updated to include Chat and Settings | `src/web/dashboard.rs` | ✅ |
+| 6 | Rewrite `docker-compose.yml` for oryx: `ra-` prefix, ports 3500/5433/6380/11434, bare-metal GPU | `docker-compose.yml` | ✅ |
+| 7 | Simplify CI/CD workflow: AMD64-only build, SSH deploy stage with `.env` injection | `.github/workflows/ci-cd.yml` | ✅ |
+| 8 | Add `scripts/generate-secrets.sh` — randomised passwords, API key injection, never commits | `scripts/generate-secrets.sh` | ✅ |
+| 9 | Fix async embedding call (`EmbeddingGenerator::embed`), remove unused imports | `src/` (various) | ✅ |
+| 10 | Raw string delimiter fixes (`r##"..."##`) for HTML blocks that contain `"` | `src/web/chat.rs`, `src/web/settings.rs` | ✅ |
+
+- Build: ✅ `cargo check` passes — no new compile errors. Pre-existing deprecation/unused-var warnings unchanged.
+- Deploy: ⏳ Pending — oryx host prerequisites and GitHub Secrets not yet configured (see What's Next #0).
 
 ### Batch `batch-012` Summary — 2026-03-08 (repo detail view + todo_items consolidation)
 

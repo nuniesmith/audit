@@ -28,6 +28,7 @@ use tracing::{debug, warn};
 
 use crate::repo_cache_sql::RepoCacheSql;
 use crate::web_ui::WebAppState;
+use crate::web_ui_nav;
 
 // ============================================================================
 // Router
@@ -65,35 +66,7 @@ fn ts(utc_str: &str) -> String {
 }
 
 fn nav(active: &str) -> String {
-    let items = [
-        ("Dashboard", "/dashboard"),
-        ("Repos", "/repos"),
-        ("Scan Progress", "/scan/dashboard"),
-        ("Cache Viewer", "/cache"),
-        ("DB Explorer", "/db"),
-        ("Queue", "/queue"),
-        ("Ideas", "/ideas"),
-        ("Docs", "/docs"),
-        ("Activity", "/activity"),
-    ];
-    let links: String = items
-        .iter()
-        .map(|(label, href)| {
-            let class = if *label == active {
-                " class=\"active\""
-            } else {
-                ""
-            };
-            format!(r#"<a href="{href}"{class}>{label}</a>"#)
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        r#"{links}
-        {tz}"#,
-        links = links,
-        tz = crate::web_ui::timezone_selector_html()
-    )
+    web_ui_nav::nav(active)
 }
 
 fn timezone_js() -> &'static str {
