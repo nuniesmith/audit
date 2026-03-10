@@ -191,6 +191,25 @@ impl CostTracker {
 
     /// Initialize database schema
     async fn initialize_schema(&self) -> Result<()> {
+        // Acquire a session-level advisory lock so that concurrent test threads
+        // don't race on `CREATE TABLE IF NOT EXISTS` + `BIGSERIAL` sequence
+        // creation, which triggers a `pg_type_typname_nsp_index` unique-
+        // constraint violation inside Postgres.
+        sqlx::query("SELECT pg_advisory_lock(7483922)")
+            .execute(&self.pool)
+            .await
+            .context("Failed to acquire cost_tracker init lock")?;
+
+        let result = self.initialize_schema_inner().await;
+
+        let _ = sqlx::query("SELECT pg_advisory_unlock(7483922)")
+            .execute(&self.pool)
+            .await;
+
+        result
+    }
+
+    async fn initialize_schema_inner(&self) -> Result<()> {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS llm_costs (

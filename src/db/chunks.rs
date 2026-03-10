@@ -264,6 +264,26 @@ impl ChunkStore {
 
     /// Initialize all required tables and indexes
     async fn initialize_schema(&self) -> Result<()> {
+        // Acquire a session-level advisory lock so that concurrent test threads
+        // don't race on `CREATE TABLE IF NOT EXISTS` + `BIGSERIAL` sequence
+        // creation or `CREATE INDEX IF NOT EXISTS`, which triggers
+        // `pg_type_typname_nsp_index` / `pg_class_relname_nsp_index` unique-
+        // constraint violations inside Postgres.
+        sqlx::query("SELECT pg_advisory_lock(7483923)")
+            .execute(&self.pool)
+            .await
+            .context("Failed to acquire chunk_store init lock")?;
+
+        let result = self.initialize_schema_inner().await;
+
+        let _ = sqlx::query("SELECT pg_advisory_unlock(7483923)")
+            .execute(&self.pool)
+            .await;
+
+        result
+    }
+
+    async fn initialize_schema_inner(&self) -> Result<()> {
         // Code chunks table — content-addressable by hash
         sqlx::query(
             r#"

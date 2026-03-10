@@ -128,8 +128,8 @@ pub struct TenantUsage {
     pub document_count: i64,
     pub storage_mb: i64,
     pub searches_today: i64,
-    pub api_key_count: i32,
-    pub webhook_count: i32,
+    pub api_key_count: i64,
+    pub webhook_count: i64,
     pub last_updated: DateTime<Utc>,
 }
 
@@ -139,8 +139,8 @@ pub enum UsageMetric {
     Documents(i64),
     StorageMb(i64),
     Searches(i64),
-    ApiKeys(i32),
-    Webhooks(i32),
+    ApiKeys(i64),
+    Webhooks(i64),
 }
 
 /// Quota check result
@@ -171,6 +171,25 @@ impl TenantManager {
 
     /// Initialize database tables
     async fn init_tables(&self) -> Result<()> {
+        // Acquire a session-level advisory lock so that concurrent test threads
+        // don't race on `CREATE TABLE IF NOT EXISTS` + `BIGSERIAL` sequence
+        // creation, which triggers a `pg_type_typname_nsp_index` unique-
+        // constraint violation inside Postgres.
+        sqlx::query("SELECT pg_advisory_lock(7483921)")
+            .execute(&self.db_pool)
+            .await
+            .context("Failed to acquire multi_tenant init lock")?;
+
+        let result = self.init_tables_inner().await;
+
+        let _ = sqlx::query("SELECT pg_advisory_unlock(7483921)")
+            .execute(&self.db_pool)
+            .await;
+
+        result
+    }
+
+    async fn init_tables_inner(&self) -> Result<()> {
         // Organizations table
         sqlx::query(
             r#"
@@ -193,16 +212,18 @@ impl TenantManager {
         .await
         .context("Failed to create organizations table")?;
 
-        // Usage tracking table
+        // Usage tracking table — use BIGINT for all counters to match the i64
+        // Rust struct fields in TenantUsage; INTEGER (INT4) would cause a
+        // "mismatched types INT8 vs INT4" decode error at runtime.
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS tenant_usage (
                 tenant_id TEXT PRIMARY KEY,
-                document_count INTEGER NOT NULL DEFAULT 0,
-                storage_mb INTEGER NOT NULL DEFAULT 0,
-                searches_today INTEGER NOT NULL DEFAULT 0,
-                api_key_count INTEGER NOT NULL DEFAULT 0,
-                webhook_count INTEGER NOT NULL DEFAULT 0,
+                document_count BIGINT NOT NULL DEFAULT 0,
+                storage_mb BIGINT NOT NULL DEFAULT 0,
+                searches_today BIGINT NOT NULL DEFAULT 0,
+                api_key_count BIGINT NOT NULL DEFAULT 0,
+                webhook_count BIGINT NOT NULL DEFAULT 0,
                 last_updated TIMESTAMPTZ DEFAULT NOW(),
                 FOREIGN KEY (tenant_id) REFERENCES organizations(id) ON DELETE CASCADE
             )
@@ -212,16 +233,16 @@ impl TenantManager {
         .await
         .context("Failed to create tenant_usage table")?;
 
-        // Daily usage history
+        // Daily usage history — BIGINT for consistency with TenantUsage fields
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS tenant_usage_history (
                 id BIGSERIAL PRIMARY KEY,
                 tenant_id TEXT NOT NULL,
                 date DATE NOT NULL,
-                documents_created INTEGER NOT NULL DEFAULT 0,
-                searches_performed INTEGER NOT NULL DEFAULT 0,
-                storage_mb INTEGER NOT NULL DEFAULT 0,
+                documents_created BIGINT NOT NULL DEFAULT 0,
+                searches_performed BIGINT NOT NULL DEFAULT 0,
+                storage_mb BIGINT NOT NULL DEFAULT 0,
                 FOREIGN KEY (tenant_id) REFERENCES organizations(id) ON DELETE CASCADE,
                 UNIQUE(tenant_id, date)
             )
@@ -381,7 +402,9 @@ impl TenantManager {
 
     /// Get current usage for tenant
     pub async fn get_usage(&self, tenant_id: &str) -> Result<TenantUsage> {
-        let row = sqlx::query_as::<_, (i64, i64, i64, i32, i32, DateTime<Utc>)>(
+        // All counter columns are BIGINT (i64); api_key_count and webhook_count
+        // are stored as BIGINT too (schema changed from INTEGER to match Rust types).
+        let row = sqlx::query_as::<_, (i64, i64, i64, i64, i64, DateTime<Utc>)>(
             r#"
             SELECT document_count, storage_mb, searches_today, api_key_count, webhook_count, last_updated
             FROM tenant_usage
@@ -446,7 +469,7 @@ impl TenantManager {
                 }
             }
             QuotaType::ApiKeys => {
-                if usage.api_key_count >= tenant.quota.max_api_keys {
+                if usage.api_key_count >= tenant.quota.max_api_keys.into() {
                     return Err(anyhow!(
                         "API key quota exceeded ({}/{})",
                         usage.api_key_count,
@@ -455,7 +478,7 @@ impl TenantManager {
                 }
             }
             QuotaType::Webhooks => {
-                if usage.webhook_count >= tenant.quota.max_webhooks {
+                if usage.webhook_count >= tenant.quota.max_webhooks.into() {
                     return Err(anyhow!(
                         "Webhook quota exceeded ({}/{})",
                         usage.webhook_count,
@@ -474,8 +497,8 @@ impl TenantManager {
             UsageMetric::Documents(n) => ("document_count", n),
             UsageMetric::StorageMb(n) => ("storage_mb", n),
             UsageMetric::Searches(n) => ("searches_today", n),
-            UsageMetric::ApiKeys(n) => ("api_key_count", n as i64),
-            UsageMetric::Webhooks(n) => ("webhook_count", n as i64),
+            UsageMetric::ApiKeys(n) => ("api_key_count", n),
+            UsageMetric::Webhooks(n) => ("webhook_count", n),
         };
 
         let query = format!(
@@ -498,8 +521,8 @@ impl TenantManager {
             UsageMetric::Documents(n) => ("document_count", n),
             UsageMetric::StorageMb(n) => ("storage_mb", n),
             UsageMetric::Searches(n) => ("searches_today", n),
-            UsageMetric::ApiKeys(n) => ("api_key_count", n as i64),
-            UsageMetric::Webhooks(n) => ("webhook_count", n as i64),
+            UsageMetric::ApiKeys(n) => ("api_key_count", n),
+            UsageMetric::Webhooks(n) => ("webhook_count", n),
         };
 
         let query = format!(

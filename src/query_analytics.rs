@@ -346,8 +346,8 @@ impl QueryAnalytics {
             SELECT
                 query,
                 COUNT(*) as count,
-                AVG(execution_time_ms) as avg_time,
-                AVG(result_count) as avg_results,
+                AVG(execution_time_ms)::DOUBLE PRECISION as avg_time,
+                AVG(result_count)::DOUBLE PRECISION as avg_results,
                 MIN(timestamp) as first_seen,
                 MAX(timestamp) as last_seen
             FROM search_analytics
@@ -411,8 +411,8 @@ impl QueryAnalytics {
                 sa.query,
                 COUNT(*) as total_count,
                 COALESCE(recent.recent_count, 0) - COALESCE(older.older_count, 0) as trend,
-                AVG(sa.execution_time_ms) as avg_time,
-                AVG(sa.result_count) as avg_results,
+                AVG(sa.execution_time_ms)::DOUBLE PRECISION as avg_time,
+                AVG(sa.result_count)::DOUBLE PRECISION as avg_results,
                 MIN(sa.timestamp) as first_seen,
                 MAX(sa.timestamp) as last_seen
             FROM search_analytics sa
@@ -464,7 +464,7 @@ impl QueryAnalytics {
             SELECT
                 COUNT(*) as total_searches,
                 COUNT(DISTINCT query) as unique_queries,
-                AVG(result_count) as avg_results
+                AVG(result_count)::DOUBLE PRECISION as avg_results
             FROM search_analytics
             WHERE user_id = $1
             "#,
@@ -575,8 +575,8 @@ impl QueryAnalytics {
                 COUNT(*) as total_searches,
                 COUNT(DISTINCT query) as unique_queries,
                 COUNT(DISTINCT user_id) as unique_users,
-                AVG(execution_time_ms) as avg_time,
-                AVG(result_count) as avg_results
+                AVG(execution_time_ms)::DOUBLE PRECISION as avg_time,
+                AVG(result_count)::DOUBLE PRECISION as avg_results
             FROM search_analytics
             WHERE timestamp BETWEEN $1 AND $2
             "#,
