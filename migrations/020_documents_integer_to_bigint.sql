@@ -115,5 +115,63 @@ END
 $$;
 
 -- ============================================================================
+-- scan_checkpoints  (created by auto_scanner.rs / migration 010)
+-- ============================================================================
+-- auto_scanner.rs decodes last_completed_index, files_analyzed, files_cached,
+-- and total_files as i64, but migration 010 defined them as INTEGER (INT4).
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name   = 'scan_checkpoints'
+          AND column_name  = 'last_completed_index'
+          AND data_type    = 'integer'
+    ) THEN
+        ALTER TABLE scan_checkpoints
+            ALTER COLUMN last_completed_index TYPE BIGINT
+                USING last_completed_index::BIGINT;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name   = 'scan_checkpoints'
+          AND column_name  = 'files_analyzed'
+          AND data_type    = 'integer'
+    ) THEN
+        ALTER TABLE scan_checkpoints
+            ALTER COLUMN files_analyzed TYPE BIGINT
+                USING files_analyzed::BIGINT;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name   = 'scan_checkpoints'
+          AND column_name  = 'files_cached'
+          AND data_type    = 'integer'
+    ) THEN
+        ALTER TABLE scan_checkpoints
+            ALTER COLUMN files_cached TYPE BIGINT
+                USING files_cached::BIGINT;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name   = 'scan_checkpoints'
+          AND column_name  = 'total_files'
+          AND data_type    = 'integer'
+    ) THEN
+        ALTER TABLE scan_checkpoints
+            ALTER COLUMN total_files TYPE BIGINT
+                USING total_files::BIGINT;
+    END IF;
+END
+$$;
+
+-- ============================================================================
 -- Migration complete
 -- ============================================================================
