@@ -364,11 +364,7 @@ pub async fn get_tasks_by_status(
     Ok(tasks)
 }
 
-pub async fn update_task_status(
-    pool: &PgPool,
-    id: &str,
-    status: TaskStatus,
-) -> anyhow::Result<()> {
+pub async fn update_task_status(pool: &PgPool, id: &str, status: TaskStatus) -> anyhow::Result<()> {
     let status_str = format!("{:?}", status).to_lowercase();
     let now = chrono::Utc::now().timestamp();
 

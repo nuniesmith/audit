@@ -330,7 +330,10 @@ impl AuditResponse {
 
     /// Count findings by severity
     pub fn count_by_severity(&self, severity: AuditSeverity) -> usize {
-        self.findings.iter().filter(|f| f.severity == severity).count()
+        self.findings
+            .iter()
+            .filter(|f| f.severity == severity)
+            .count()
     }
 
     /// Return findings at or above the given severity, sorted Critical → Info
@@ -408,7 +411,10 @@ mod tests {
     #[test]
     fn test_severity_from_str() {
         use std::str::FromStr;
-        assert_eq!(AuditSeverity::from_str("critical"), Ok(AuditSeverity::Critical));
+        assert_eq!(
+            AuditSeverity::from_str("critical"),
+            Ok(AuditSeverity::Critical)
+        );
         assert_eq!(AuditSeverity::from_str("HIGH"), Ok(AuditSeverity::High));
         assert_eq!(AuditSeverity::from_str("unknown"), Err(()));
     }

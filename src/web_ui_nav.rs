@@ -32,35 +32,85 @@ const NAV_GROUPS: &[NavGroup] = &[
     NavGroup {
         label: "Core",
         items: &[
-            NavItem { label: "Dashboard", href: "/dashboard", icon: "📊" },
-            NavItem { label: "Repositories", href: "/repos", icon: "📦" },
-            NavItem { label: "Tasks", href: "/queue", icon: "✅" },
-            NavItem { label: "Activity", href: "/activity", icon: "⚡" },
+            NavItem {
+                label: "Dashboard",
+                href: "/dashboard",
+                icon: "📊",
+            },
+            NavItem {
+                label: "Repositories",
+                href: "/repos",
+                icon: "📦",
+            },
+            NavItem {
+                label: "Tasks",
+                href: "/queue",
+                icon: "✅",
+            },
+            NavItem {
+                label: "Activity",
+                href: "/activity",
+                icon: "⚡",
+            },
         ],
     },
     NavGroup {
         label: "Content",
         items: &[
-            NavItem { label: "Ideas", href: "/ideas", icon: "💡" },
-            NavItem { label: "Docs", href: "/docs", icon: "📄" },
-            NavItem { label: "Notes", href: "/notes", icon: "📝" },
-            NavItem { label: "Chat", href: "/chat", icon: "💬" },
+            NavItem {
+                label: "Ideas",
+                href: "/ideas",
+                icon: "💡",
+            },
+            NavItem {
+                label: "Docs",
+                href: "/docs",
+                icon: "📄",
+            },
+            NavItem {
+                label: "Notes",
+                href: "/notes",
+                icon: "📝",
+            },
+            NavItem {
+                label: "Chat",
+                href: "/chat",
+                icon: "💬",
+            },
         ],
     },
     NavGroup {
         label: "DevOps",
         items: &[
-            NavItem { label: "Scanner", href: "/scanner", icon: "🔍" },
-            NavItem { label: "Scan Progress", href: "/scan/dashboard", icon: "📈" },
-            NavItem { label: "Cache", href: "/cache", icon: "🗄️" },
-            NavItem { label: "DB Explorer", href: "/db", icon: "🛢️" },
+            NavItem {
+                label: "Scanner",
+                href: "/scanner",
+                icon: "🔍",
+            },
+            NavItem {
+                label: "Scan Progress",
+                href: "/scan/dashboard",
+                icon: "📈",
+            },
+            NavItem {
+                label: "Cache",
+                href: "/cache",
+                icon: "🗄️",
+            },
+            NavItem {
+                label: "DB Explorer",
+                href: "/db",
+                icon: "🛢️",
+            },
         ],
     },
     NavGroup {
         label: "System",
-        items: &[
-            NavItem { label: "Settings", href: "/settings", icon: "⚙️" },
-        ],
+        items: &[NavItem {
+            label: "Settings",
+            href: "/settings",
+            icon: "⚙️",
+        }],
     },
 ];
 

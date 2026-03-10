@@ -204,11 +204,7 @@ impl DocumentIndexer {
     /// 3. Generate embeddings for chunks
     /// 4. Store chunks and embeddings
     /// 5. Mark document as indexed
-    pub async fn index_document(
-        &self,
-        pool: &PgPool,
-        document_id: &str,
-    ) -> Result<IndexingResult> {
+    pub async fn index_document(&self, pool: &PgPool, document_id: &str) -> Result<IndexingResult> {
         tracing::info!("Starting indexing for document: {}", document_id);
 
         // Stage 1: Load document

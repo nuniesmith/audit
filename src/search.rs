@@ -38,7 +38,7 @@
 use crate::embeddings::{Embedding, EmbeddingGenerator};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sqlx::{Row, PgPool};
+use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -233,11 +233,7 @@ impl SemanticSearcher {
     }
 
     /// Perform semantic search
-    pub async fn search(
-        &self,
-        pool: &PgPool,
-        query: &SearchQuery,
-    ) -> Result<Vec<SearchResult>> {
+    pub async fn search(&self, pool: &PgPool, query: &SearchQuery) -> Result<Vec<SearchResult>> {
         // Determine top_k
         let top_k = if query.top_k == 0 {
             self.config.default_top_k
