@@ -616,7 +616,7 @@ async fn handle_todo_scan(
         // Re-use the full ScanOutput serialisation but only emit the filtered items
         let filtered_output = rustassistant::todo::ScanOutput {
             repo_path: scan_output.repo_path.clone(),
-            scanned_at: scan_output.scanned_at.clone(),
+            scanned_at: scan_output.scanned_at,
             total_files_scanned: scan_output.total_files_scanned,
             items: filtered_items.iter().map(|i| (*i).clone()).collect(),
             summary: scan_output.summary.clone(),
@@ -830,6 +830,7 @@ async fn handle_todo_plan(
 // todo work
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_todo_work(
     gameplan: String,
     batch: Option<String>,

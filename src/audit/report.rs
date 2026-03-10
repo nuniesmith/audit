@@ -569,8 +569,10 @@ mod tests {
 
     #[test]
     fn test_render_both_contains_both() {
-        let mut cfg = ReportConfig::default();
-        cfg.format = ReportFormat::Both;
+        let cfg = ReportConfig {
+            format: ReportFormat::Both,
+            ..ReportConfig::default()
+        };
         let report = AuditReport::with_config(sample_response(), cfg);
         let output = report.render().unwrap();
         assert!(output.contains("# Audit Report"));
@@ -580,8 +582,10 @@ mod tests {
 
     #[test]
     fn test_min_severity_filter() {
-        let mut cfg = ReportConfig::default();
-        cfg.min_severity = AuditSeverity::High;
+        let cfg = ReportConfig {
+            min_severity: AuditSeverity::High,
+            ..ReportConfig::default()
+        };
         let report = AuditReport::with_config(sample_response(), cfg);
 
         let findings = report.filtered_findings();
@@ -592,8 +596,10 @@ mod tests {
 
     #[test]
     fn test_max_findings_cap() {
-        let mut cfg = ReportConfig::default();
-        cfg.max_findings = 1;
+        let cfg = ReportConfig {
+            max_findings: 1,
+            ..ReportConfig::default()
+        };
         let report = AuditReport::with_config(sample_response(), cfg);
 
         let findings = report.filtered_findings();
@@ -623,8 +629,10 @@ mod tests {
 
     #[test]
     fn test_group_by_file_renders_file_headers() {
-        let mut cfg = ReportConfig::default();
-        cfg.group_by_file = true;
+        let cfg = ReportConfig {
+            group_by_file: true,
+            ..ReportConfig::default()
+        };
         let report = AuditReport::with_config(sample_response(), cfg);
         let md = report.render_markdown().unwrap();
 

@@ -910,7 +910,7 @@ async fn get_embedding_count(state: &WebAppState) -> i64 {
     )
     .fetch_one(&state.db.pool)
     .await
-    .and_then(|exists: i64| if exists > 0 { Ok(exists) } else { Ok(0) })
+    .map(|exists: i64| if exists > 0 { exists } else { 0 })
     .unwrap_or(0)
 }
 

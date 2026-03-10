@@ -282,7 +282,7 @@ async fn list_jobs(
     let limit = params.limit.unwrap_or(50).min(200);
 
     // Build query dynamically based on optional status filter.
-    let rows: Vec<(
+    type JobRow = (
         String,
         String,
         String,
@@ -291,7 +291,8 @@ async fn list_jobs(
         Option<String>,
         Option<String>,
         i64,
-    )> = if let Some(ref status) = params.status {
+    );
+    let rows: Vec<JobRow> = if let Some(ref status) = params.status {
         sqlx::query_as(
             "SELECT id, document_id, status, progress, \
              started_at, completed_at, error, chunks_processed \

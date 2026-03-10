@@ -380,8 +380,7 @@ async fn persist_audit_result(
 ) -> Result<(), std::io::Error> {
     tokio::fs::create_dir_all(output_dir).await?;
     let path = output_dir.join(format!("{}.json", response.id));
-    let json = serde_json::to_string_pretty(response)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let json = serde_json::to_string_pretty(response).map_err(std::io::Error::other)?;
     tokio::fs::write(path, json).await
 }
 

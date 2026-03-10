@@ -16,7 +16,7 @@ enum CargoTestEvent {
     /// A single test result.
     Test(CargoTestEventTest),
     /// Suite-level summary emitted at the end.
-    Suite(CargoTestEventSuite),
+    Suite(#[allow(dead_code)] CargoTestEventSuite),
 }
 
 #[derive(Debug, Deserialize)]
@@ -24,6 +24,7 @@ struct CargoTestEventTest {
     event: String, // "started" | "ok" | "failed" | "ignored"
     name: String,
     #[serde(default)]
+    #[allow(dead_code)]
     stdout: Option<String>,
 }
 
@@ -558,7 +559,7 @@ impl TestRunner {
             // or just:       "tests/test_foo.py::test_function"
             let file_key = test
                 .nodeid
-                .splitn(2, "::")
+                .split("::")
                 .next()
                 .unwrap_or(&test.nodeid)
                 .to_string();

@@ -460,8 +460,10 @@ mod tests {
 
     #[test]
     fn force_remote_overrides() {
-        let mut config = ModelRouterConfig::default();
-        config.force_remote = true;
+        let config = ModelRouterConfig {
+            force_remote: true,
+            ..ModelRouterConfig::default()
+        };
         let r = ModelRouter::new(config);
         let (_, target) = r.route_prompt("generate a stub");
         assert!(matches!(target, ModelTarget::Remote { .. }));

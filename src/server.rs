@@ -46,6 +46,7 @@ use tracing::{info, warn};
 pub struct AppState {
     config: Arc<Config>,
     pub(crate) git_manager: Arc<GitManager>,
+    #[allow(dead_code)]
     llm_client: Option<Arc<LlmClient>>,
     pub(crate) db_pool: PgPool,
 }

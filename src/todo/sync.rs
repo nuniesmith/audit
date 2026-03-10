@@ -242,13 +242,15 @@ pub struct TodoSyncer {
     config: SyncConfig,
 }
 
+impl Default for TodoSyncer {
+    fn default() -> Self {
+        Self::new(SyncConfig::default())
+    }
+}
+
 impl TodoSyncer {
     pub fn new(config: SyncConfig) -> Self {
         Self { config }
-    }
-
-    pub fn default() -> Self {
-        Self::new(SyncConfig::default())
     }
 
     // -----------------------------------------------------------------------

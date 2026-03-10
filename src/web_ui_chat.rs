@@ -791,16 +791,16 @@ fn simple_markdown_to_html(text: &str) -> String {
         }
 
         // Headers
-        if trimmed.starts_with("### ") {
-            result.push_str(&format!("<h4>{}</h4>\n", &trimmed[4..]));
+        if let Some(h) = trimmed.strip_prefix("### ") {
+            result.push_str(&format!("<h4>{}</h4>\n", h));
             continue;
         }
-        if trimmed.starts_with("## ") {
-            result.push_str(&format!("<h3>{}</h3>\n", &trimmed[3..]));
+        if let Some(h) = trimmed.strip_prefix("## ") {
+            result.push_str(&format!("<h3>{}</h3>\n", h));
             continue;
         }
-        if trimmed.starts_with("# ") {
-            result.push_str(&format!("<h3>{}</h3>\n", &trimmed[2..]));
+        if let Some(h) = trimmed.strip_prefix("# ") {
+            result.push_str(&format!("<h3>{}</h3>\n", h));
             continue;
         }
 

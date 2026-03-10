@@ -795,7 +795,7 @@ pub async fn list_ideas(
     }
     q = q.bind(limit);
 
-    Ok(q.fetch_all(pool).await.map_err(DbError::Sqlx)?)
+    q.fetch_all(pool).await.map_err(DbError::Sqlx)
 }
 
 /// Update idea status
@@ -849,7 +849,7 @@ pub struct Tag {
 
 /// List tags ordered by usage count
 pub async fn list_tags(pool: &PgPool, limit: i64) -> DbResult<Vec<Tag>> {
-    Ok(sqlx::query_as::<_, Tag>(
+    sqlx::query_as::<_, Tag>(
         "SELECT name, color, description, usage_count, created_at, updated_at
          FROM tags
          ORDER BY usage_count DESC
@@ -858,13 +858,13 @@ pub async fn list_tags(pool: &PgPool, limit: i64) -> DbResult<Vec<Tag>> {
     .bind(limit)
     .fetch_all(pool)
     .await
-    .map_err(DbError::Sqlx)?)
+    .map_err(DbError::Sqlx)
 }
 
 /// Search tags by name
 pub async fn search_tags(pool: &PgPool, query: &str) -> DbResult<Vec<Tag>> {
     let pattern = format!("%{}%", query);
-    Ok(sqlx::query_as::<_, Tag>(
+    sqlx::query_as::<_, Tag>(
         "SELECT name, color, description, usage_count, created_at, updated_at
          FROM tags
          WHERE name ILIKE $1
@@ -874,7 +874,7 @@ pub async fn search_tags(pool: &PgPool, query: &str) -> DbResult<Vec<Tag>> {
     .bind(&pattern)
     .fetch_all(pool)
     .await
-    .map_err(DbError::Sqlx)?)
+    .map_err(DbError::Sqlx)
 }
 
 // ============================================================================

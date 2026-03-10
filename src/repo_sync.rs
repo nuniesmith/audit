@@ -918,10 +918,8 @@ fn parse_todo_line(line: &str, file: &str, line_num: usize) -> Option<TodoItem> 
                 let tag_space = format!("{} ", tag);
                 let msg = if let Some(m) = rest.strip_prefix(&tag_colon) {
                     Some(m.trim().to_string())
-                } else if let Some(m) = rest.strip_prefix(&tag_space) {
-                    Some(m.trim().to_string())
                 } else {
-                    None
+                    rest.strip_prefix(&tag_space).map(|m| m.trim().to_string())
                 };
                 if let Some(message) = msg {
                     return Some(TodoItem {

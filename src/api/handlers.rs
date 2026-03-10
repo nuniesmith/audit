@@ -226,7 +226,7 @@ pub async fn upload_document(
     .bind(&req.content)
     .bind(&content_type)
     .bind(&tags_json)
-    .bind(&req.repo_id)
+    .bind(req.repo_id)
     .bind(&req.source_type)
     .bind(&req.source_url)
     .execute(&state.db_pool)

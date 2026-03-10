@@ -297,7 +297,7 @@ impl TodoFile {
     /// Load and parse a `todo.md` from disk
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
-        let content = fs::read_to_string(&path).map_err(|e| AuditError::Io(e))?;
+        let content = fs::read_to_string(&path).map_err(AuditError::Io)?;
         let mut file = Self::parse(&content);
         file.path = path;
         Ok(file)
@@ -434,10 +434,10 @@ impl TodoFile {
         };
 
         // Extract optional title from `**title** — …`
-        let (title, body_text) = if text_raw.starts_with("**") {
-            if let Some(end) = text_raw[2..].find("**") {
-                let t = text_raw[2..end + 2].to_string();
-                let after = text_raw[end + 4..]
+        let (title, body_text) = if let Some(stripped) = text_raw.strip_prefix("**") {
+            if let Some(end) = stripped.find("**") {
+                let t = stripped[..end].to_string();
+                let after = stripped[end + 2..]
                     .trim_start_matches(" —")
                     .trim()
                     .to_string();

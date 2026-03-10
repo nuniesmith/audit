@@ -207,18 +207,13 @@ pub struct FileAnalysis {
 // TODO Item (Extracted from Code) — DEPRECATED
 // ============================================================================
 
-/// **Deprecated.** TODO comments are now written directly to the `tasks` table
+/// TODO comments are now written directly to the `tasks` table
 /// by `scanner/github.rs` (source = `"github_scanner"`) and the queue processor
 /// (source = `"queue_processor"`). The `todo_items` table was dropped by
 /// migration `017_drop_todo_items.sql`.
 ///
 /// This struct is kept here only so that existing call-sites that reference
-/// `db::queue::TodoItem` continue to compile. Do not add new usages.
-#[deprecated(
-    since = "0.2.0",
-    note = "Use db::core::Task / db::core::create_task instead. \
-            The todo_items table was dropped in migration 017."
-)]
+/// `db::queue::TodoItem` continue to compile. Prefer `db::core::Task` for new code.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TodoItem {
     pub id: String,

@@ -911,7 +911,7 @@ creating all the door frames before hanging any doors.
         &self,
         entry: &ScaffoldEntry,
         abs_path: &Path,
-        repo_root: &Path,
+        _repo_root: &Path,
         result: &mut ScaffoldResult,
     ) {
         let already_exists = abs_path.exists();
@@ -1245,7 +1245,7 @@ fn inject_mod_declaration(existing: &str, declaration: &str) -> String {
             t.starts_with("pub mod ") || t.starts_with("mod ")
         })
         .map(|(i, _)| i)
-        .last();
+        .next_back();
 
     let insert_at = match last_mod_idx {
         Some(idx) => idx + 1,
@@ -1256,7 +1256,7 @@ fn inject_mod_declaration(existing: &str, declaration: &str) -> String {
                 .enumerate()
                 .filter(|(_, l)| l.trim_start().starts_with("//!"))
                 .map(|(i, _)| i)
-                .last();
+                .next_back();
             match last_doc {
                 Some(idx) => idx + 1,
                 None => 0,
@@ -1492,7 +1492,7 @@ mod tests {
         )
         .unwrap();
 
-        let plan = ScaffoldPlan {
+        let _plan = ScaffoldPlan {
             generated_at: Utc::now(),
             model: "test".to_string(),
             entries: vec![

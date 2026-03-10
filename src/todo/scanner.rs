@@ -805,7 +805,7 @@ fn bar() {}
 // TODO: three
 fn x() {}
 "#;
-        let (dir, path) = write_temp("multi.rs", src);
+        let (dir, _path) = write_temp("multi.rs", src);
         let scanner = TodoCommentScanner::new().unwrap();
         let output = scanner.scan_repo(dir.path()).unwrap();
 
@@ -830,7 +830,7 @@ fn x() {}
     #[test]
     fn test_json_round_trip() {
         let src = "// TODO: serialise me\n";
-        let (dir, path) = write_temp("serial.rs", src);
+        let (dir, _path) = write_temp("serial.rs", src);
         let scanner = TodoCommentScanner::new().unwrap();
         let output = scanner.scan_repo(dir.path()).unwrap();
 

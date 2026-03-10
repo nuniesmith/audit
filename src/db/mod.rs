@@ -31,7 +31,7 @@ pub use core::*;
 // Re-export queue types and functions
 pub use queue::{
     create_queue_tables, FileAnalysis, QueueItem, QueuePriority, QueueSource, QueueStage,
-    RepoCache, TodoItem, GITHUB_USERNAME,
+    RepoCache, GITHUB_USERNAME,
 };
 
 // Re-export document types and functions

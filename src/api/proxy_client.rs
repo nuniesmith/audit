@@ -601,6 +601,7 @@ impl ProxyClient {
 
     // ── RustAssistant call ────────────────────────────────────────────────────
 
+    #[allow(clippy::too_many_arguments)]
     async fn try_rustassistant(
         &self,
         messages: &[ChatMessage],
@@ -689,8 +690,8 @@ impl ProxyClient {
             total_tokens: usage.total_tokens,
             prompt_tokens: usage.prompt_tokens,
             completion_tokens: usage.completion_tokens,
-            used_internal_fallback: meta.as_ref().map_or(false, |m| m.used_fallback),
-            cached: meta.as_ref().map_or(false, |m| m.cached),
+            used_internal_fallback: meta.as_ref().is_some_and(|m| m.used_fallback),
+            cached: meta.as_ref().is_some_and(|m| m.cached),
             task_kind: meta
                 .as_ref()
                 .map_or_else(String::new, |m| m.task_kind.clone()),

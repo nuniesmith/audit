@@ -160,7 +160,7 @@ impl From<Repository> for RepoItem {
             git_url: repo.git_url,
             status: repo.status,
             auto_scan_enabled: repo.auto_scan_enabled != 0,
-            scan_interval_minutes: repo.scan_interval_minutes as i32,
+            scan_interval_minutes: repo.scan_interval_minutes,
             last_scan_check: repo.last_scan_check.map(|ts| {
                 chrono::DateTime::from_timestamp(ts, 0)
                     .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())

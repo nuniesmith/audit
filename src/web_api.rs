@@ -156,7 +156,7 @@ struct HealthResponse {
     grok_available: bool,
 }
 
-async fn handle_health(State(state): State<WebState>) -> impl IntoResponse {
+async fn handle_health(State(_state): State<WebState>) -> impl IntoResponse {
     let grok_available = std::env::var("XAI_API_KEY")
         .or_else(|_| std::env::var("GROK_API_KEY"))
         .is_ok();
@@ -548,7 +548,7 @@ async fn handle_dispatch(
     };
 
     let repo_path = PathBuf::from(&repo.path);
-    let mut job = JobRecord::new(&format!("{:?}", req.step).to_lowercase(), &req.repo_id);
+    let job = JobRecord::new(&format!("{:?}", req.step).to_lowercase(), &req.repo_id);
     let job_id = job.id.clone();
 
     // Insert job as queued
@@ -711,20 +711,23 @@ impl SseEvent {
 // ============================================================================
 
 /// Fire-and-forget version — collects logs and returns them
-fn run_pipeline_step<'a>(
-    state: &'a WebState,
-    repo_path: &'a PathBuf,
-    req: &'a DispatchRequest,
-) -> std::pin::Pin<
+type PipelineStepFuture<'a> = std::pin::Pin<
     Box<
         dyn std::future::Future<Output = Result<(Vec<String>, Option<serde_json::Value>)>>
             + Send
             + 'a,
     >,
-> {
+>;
+
+fn run_pipeline_step<'a>(
+    state: &'a WebState,
+    repo_path: &'a PathBuf,
+    req: &'a DispatchRequest,
+) -> PipelineStepFuture<'a> {
     Box::pin(async move {
         let db = Database::from_pool(state.pool.clone());
         let mut log: Vec<String> = Vec::new();
+        #[allow(unused_assignments)]
         let mut result_json: Option<serde_json::Value> = None;
 
         match req.step {
@@ -887,7 +890,7 @@ fn run_pipeline_step<'a>(
                     dry_run: req.dry_run,
                     overwrite: req.overwrite,
                 };
-                let (scan_log, scan_json) = run_pipeline_step(state, repo_path, &scan_req).await?;
+                let (scan_log, _scan_json) = run_pipeline_step(state, repo_path, &scan_req).await?;
                 log.extend(scan_log);
 
                 // Scaffold
@@ -1498,7 +1501,7 @@ fn api_error(status: StatusCode, msg: &str) -> Response {
     (status, Json(serde_json::json!({ "error": msg }))).into_response()
 }
 
-fn resolve_todo_md(repo_path: &PathBuf) -> Result<PathBuf> {
+fn resolve_todo_md(repo_path: &std::path::Path) -> Result<PathBuf> {
     if repo_path.join("todo.md").exists() {
         Ok(repo_path.join("todo.md"))
     } else if repo_path.join("TODO.md").exists() {
@@ -1514,7 +1517,7 @@ fn resolve_todo_md(repo_path: &PathBuf) -> Result<PathBuf> {
 fn infer_repo_name(url: &str) -> String {
     url.trim_end_matches('/')
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or("unknown")
         .trim_end_matches(".git")
         .to_string()

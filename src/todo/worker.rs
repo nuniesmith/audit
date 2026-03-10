@@ -315,6 +315,7 @@ struct LlmFileChange {
     #[serde(default = "default_op")]
     operation: String,
     /// Brief explanation of the change
+    #[allow(dead_code)]
     explanation: Option<String>,
 }
 
@@ -336,6 +337,7 @@ struct LlmHunk {
 struct LlmCodeResponse {
     changes: Vec<LlmFileChange>,
     #[serde(default)]
+    #[allow(dead_code)]
     summary: String,
 }
 
@@ -717,7 +719,7 @@ impl TodoWorker {
 
         match op {
             "delete" => self.apply_delete(&abs_path, change),
-            "create" | "modify" | _ => {
+            _ => {
                 if let Some(new_content) = &change.new_content {
                     self.apply_full_replace(&abs_path, change, new_content)
                 } else if let Some(hunks) = &change.hunks {
@@ -919,7 +921,7 @@ impl TodoWorker {
         let rel = abs_path
             .strip_prefix(&self.config.repo_root)
             .unwrap_or(abs_path);
-        let flat = rel.to_string_lossy().replace('/', "_").replace('\\', "_");
+        let flat = rel.to_string_lossy().replace(['/', '\\'], "_");
         let backup_path = self.config.backup_dir.join(format!("{}.bak", flat));
 
         if let Some(parent) = backup_path.parent() {

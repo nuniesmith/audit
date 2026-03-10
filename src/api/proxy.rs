@@ -287,19 +287,6 @@ impl OaiError {
             }),
         )
     }
-
-    fn internal(msg: impl Into<String>) -> (StatusCode, Json<Self>) {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(Self {
-                error: OaiErrorDetail {
-                    message: msg.into(),
-                    r#type: "server_error".to_string(),
-                    code: Some("internal_error".to_string()),
-                },
-            }),
-        )
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -973,7 +960,7 @@ mod tests {
     #[test]
     fn proxy_state_auth_rejects_wrong_key() {
         let good_key = "super-secret-key";
-        let hashes = vec![hash_key(good_key)];
+        let hashes = [hash_key(good_key)];
         let provided = hash_key("wrong-key");
         assert!(!hashes.contains(&provided));
     }
@@ -981,7 +968,7 @@ mod tests {
     #[test]
     fn proxy_state_auth_accepts_correct_key() {
         let good_key = "super-secret-key";
-        let hashes = vec![hash_key(good_key)];
+        let hashes = [hash_key(good_key)];
         let provided = hash_key(good_key);
         assert!(hashes.contains(&provided));
     }
