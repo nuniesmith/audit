@@ -611,6 +611,15 @@ async fn test_invalid_json() {
 #[tokio::test]
 async fn test_pagination() {
     let (pool, api_key) = setup_test_env().await;
+
+    // Clean up any documents left over from other tests so we get a precise count.
+    // Child rows in document_chunks, document_tags, and document_embeddings are
+    // removed automatically via ON DELETE CASCADE foreign keys.
+    sqlx::query("DELETE FROM documents")
+        .execute(&pool)
+        .await
+        .expect("Failed to clean documents");
+
     let base_url = create_test_server(pool, api_key.clone()).await;
 
     let client = reqwest::Client::new();
