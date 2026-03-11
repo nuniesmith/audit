@@ -64,114 +64,68 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn nav(active: &str) -> String {
-    web_ui_nav::nav(active)
-}
-
-fn page_shell(title: &str, nav_active: &str, content: &str) -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title} — RustAssistant</title>
-<script src="https://unpkg.com/htmx.org@1.9.10"></script>
-<style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: #0f172a; color: #e2e8f0; line-height: 1.6; }}
-    .container {{ max-width: 1400px; margin: 0 auto; padding: 1rem 2rem; }}
-    nav {{ display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
-        padding: 1rem 0; border-bottom: 1px solid #1e293b; margin-bottom: 1.5rem; }}
-    nav a {{ color: #94a3b8; text-decoration: none; padding: 0.4rem 0.8rem;
-        border-radius: 6px; font-size: 0.9rem; }}
-    nav a:hover {{ color: #e2e8f0; background: #1e293b; }}
-    nav a.active {{ color: #0ea5e9; background: #0c2d4a; font-weight: 600; }}
-    h2 {{ font-size: 1.4rem; margin-bottom: 1rem; color: #f1f5f9; }}
-    h3 {{ font-size: 1.1rem; margin-bottom: 0.75rem; color: #94a3b8; }}
-    .card {{ background: #1e293b; border-radius: 8px; border: 1px solid #334155;
-        padding: 1.25rem; margin-bottom: 1rem; }}
-    .btn {{ padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer;
-        font-size: 0.85rem; font-weight: 500; text-decoration: none; display: inline-block;
-        transition: all 0.2s; }}
-    .btn-primary {{ background: #0ea5e9; color: white; }}
-    .btn-primary:hover {{ background: #0284c7; }}
-    .btn-sm {{ padding: 0.3rem 0.6rem; font-size: 0.8rem; }}
+const DB_EXPLORER_STYLES: &str = r#"<style>
+    /* DB Explorer — extra styles (augments page_shell base styles) */
 
     /* Tables */
-    table {{ width: 100%; border-collapse: collapse; font-size: 0.85rem; }}
-    th {{ text-align: left; padding: 0.6rem 0.75rem; background: #0f172a;
-        border-bottom: 2px solid #334155; font-weight: 600; color: #94a3b8;
-        font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;
-        position: sticky; top: 0; }}
-    td {{ padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e293b;
-        max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    tr:hover {{ background: #1e293b; }}
-    td.null {{ color: #475569; font-style: italic; }}
+    td { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    td.null { color: #475569; font-style: italic; }
+    th { position: sticky; top: 0; }
 
     /* Query editor */
-    textarea {{ width: 100%; min-height: 120px; background: #0f172a; color: #e2e8f0;
+    textarea { width: 100%; min-height: 120px; background: #0f172a; color: #e2e8f0;
         border: 1px solid #334155; border-radius: 6px; padding: 0.75rem;
         font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.9rem;
-        resize: vertical; }}
-    textarea:focus {{ outline: none; border-color: #0ea5e9; }}
+        resize: vertical; }
+    textarea:focus { outline: none; border-color: #0ea5e9; }
 
     /* Stats grid */
-    .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem; margin-bottom: 1.5rem; }}
-    .stat {{ background: #1e293b; border-radius: 8px; border: 1px solid #334155;
-        padding: 1rem; text-align: center; }}
-    .stat-value {{ font-size: 1.8rem; font-weight: 700; color: #0ea5e9; }}
-    .stat-label {{ font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem; }}
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem; margin-bottom: 1.5rem; }
+    .stat { background: #1e293b; border-radius: 8px; border: 1px solid #334155;
+        padding: 1rem; text-align: center; }
+    .stat-value { font-size: 1.8rem; font-weight: 700; color: #0ea5e9; }
+    .stat-label { font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem; }
 
     /* Table list */
-    .table-item {{ display: flex; justify-content: space-between; align-items: center;
-        padding: 0.75rem 1rem; border-bottom: 1px solid #1e293b; }}
-    .table-item:last-child {{ border-bottom: none; }}
-    .table-item:hover {{ background: #0f172a; }}
-    .table-name {{ font-weight: 600; color: #e2e8f0; }}
-    .table-name a {{ color: #0ea5e9; text-decoration: none; }}
-    .table-name a:hover {{ text-decoration: underline; }}
-    .table-meta {{ display: flex; gap: 1rem; font-size: 0.8rem; color: #64748b; }}
-    .table-badge {{ background: #0c2d4a; color: #38bdf8; padding: 0.15rem 0.5rem;
-        border-radius: 4px; font-size: 0.75rem; }}
-    .view-badge {{ background: #1a2e05; color: #84cc16; }}
+    .table-item { display: flex; justify-content: space-between; align-items: center;
+        padding: 0.75rem 1rem; border-bottom: 1px solid #1e293b; }
+    .table-item:last-child { border-bottom: none; }
+    .table-item:hover { background: #0f172a; }
+    .table-name { font-weight: 600; color: #e2e8f0; }
+    .table-name a { color: #0ea5e9; text-decoration: none; }
+    .table-name a:hover { text-decoration: underline; }
+    .table-meta { display: flex; gap: 1rem; font-size: 0.8rem; color: #64748b; }
+    .table-badge { background: #0c2d4a; color: #38bdf8; padding: 0.15rem 0.5rem;
+        border-radius: 4px; font-size: 0.75rem; }
+    .view-badge { background: #1a2e05; color: #84cc16; }
 
     /* Pagination */
-    .pagination {{ display: flex; gap: 0.5rem; align-items: center; margin-top: 1rem;
-        justify-content: center; }}
-    .pagination a {{ color: #94a3b8; text-decoration: none; padding: 0.4rem 0.8rem;
-        border-radius: 4px; border: 1px solid #334155; }}
-    .pagination a:hover {{ background: #1e293b; color: #e2e8f0; }}
-    .pagination .current {{ background: #0ea5e9; color: white; padding: 0.4rem 0.8rem;
-        border-radius: 4px; }}
+    .pagination { display: flex; gap: 0.5rem; align-items: center; margin-top: 1rem;
+        justify-content: center; }
+    .pagination a { color: #94a3b8; text-decoration: none; padding: 0.4rem 0.8rem;
+        border-radius: 4px; border: 1px solid #334155; }
+    .pagination a:hover { background: #1e293b; color: #e2e8f0; }
+    .pagination .current { background: #0ea5e9; color: white; padding: 0.4rem 0.8rem;
+        border-radius: 4px; }
 
     /* Schema */
-    .schema-col {{ display: grid; grid-template-columns: 2fr 1.5fr 0.5fr 0.5fr 1fr;
-        gap: 0.5rem; padding: 0.4rem 0; font-size: 0.85rem; border-bottom: 1px solid #1e293b; }}
-    .schema-col.header {{ color: #64748b; font-weight: 600; font-size: 0.75rem;
-        text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #334155; }}
-    .pk {{ color: #fbbf24; }}
-    .notnull {{ color: #f87171; font-size: 0.75rem; }}
+    .schema-col { display: grid; grid-template-columns: 2fr 1.5fr 0.5fr 0.5fr 1fr;
+        gap: 0.5rem; padding: 0.4rem 0; font-size: 0.85rem; border-bottom: 1px solid #1e293b; }
+    .schema-col.header { color: #64748b; font-weight: 600; font-size: 0.75rem;
+        text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #334155; }
+    .pk { color: #fbbf24; }
+    .notnull { color: #f87171; font-size: 0.75rem; }
 
     /* Breadcrumbs */
-    .breadcrumb {{ font-size: 0.85rem; margin-bottom: 1rem; color: #64748b; }}
-    .breadcrumb a {{ color: #0ea5e9; text-decoration: none; }}
-    .breadcrumb a:hover {{ text-decoration: underline; }}
-</style>
-</head>
-<body>
-<div class="container">
-    {nav}
-    {content}
-</div>
-</body>
-</html>"#,
-        title = title,
-        nav = nav(nav_active),
-        content = content,
-    )
+    .breadcrumb { font-size: 0.85rem; margin-bottom: 1rem; color: #64748b; }
+    .breadcrumb a { color: #0ea5e9; text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+</style>"#;
+
+fn page_shell(title: &str, nav_active: &str, content: &str) -> String {
+    web_ui_nav::page_shell(title, nav_active, DB_EXPLORER_STYLES, content)
 }
 
 // ============================================================================

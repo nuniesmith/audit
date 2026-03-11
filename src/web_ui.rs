@@ -392,183 +392,99 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
             .join("\n")
     };
 
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Repositories - RustAssistant</title>
-    {tz_js}
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 2rem; }}
-        header {{ background: #1e293b; padding: 1.5rem; margin-bottom: 2rem; border-radius: 8px; }}
-        h1 {{ color: #38bdf8; font-size: 2rem; margin-bottom: 0.5rem; }}
-        nav {{ display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }}
-        nav a {{ background: #334155; color: #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; transition: all 0.3s; }}
-        nav a:hover {{ background: #475569; }}
-        nav a.active {{ background: #0ea5e9; color: white; }}
-        .page-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }}
-        .page-header h2 {{ color: #e2e8f0; }}
-        .repo-card {{ background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }}
-        .repo-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }}
-        .repo-header h3 {{ color: #38bdf8; font-size: 1.3rem; }}
-        .repo-status {{ padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }}
-        .status-enabled {{ background: #22c55e; color: white; }}
-        .status-disabled {{ background: #64748b; color: white; }}
-        .repo-info {{ margin-bottom: 1rem; }}
-        .repo-info p {{ color: #94a3b8; margin-bottom: 0.5rem; }}
-        .repo-info strong {{ color: #e2e8f0; }}
-        .repo-actions {{ display: flex; gap: 0.5rem; flex-wrap: wrap; }}
-        .btn, .btn-small {{ padding: 0.75rem 1.5rem; border-radius: 6px; border: none; cursor: pointer; font-size: 1rem; font-weight: 500; transition: all 0.3s; text-decoration: none; display: inline-block; }}
-        .btn-small {{ padding: 0.5rem 1rem; font-size: 0.9rem; }}
-        .btn-primary {{ background: #0ea5e9; color: white; }}
-        .btn-primary:hover {{ background: #0284c7; }}
-        .btn-success {{ background: #22c55e; color: white; }}
-        .btn-success:hover {{ background: #16a34a; }}
-        .btn-secondary {{ background: #64748b; color: white; }}
-        .btn-secondary:hover {{ background: #475569; }}
-        .btn-danger {{ background: #ef4444; color: white; }}
-        .btn-danger:hover {{ background: #dc2626; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos" class="active">Repositories</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/scanner">Auto-Scanner</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {tz_selector}
-            </nav>
-        </header>
+    let extra_head = r#"<style>
+        .repo-card { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .repo-header { display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; }
+        .repo-header h3 { color: #38bdf8; font-size: 1.2rem; margin: 0; }
+        .repo-status { padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }
+        .status-enabled { background: #22c55e; color: white; }
+        .status-disabled { background: #64748b; color: white; }
+        .repo-info { margin-bottom: 1rem; }
+        .repo-info p { color: #94a3b8; margin-bottom: 0.4rem; font-size: 0.9rem; }
+        .repo-info strong { color: #e2e8f0; }
+        .repo-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .btn-small { padding: 0.4rem 0.9rem; font-size: 0.85rem; border-radius: 6px; border: none;
+            cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block;
+            transition: all 0.2s; }
+        .btn-small.btn-primary { background: #0ea5e9; color: white; }
+        .btn-small.btn-primary:hover { background: #0284c7; }
+        .btn-small.btn-success { background: #22c55e; color: white; }
+        .btn-small.btn-success:hover { background: #16a34a; }
+        .btn-small.btn-danger { background: #ef4444; color: white; }
+        .btn-small.btn-danger:hover { background: #dc2626; }
+    </style>"#;
 
-        <div class="page-header">
-            <h2>Repositories</h2>
-            <a href="/repos/add" class="btn btn-primary">+ Add Repository</a>
-        </div>
+    let content = format!(
+        r#"<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <h2 style="font-size: 1.4rem; color: #f1f5f9;">📦 Repositories</h2>
+    <a href="/repos/add" class="btn btn-primary">+ Add Repository</a>
+</div>
 
-        <div class="repos-list">
-            {}
-        </div>
-    </div>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-</body>
-</html>"#,
-        repos_html,
-        tz_js = timezone_js(),
-        tz_selector = timezone_selector_html()
-    )
+<div class="repos-list">
+    {repos_html}
+</div>"#,
+        repos_html = repos_html,
+    );
+
+    web_ui_nav::page_shell("Repositories", "Repositories", extra_head, &content)
 }
 
 fn render_add_repo_page() -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add Repository - RustAssistant</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }}
-        .container {{ max-width: 800px; margin: 0 auto; padding: 2rem; }}
-        header {{ background: #1e293b; padding: 1.5rem; margin-bottom: 2rem; border-radius: 8px; }}
-        h1 {{ color: #38bdf8; font-size: 2rem; margin-bottom: 0.5rem; }}
-        nav {{ display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }}
-        nav a {{ background: #334155; color: #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; transition: all 0.3s; }}
-        nav a:hover {{ background: #475569; }}
-        .form-container {{ background: #1e293b; padding: 2rem; border-radius: 8px; }}
-        .form-group {{ margin-bottom: 1.5rem; }}
-        label {{ display: block; color: #94a3b8; margin-bottom: 0.5rem; font-weight: 500; }}
-        input, select {{ width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 1rem; }}
-        input:focus, select:focus {{ outline: none; border-color: #0ea5e9; }}
-        .form-actions {{ display: flex; gap: 1rem; margin-top: 2rem; }}
-        .btn {{ padding: 0.75rem 1.5rem; border-radius: 6px; border: none; cursor: pointer; font-size: 1rem; font-weight: 500; transition: all 0.3s; text-decoration: none; display: inline-block; }}
-        .btn-primary {{ background: #0ea5e9; color: white; }}
-        .btn-primary:hover {{ background: #0284c7; }}
-        .btn-secondary {{ background: #64748b; color: white; }}
-        .btn-secondary:hover {{ background: #475569; }}
-        .help-text {{ color: #64748b; font-size: 0.9rem; margin-top: 0.25rem; }}
+    let extra_head = r#"<style>
+        .form-container { background: #1e293b; padding: 2rem; border-radius: 8px; max-width: 640px; }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; color: #94a3b8; margin-bottom: 0.5rem; font-weight: 500; }
+        .help-text { color: #64748b; font-size: 0.85rem; margin-top: 0.3rem; }
+        .form-actions { display: flex; gap: 1rem; margin-top: 2rem; }
     </style>
     <script>
-        function autoFillName() {{
+        function autoFillName() {
             const urlInput = document.getElementById('git_url').value;
             const nameInput = document.getElementById('name');
-            if (nameInput.value === '' || nameInput.dataset.autoFilled === 'true') {{
-                // Extract repo name from URL: https://github.com/user/repo.git -> repo
+            if (nameInput.value === '' || nameInput.dataset.autoFilled === 'true') {
                 const match = urlInput.match(/\/([^\/]+?)(\.git)?$/);
-                if (match) {{
+                if (match) {
                     nameInput.value = match[1];
                     nameInput.dataset.autoFilled = 'true';
-                }}
-            }}
-        }}
-        document.addEventListener('DOMContentLoaded', function() {{
+                }
+            }
+        }
+        document.addEventListener('DOMContentLoaded', function() {
             const nameInput = document.getElementById('name');
-            nameInput.addEventListener('input', function() {{
-                nameInput.dataset.autoFilled = 'false';
-            }});
-        }});
-    </script>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repositories</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/scanner">Auto-Scanner</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {tz_selector}
-            </nav>
-        </header>
+            if (nameInput) {
+                nameInput.addEventListener('input', function() {
+                    nameInput.dataset.autoFilled = 'false';
+                });
+            }
+        });
+    </script>"#;
 
-        <div class="form-container">
-            <h2 style="color: #e2e8f0; margin-bottom: 1.5rem;">Add Repository</h2>
-            <form method="POST" action="/repos/add">
-                <div class="form-group">
-                    <label for="git_url">GitHub URL</label>
-                    <input type="text" id="git_url" name="git_url" required
-                           placeholder="https://github.com/user/repo"
-                           oninput="autoFillName()">
-                    <p class="help-text">GitHub repository URL — the repo will be cloned automatically</p>
-                </div>
-                <div class="form-group">
-                    <label for="name">Repository Name</label>
-                    <input type="text" id="name" name="name" required placeholder="myproject" data-auto-filled="false">
-                    <p class="help-text">A friendly name for this repository (auto-filled from URL)</p>
-                </div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Clone &amp; Add Repository</button>
-                    <a href="/repos" class="btn btn-secondary">Cancel</a>
-                </div>
-            </form>
+    let content = r#"<h2 style="font-size: 1.4rem; color: #f1f5f9; margin-bottom: 1.5rem;">➕ Add Repository</h2>
+
+<div class="form-container">
+    <form method="POST" action="/repos/add">
+        <div class="form-group">
+            <label for="git_url">GitHub URL</label>
+            <input type="text" id="git_url" name="git_url" required
+                   placeholder="https://github.com/user/repo"
+                   oninput="autoFillName()">
+            <p class="help-text">GitHub repository URL — the repo will be cloned automatically</p>
         </div>
-    </div>
-    {tz_js}
-</body>
-</html>"#,
-        tz_js = timezone_js(),
-        tz_selector = timezone_selector_html()
-    )
+        <div class="form-group">
+            <label for="name">Repository Name</label>
+            <input type="text" id="name" name="name" required placeholder="myproject" data-auto-filled="false">
+            <p class="help-text">A friendly name for this repository (auto-filled from URL)</p>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Clone &amp; Add Repository</button>
+            <a href="/repos" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>"#;
+
+    web_ui_nav::page_shell("Add Repository", "Repositories", extra_head, content)
 }
 
 fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
@@ -661,100 +577,60 @@ fn render_queue_page(items: Vec<QueueItemDisplay>) -> String {
             .join("\n")
     };
 
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tasks - RustAssistant</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 2rem; }}
-        header {{ background: #1e293b; padding: 1.5rem; margin-bottom: 2rem; border-radius: 8px; }}
-        h1 {{ color: #38bdf8; font-size: 2rem; margin-bottom: 0.5rem; }}
-        nav {{ display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }}
-        nav a {{ background: #334155; color: #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; transition: all 0.3s; }}
-        nav a:hover {{ background: #475569; }}
-        nav a.active {{ background: #0ea5e9; color: white; }}
-        .page-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }}
-        .queue-item {{ background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #64748b; }}
-        .queue-item.stage-pending {{ border-left-color: #f59e0b; }}
-        .queue-item.stage-processing {{ border-left-color: #0ea5e9; }}
-        .queue-item.stage-review {{ border-left-color: #a78bfa; }}
-        .queue-item.stage-ready {{ border-left-color: #2dd4bf; }}
-        .queue-item.stage-done {{ border-left-color: #22c55e; }}
-        .queue-item.stage-completed {{ border-left-color: #22c55e; }}
-        .queue-item.stage-failed {{ border-left-color: #ef4444; }}
-        .queue-header {{ display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }}
-        .queue-id {{ font-family: monospace; color: #94a3b8; }}
-        .queue-stage {{ padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; background: #334155; }}
-        .queue-priority {{ padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }}
-        .priority-critical {{ background: #dc2626; color: white; }}
-        .priority-high {{ background: #ef4444; color: white; }}
-        .priority-normal {{ background: #f59e0b; color: white; }}
-        .priority-low {{ background: #64748b; color: white; }}
-        .priority-background {{ background: #475569; color: white; }}
-        .queue-content {{ background: #0f172a; padding: 1rem; border-radius: 6px; margin-bottom: 1rem; }}
-        .queue-content pre {{ color: #e2e8f0; white-space: pre-wrap; word-wrap: break-word; }}
-        .error-message {{ background: #7f1d1d; color: #fecaca; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }}
-        .queue-meta {{ color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem; }}
-        .queue-meta span {{ margin-right: 1rem; }}
-        .queue-actions {{ display: flex; gap: 0.5rem; flex-wrap: wrap; }}
-        .btn, .btn-small {{ padding: 0.75rem 1.5rem; border-radius: 6px; border: none; cursor: pointer; font-size: 1rem; font-weight: 500; transition: all 0.3s; text-decoration: none; display: inline-block; }}
-        .btn-small {{ padding: 0.5rem 1rem; font-size: 0.9rem; }}
-        .btn-primary {{ background: #0ea5e9; color: white; }}
-        .btn-primary:hover {{ background: #0284c7; }}
-        .btn-danger {{ background: #ef4444; color: white; }}
-        .btn-danger:hover {{ background: #dc2626; }}
-        .toast {{ position: fixed; top: 2rem; right: 2rem; background: #22c55e; color: white; padding: 1rem 1.5rem; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: none; }}
+    let extra_head = r#"<style>
+        .queue-item { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #64748b; }
+        .queue-item.stage-pending { border-left-color: #f59e0b; }
+        .queue-item.stage-processing { border-left-color: #0ea5e9; }
+        .queue-item.stage-review { border-left-color: #a78bfa; }
+        .queue-item.stage-ready { border-left-color: #2dd4bf; }
+        .queue-item.stage-done { border-left-color: #22c55e; }
+        .queue-item.stage-completed { border-left-color: #22c55e; }
+        .queue-item.stage-failed { border-left-color: #ef4444; }
+        .queue-header { display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
+        .queue-id { font-family: monospace; color: #94a3b8; font-size: 0.8rem; }
+        .queue-stage { padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; background: #334155; color: #e2e8f0; }
+        .queue-priority { padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }
+        .priority-critical { background: #dc2626; color: white; }
+        .priority-high { background: #ef4444; color: white; }
+        .priority-normal { background: #f59e0b; color: white; }
+        .priority-low { background: #64748b; color: white; }
+        .priority-background { background: #475569; color: white; }
+        .queue-content { background: #0f172a; padding: 1rem; border-radius: 6px; margin-bottom: 1rem; }
+        .queue-content pre { color: #e2e8f0; white-space: pre-wrap; word-wrap: break-word; font-size: 0.85rem; }
+        .error-message { background: #7f1d1d; color: #fecaca; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
+        .queue-meta { color: #94a3b8; font-size: 0.85rem; margin-bottom: 1rem; }
+        .queue-meta span { margin-right: 1rem; }
+        .queue-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .btn-small { padding: 0.4rem 0.9rem; font-size: 0.85rem; border-radius: 6px; border: none;
+            cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; transition: all 0.2s; }
+        .btn-small.btn-primary { background: #0ea5e9; color: white; }
+        .btn-small.btn-primary:hover { background: #0284c7; }
+        .btn-small.btn-danger { background: #ef4444; color: white; }
+        .btn-small.btn-danger:hover { background: #dc2626; }
+        .toast { position: fixed; top: 2rem; right: 2rem; background: #22c55e; color: white;
+            padding: 1rem 1.5rem; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: none; z-index: 9999; }
     </style>
     <script>
-        function copyToClipboard(text) {{
-            navigator.clipboard.writeText(text).then(() => {{
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
                 const toast = document.getElementById('toast');
                 toast.style.display = 'block';
-                setTimeout(() => {{ toast.style.display = 'none'; }}, 2000);
-            }});
-        }}
-    </script>
-</head>
-<body>
-    <div id="toast" class="toast">✓ Copied to clipboard!</div>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repositories</a>
-                <a href="/queue" class="active">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/scanner">Auto-Scanner</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {}
-            </nav>
-        </header>
+                setTimeout(() => { toast.style.display = 'none'; }, 2000);
+            });
+        }
+    </script>"#;
 
-        <div class="page-header">
-            <h2 style="color: #e2e8f0;">Tasks</h2>
-        </div>
+    let content = format!(
+        r#"<div id="toast" class="toast">✓ Copied to clipboard!</div>
+<h2 style="font-size: 1.4rem; color: #f1f5f9; margin-bottom: 1.5rem;">✅ Tasks</h2>
 
-        <div class="queue-list">
-            {}
-        </div>
-    </div>
-    {}
-</body>
-</html>"#,
-        timezone_selector_html(),
-        items_html,
-        timezone_js()
-    )
+<div class="queue-list">
+    {items_html}
+</div>"#,
+        items_html = items_html,
+    );
+
+    web_ui_nav::page_shell("Tasks", "Tasks", extra_head, &content)
 }
 
 // ============================================================================
@@ -1460,66 +1336,28 @@ fn render_scanner_page(repos: Vec<ScannerRepoItem>) -> String {
             .join("\n")
     };
 
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto-Scanner - RustAssistant</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 2rem; }}
-        header {{ background: #1e293b; padding: 1.5rem; margin-bottom: 2rem; border-radius: 8px; }}
-        h1 {{ color: #38bdf8; font-size: 2rem; margin-bottom: 0.5rem; }}
-        h2 {{ color: #e2e8f0; margin-bottom: 1.5rem; }}
-        nav {{ display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }}
-        nav a {{ background: #334155; color: #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; transition: all 0.3s; }}
-        nav a:hover {{ background: #475569; }}
-        nav a.active {{ background: #0ea5e9; color: white; }}
-        .btn, .btn-small {{ padding: 0.75rem 1.5rem; border-radius: 6px; border: none; cursor: pointer; font-size: 1rem; font-weight: 500; transition: all 0.3s; text-decoration: none; display: inline-block; }}
-        .btn-small {{ padding: 0.5rem 1rem; font-size: 0.9rem; }}
-        .btn-primary {{ background: #0ea5e9; color: white; }}
-        .btn-primary:hover {{ background: #0284c7; }}
-        .btn-success {{ background: #22c55e; color: white; }}
-        .btn-success:hover {{ background: #16a34a; }}
-        .btn-danger {{ background: #ef4444; color: white; }}
-        .btn-danger:hover {{ background: #dc2626; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repositories</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/scanner" class="active">Auto-Scanner</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {tz_selector}
-            </nav>
-        </header>
+    let extra_head = r#"<style>
+        .scanner-repo { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; }
+        .btn-small { padding: 0.4rem 0.9rem; font-size: 0.85rem; border-radius: 6px; border: none;
+            cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; transition: all 0.2s; }
+        .btn-small.btn-primary { background: #0ea5e9; color: white; }
+        .btn-small.btn-primary:hover { background: #0284c7; }
+        .btn-small.btn-success { background: #22c55e; color: white; }
+        .btn-small.btn-success:hover { background: #16a34a; }
+        .btn-small.btn-danger { background: #ef4444; color: white; }
+        .btn-small.btn-danger:hover { background: #dc2626; }
+    </style>"#;
 
-        <h2>🔍 Auto-Scanner Status</h2>
+    let content = format!(
+        r#"<h2 style="font-size: 1.4rem; color: #f1f5f9; margin-bottom: 1.5rem;">🔍 Auto-Scanner Status</h2>
 
-        <div class="scanner-list">
-            {repos_html}
-        </div>
-    </div>
-    {tz_js}
-</body>
-</html>"#,
-        tz_selector = timezone_selector_html(),
+<div class="scanner-list">
+    {repos_html}
+</div>"#,
         repos_html = repos_html,
-        tz_js = timezone_js()
-    )
+    );
+
+    web_ui_nav::page_shell("Scanner", "Scanner", extra_head, &content)
 }
 
 // ============================================================================
@@ -1537,8 +1375,6 @@ pub async fn notes_handler(State(state): State<Arc<WebAppState>>) -> impl IntoRe
     };
 
     let total = notes.len();
-    let tz_selector = timezone_selector_html();
-    let tz_js = timezone_js();
 
     let notes_html = if notes.is_empty() {
         r#"<div class="card">
@@ -1624,91 +1460,69 @@ pub async fn notes_handler(State(state): State<Arc<WebAppState>>) -> impl IntoRe
         )
     };
 
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notes - Rustassistant</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 Rustassistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repositories</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/scanner">Scanner</a>
-                <a href="/notes" class="active">Notes</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {tz_selector}
-            </nav>
-        </header>
-
-        <div class="page-header mb-4">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h1>Notes</h1>
-                    <p class="text-muted">Capture ideas, tasks, and thoughts</p>
-                </div>
-                <button onclick="document.getElementById('note-capture-modal').style.display='flex'" class="btn btn-primary">+ Quick Note</button>
-            </div>
-        </div>
-
-        <!-- Quick Capture Modal -->
-        <div id="note-capture-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;">
-            <div style="background: var(--card-bg); padding: 2rem; border-radius: 0.5rem; max-width: 600px; width: 90%;">
-                <h2 style="margin-bottom: 1rem;">Quick Note</h2>
-                <form id="note-form" hx-post="/api/notes" hx-swap="none" onsubmit="return false;">
-                    <textarea name="content" placeholder="Write your note... Use #tags for categorization" style="width: 100%; min-height: 120px; margin-bottom: 1rem; padding: 0.75rem; border-radius: 0.25rem;" required></textarea>
-                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('note-capture-modal').style.display='none'">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save Note</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        {notes_html}
-    </div>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    let extra_head = r#"<style>
+        .note-card { border-bottom: 1px solid #334155; }
+        .note-card:last-child { border-bottom: none; }
+    </style>
     <script>
-        // Handle note form submission
-        document.getElementById('note-form').addEventListener('submit', async function(e) {{
-            e.preventDefault();
-            const formData = new FormData(this);
-            const response = await fetch('/api/notes', {{
-                method: 'POST',
-                body: formData
-            }});
-            if (response.ok) {{
-                document.getElementById('note-capture-modal').style.display = 'none';
-                this.reset();
-                window.location.reload();
-            }}
-        }});
-
-        function deleteNote(id) {{
-            if (confirm('Are you sure you want to delete this note?')) {{
-                fetch('/api/notes/' + id, {{ method: 'DELETE' }})
+        function deleteNote(id) {
+            if (confirm('Are you sure you want to delete this note?')) {
+                fetch('/api/notes/' + id, { method: 'DELETE' })
                     .then(r => r.ok ? window.location.reload() : alert('Failed to delete'));
-            }}
-        }}
-    </script>
-    {tz_js}
-</body>
-</html>"#,
-        tz_selector = tz_selector,
+            }
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            var form = document.getElementById('note-form');
+            if (form) {
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const formData = new FormData(this);
+                    const response = await fetch('/api/notes', { method: 'POST', body: formData });
+                    if (response.ok) {
+                        document.getElementById('note-capture-modal').style.display = 'none';
+                        this.reset();
+                        window.location.reload();
+                    }
+                });
+            }
+        });
+    </script>"#;
+
+    let content = format!(
+        r#"<div class="page-header mb-4">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h1 style="font-size: 1.6rem; color: #f1f5f9; margin-bottom: 0.25rem;">📝 Notes</h1>
+            <p style="color: #94a3b8; font-size: 0.9rem;">Capture ideas, tasks, and thoughts</p>
+        </div>
+        <button onclick="document.getElementById('note-capture-modal').style.display='flex'" class="btn btn-primary">+ Quick Note</button>
+    </div>
+</div>
+
+<!-- Quick Capture Modal -->
+<div id="note-capture-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; z-index: 9999;">
+    <div style="background: #1e293b; border: 1px solid #334155; padding: 2rem; border-radius: 8px; max-width: 600px; width: 90%;">
+        <h2 style="margin-bottom: 1rem; color: #f1f5f9;">Quick Note</h2>
+        <form id="note-form">
+            <textarea name="content" placeholder="Write your note... Use #tags for categorization"
+                style="width: 100%; min-height: 120px; margin-bottom: 1rem; padding: 0.75rem;
+                       border-radius: 6px; background: #0f172a; border: 1px solid #334155;
+                       color: #e2e8f0; font-size: 0.9rem;" required></textarea>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary"
+                    onclick="document.getElementById('note-capture-modal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Note</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{notes_html}"#,
         notes_html = notes_html,
-        tz_js = tz_js
+    );
+
+    Html(web_ui_nav::page_shell(
+        "Notes", "Notes", extra_head, &content,
     ))
 }
 

@@ -17,7 +17,8 @@ use crate::db::documents::{
     update_idea_status,
 };
 use crate::db::scan_events::get_recent_events;
-use crate::web_ui::{timezone_js, timezone_selector_html, WebAppState};
+use crate::web_ui::WebAppState;
+use crate::web_ui_nav;
 use axum::{
     extract::{Path, Query, State},
     response::{Html, IntoResponse, Json},
@@ -161,123 +162,89 @@ pub async fn ideas_handler(
         .collect::<Vec<_>>()
         .join(" ");
 
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ideas - RustAssistant</title>
-    {style}
-    <style>
-        .quick-capture {{ display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }}
-        .quick-capture input[type="text"] {{ flex: 1; padding: 0.75rem; border: 1px solid #334155; background: #1e293b;
-            color: #e2e8f0; border-radius: 6px; font-size: 1rem; }}
-        .quick-capture input[type="text"]:focus {{ outline: none; border-color: #0ea5e9; }}
-        .quick-capture select, .quick-capture input[name="tags"] {{ padding: 0.75rem; border: 1px solid #334155;
-            background: #1e293b; color: #e2e8f0; border-radius: 6px; }}
-        .idea-card {{ margin-bottom: 0.75rem; padding: 1rem; }}
-        .idea-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }}
-        .idea-badges {{ display: flex; gap: 0.3rem; flex-wrap: wrap; }}
-        .idea-actions {{ display: flex; gap: 0.25rem; }}
-        .idea-content {{ font-size: 1rem; line-height: 1.5; margin-bottom: 0.5rem; white-space: pre-wrap; }}
-        .idea-tags {{ display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.3rem; }}
-        .idea-meta {{ font-size: 0.8rem; color: #64748b; }}
-        .tag {{ background: #1e3a5f; color: #7dd3fc; padding: 2px 8px; border-radius: 4px;
-            font-size: 0.75rem; text-decoration: none; cursor: pointer; }}
-        .tag-active {{ background: #0ea5e9; color: white; }}
-        .tag:hover {{ background: #0284c7; color: white; }}
-        .filter-bar {{ display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }}
-        .filter-bar a.active {{ background: #0ea5e9; color: white; }}
-        .stat-row {{ display: flex; gap: 1rem; margin-bottom: 1rem; }}
-        .stat-box {{ background: #1e293b; padding: 0.5rem 1rem; border-radius: 6px; text-align: center; }}
-        .stat-box .num {{ font-size: 1.5rem; font-weight: 700; color: #0ea5e9; }}
-        .stat-box .label {{ font-size: 0.75rem; color: #94a3b8; }}
-        .badge {{ padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }}
-        .badge-danger {{ background: #ef4444; color: white; }}
-        .badge-warning {{ background: #f59e0b; color: white; }}
-        .badge-info {{ background: #0ea5e9; color: white; }}
-        .badge-primary {{ background: #6366f1; color: white; }}
-        .badge-success {{ background: #22c55e; color: white; }}
-        .badge-muted {{ background: #475569; color: #cbd5e1; }}
-        .empty-state {{ text-align: center; padding: 3rem; color: #64748b; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repos</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas" class="active">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {tz_selector}
-            </nav>
-        </header>
+    let extra_head = r#"<style>
+        .quick-capture { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .quick-capture input[type="text"] { flex: 1; min-width: 200px; padding: 0.6rem 0.75rem;
+            border: 1px solid #334155; background: #1e293b; color: #e2e8f0; border-radius: 6px; font-size: 0.9rem; }
+        .quick-capture input[type="text"]:focus { outline: none; border-color: #0ea5e9; }
+        .quick-capture select { padding: 0.6rem 0.75rem; border: 1px solid #334155;
+            background: #1e293b; color: #e2e8f0; border-radius: 6px; font-size: 0.9rem; }
+        .idea-card { margin-bottom: 0.75rem; padding: 1rem; }
+        .idea-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+        .idea-badges { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+        .idea-actions { display: flex; gap: 0.25rem; }
+        .idea-content { font-size: 1rem; line-height: 1.5; margin-bottom: 0.5rem; white-space: pre-wrap; }
+        .idea-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
+        .idea-meta { font-size: 0.8rem; color: #64748b; }
+        .tag { background: #1e3a5f; color: #7dd3fc; padding: 2px 8px; border-radius: 4px;
+            font-size: 0.75rem; text-decoration: none; cursor: pointer; }
+        .tag-active { background: #0ea5e9; color: white; }
+        .tag:hover { background: #0284c7; color: white; }
+        .filter-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
+        .empty-state { text-align: center; padding: 3rem; color: #64748b; }
+        .btn-small { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 4px; border: none;
+            cursor: pointer; text-decoration: none; display: inline-block; }
+    </style>"#;
 
-        <h2>💡 Ideas ({total} active)</h2>
+    let all_active = if params.tag.is_none() {
+        "tag-active"
+    } else {
+        ""
+    };
 
-        <!-- Quick capture form -->
-        <form action="/ideas/add" method="post" class="quick-capture">
-            <input type="text" name="content" placeholder="What's on your mind? Capture it here..." required autofocus>
-            <input type="text" name="tags" placeholder="tags (comma-sep)" style="max-width: 200px;">
-            <select name="category">
-                <option value="">Category...</option>
-                <option value="feature">Feature</option>
-                <option value="bug">Bug</option>
-                <option value="improvement">Improvement</option>
-                <option value="research">Research</option>
-                <option value="question">Question</option>
-                <option value="random">Random</option>
-            </select>
-            <select name="priority">
-                <option value="3">Normal</option>
-                <option value="1">Urgent</option>
-                <option value="2">High</option>
-                <option value="4">Low</option>
-                <option value="5">Someday</option>
-            </select>
-            <button type="submit" class="btn btn-primary">+ Capture</button>
-        </form>
+    let content = format!(
+        r#"<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.4rem; color: #f1f5f9;">💡 Ideas ({total} active)</h2>
+</div>
 
-        <!-- Tag filters -->
-        <div class="filter-bar">
-            <strong>Filter:</strong>
-            <a href="/ideas" class="tag {all_active}">All</a>
-            {tag_filter_html}
-        </div>
+<!-- Quick capture form -->
+<form action="/ideas/add" method="post" class="quick-capture">
+    <input type="text" name="content" placeholder="What's on your mind? Capture it here..." required autofocus>
+    <input type="text" name="tags" placeholder="tags (comma-sep)" style="max-width: 200px;">
+    <select name="category">
+        <option value="">Category...</option>
+        <option value="feature">Feature</option>
+        <option value="bug">Bug</option>
+        <option value="improvement">Improvement</option>
+        <option value="research">Research</option>
+        <option value="question">Question</option>
+        <option value="random">Random</option>
+    </select>
+    <select name="priority">
+        <option value="3">Normal</option>
+        <option value="1">Urgent</option>
+        <option value="2">High</option>
+        <option value="4">Low</option>
+        <option value="5">Someday</option>
+    </select>
+    <button type="submit" class="btn btn-primary">+ Capture</button>
+</form>
 
-        <!-- Status filters -->
-        <div class="filter-bar">
-            <a href="/ideas" class="badge badge-muted">All</a>
-            <a href="/ideas?status=inbox" class="badge badge-warning">Inbox</a>
-            <a href="/ideas?status=active" class="badge badge-info">Active</a>
-            <a href="/ideas?status=in_progress" class="badge badge-primary">In Progress</a>
-            <a href="/ideas?status=done" class="badge badge-success">Done</a>
-        </div>
+<!-- Tag filters -->
+<div class="filter-bar">
+    <strong style="color: #94a3b8; font-size: 0.85rem;">Filter:</strong>
+    <a href="/ideas" class="tag {all_active}">All</a>
+    {tag_filter_html}
+</div>
 
-        {ideas_html}
-    </div>
-    {tz_js}
-</body>
-</html>"#,
-        style = common_style(),
-        tz_selector = timezone_selector_html(),
+<!-- Status filters -->
+<div class="filter-bar">
+    <a href="/ideas" class="badge badge-muted">All</a>
+    <a href="/ideas?status=inbox" class="badge badge-warning">Inbox</a>
+    <a href="/ideas?status=active" class="badge badge-info">Active</a>
+    <a href="/ideas?status=in_progress" class="badge badge-primary">In Progress</a>
+    <a href="/ideas?status=done" class="badge badge-success">Done</a>
+</div>
+
+{ideas_html}"#,
         total = total,
-        all_active = if params.tag.is_none() {
-            "tag-active"
-        } else {
-            ""
-        },
+        all_active = all_active,
         tag_filter_html = tag_filter_html,
         ideas_html = ideas_html,
-        tz_js = timezone_js(),
+    );
+
+    Html(web_ui_nav::page_shell(
+        "Ideas", "Ideas", extra_head, &content,
     ))
 }
 
@@ -439,169 +406,128 @@ pub async fn docs_handler(
         .collect::<Vec<_>>()
         .join(" ");
 
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Documents - RustAssistant</title>
-    {style}
-    <style>
-        .doc-card {{ margin-bottom: 0.75rem; padding: 1rem; }}
-        .doc-header {{ display: flex; justify-content: space-between; align-items: flex-start; }}
-        .doc-header h3 {{ margin: 0; font-size: 1.1rem; }}
-        .doc-header h3 a {{ color: #e2e8f0; text-decoration: none; }}
-        .doc-header h3 a:hover {{ color: #0ea5e9; }}
-        .doc-badges {{ display: flex; gap: 0.3rem; margin-top: 0.25rem; }}
-        .doc-actions {{ display: flex; gap: 0.25rem; }}
-        .doc-preview {{ font-size: 0.9rem; color: #94a3b8; margin: 0.5rem 0; line-height: 1.4;
-            max-height: 3em; overflow: hidden; }}
-        .doc-tags {{ display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.3rem; }}
-        .doc-meta {{ font-size: 0.8rem; color: #64748b; }}
-        .search-bar {{ display: flex; gap: 0.5rem; margin-bottom: 1rem; }}
-        .search-bar input {{ flex: 1; padding: 0.75rem; border: 1px solid #334155; background: #1e293b;
-            color: #e2e8f0; border-radius: 6px; font-size: 1rem; }}
-        .search-bar input:focus {{ outline: none; border-color: #0ea5e9; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repos</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs" class="active">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {tz_selector}
-            </nav>
-        </header>
+    let extra_head = r#"<style>
+        .doc-card { margin-bottom: 0.75rem; padding: 1rem; }
+        .doc-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .doc-header h3 { margin: 0; font-size: 1.1rem; }
+        .doc-header h3 a { color: #e2e8f0; text-decoration: none; }
+        .doc-header h3 a:hover { color: #0ea5e9; }
+        .doc-badges { display: flex; gap: 0.3rem; margin-top: 0.25rem; }
+        .doc-actions { display: flex; gap: 0.25rem; }
+        .doc-preview { font-size: 0.9rem; color: #94a3b8; margin: 0.5rem 0; line-height: 1.4;
+            max-height: 3em; overflow: hidden; }
+        .doc-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
+        .doc-meta { font-size: 0.8rem; color: #64748b; }
+        .search-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .search-bar input { flex: 1; padding: 0.75rem; border: 1px solid #334155; background: #1e293b;
+            color: #e2e8f0; border-radius: 6px; font-size: 1rem; }
+        .search-bar input:focus { outline: none; border-color: #0ea5e9; }
+        .filter-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+        .btn-small { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 4px; border: none;
+            cursor: pointer; text-decoration: none; display: inline-block; }
+    </style>"#;
 
-        <h2>📚 Documents ({total})</h2>
+    let content = format!(
+        r#"<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.4rem; color: #f1f5f9;">📚 Documents ({total})</h2>
+</div>
 
-        <!-- Search -->
-        <form action="/docs" method="get" class="search-bar">
-            <input type="text" name="q" placeholder="Search documents..." value="{search_q}">
-            <button type="submit" class="btn btn-primary">Search</button>
-            <a href="/docs/new" class="btn btn-success">+ New Document</a>
-        </form>
+<!-- Search -->
+<form action="/docs" method="get" class="search-bar">
+    <input type="text" name="q" placeholder="Search documents..." value="{search_q}">
+    <button type="submit" class="btn btn-primary">Search</button>
+    <a href="/docs/new" class="btn btn-success">+ New Document</a>
+</form>
 
-        <!-- Type filters -->
-        <div class="filter-bar" style="margin-bottom: 1rem;">
-            <a href="/docs" class="badge badge-muted">All</a>
-            {type_tabs}
-        </div>
+<!-- Type filters -->
+<div class="filter-bar" style="margin-bottom: 1rem;">
+    <a href="/docs" class="badge badge-muted">All</a>
+    {type_tabs}
+</div>
 
-        {docs_html}
-    </div>
-    {tz_js}
-</body>
-</html>"#,
-        style = common_style(),
-        tz_selector = timezone_selector_html(),
+{docs_html}"#,
         total = total,
         search_q = params.q.as_deref().unwrap_or(""),
         type_tabs = type_tabs,
         docs_html = docs_html,
-        tz_js = timezone_js(),
+    );
+
+    Html(web_ui_nav::page_shell(
+        "Documents",
+        "Docs",
+        extra_head,
+        &content,
     ))
 }
 
 // Document creation form
 pub async fn new_doc_form_handler() -> impl IntoResponse {
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Document - RustAssistant</title>
-    {style}
-    <style>
-        .form-group {{ margin-bottom: 1rem; }}
-        .form-group label {{ display: block; margin-bottom: 0.3rem; color: #94a3b8; font-weight: 600; }}
-        .form-group input, .form-group select, .form-group textarea {{ width: 100%; padding: 0.75rem;
-            border: 1px solid #334155; background: #1e293b; color: #e2e8f0; border-radius: 6px; font-size: 1rem; }}
-        .form-group textarea {{ min-height: 400px; font-family: 'Fira Code', monospace; line-height: 1.5; }}
-        .form-group input:focus, .form-group textarea:focus {{ outline: none; border-color: #0ea5e9; }}
-        .form-row {{ display: flex; gap: 1rem; }}
-        .form-row .form-group {{ flex: 1; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repos</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs" class="active">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-            </nav>
-        </header>
+    let extra_head = r#"<style>
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.3rem; color: #94a3b8; font-weight: 600; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.75rem;
+            border: 1px solid #334155; background: #1e293b; color: #e2e8f0; border-radius: 6px; font-size: 1rem; }
+        .form-group textarea { min-height: 400px; font-family: 'Fira Code', monospace; line-height: 1.5; }
+        .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #0ea5e9; }
+        .form-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+        .form-row .form-group { flex: 1; min-width: 200px; }
+    </style>"#;
 
-        <h2>📝 New Document</h2>
+    let content = r#"<h2 style="font-size: 1.4rem; color: #f1f5f9; margin-bottom: 1.5rem;">📝 New Document</h2>
 
-        <form action="/docs/create" method="post">
-            <div class="form-group">
-                <label>Title</label>
-                <input type="text" name="title" placeholder="Document title" required autofocus>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Type</label>
-                    <select name="doc_type">
-                        <option value="reference">Reference</option>
-                        <option value="research">Research</option>
-                        <option value="tutorial">Tutorial</option>
-                        <option value="architecture">Architecture</option>
-                        <option value="decision">Decision</option>
-                        <option value="snippet">Snippet</option>
-                        <option value="runbook">Runbook</option>
-                        <option value="template">Template</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Tags (comma-separated)</label>
-                    <input type="text" name="tags" placeholder="rust, docker, deployment">
-                </div>
-                <div class="form-group">
-                    <label>Project (optional)</label>
-                    <input type="text" name="project" placeholder="rustassistant">
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label>Source URL (optional)</label>
-                <input type="text" name="source_url" placeholder="https://...">
-            </div>
-
-            <div class="form-group">
-                <label>Content (Markdown)</label>
-                <textarea name="content" placeholder="Write your document content here...&#10;&#10;Supports Markdown formatting." required></textarea>
-            </div>
-
-            <div style="display: flex; gap: 1rem;">
-                <button type="submit" class="btn btn-success">Save Document</button>
-                <a href="/docs" class="btn btn-muted">Cancel</a>
-            </div>
-        </form>
+<form action="/docs/create" method="post">
+    <div class="form-group">
+        <label>Title</label>
+        <input type="text" name="title" placeholder="Document title" required autofocus>
     </div>
-</body>
-</html>"#,
-        style = common_style(),
+
+    <div class="form-row">
+        <div class="form-group">
+            <label>Type</label>
+            <select name="doc_type">
+                <option value="reference">Reference</option>
+                <option value="research">Research</option>
+                <option value="tutorial">Tutorial</option>
+                <option value="architecture">Architecture</option>
+                <option value="decision">Decision</option>
+                <option value="snippet">Snippet</option>
+                <option value="runbook">Runbook</option>
+                <option value="template">Template</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Tags (comma-separated)</label>
+            <input type="text" name="tags" placeholder="rust, docker, deployment">
+        </div>
+        <div class="form-group">
+            <label>Project (optional)</label>
+            <input type="text" name="project" placeholder="rustassistant">
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label>Source URL (optional)</label>
+        <input type="text" name="source_url" placeholder="https://...">
+    </div>
+
+    <div class="form-group">
+        <label>Content (Markdown)</label>
+        <textarea name="content" placeholder="Write your document content here...
+
+Supports Markdown formatting." required></textarea>
+    </div>
+
+    <div style="display: flex; gap: 1rem;">
+        <button type="submit" class="btn btn-success">Save Document</button>
+        <a href="/docs" class="btn btn-muted">Cancel</a>
+    </div>
+</form>"#;
+
+    Html(web_ui_nav::page_shell(
+        "New Document",
+        "Docs",
+        extra_head,
+        content,
     ))
 }
 
@@ -663,58 +589,32 @@ pub async fn view_doc_handler(
                 })
                 .unwrap_or_default();
 
-            Html(format!(
-                r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title} - RustAssistant</title>
-    {style}
-    <style>
-        .doc-content {{ background: #1e293b; padding: 2rem; border-radius: 8px; line-height: 1.7;
-            white-space: pre-wrap; font-family: 'Fira Code', monospace; font-size: 0.95rem; }}
-        .doc-meta-bar {{ display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;
-            padding: 0.75rem 1rem; background: #1e293b; border-radius: 6px; flex-wrap: wrap; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repos</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs" class="active">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {tz_selector}
-            </nav>
-        </header>
+            let extra_head = r#"<style>
+        .doc-content { background: #1e293b; padding: 2rem; border-radius: 8px; line-height: 1.7;
+            white-space: pre-wrap; font-family: 'Fira Code', monospace; font-size: 0.95rem; }
+        .doc-meta-bar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;
+            padding: 0.75rem 1rem; background: #1e293b; border-radius: 6px; flex-wrap: wrap; }
+        .btn-small { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 4px; border: none;
+            cursor: pointer; text-decoration: none; display: inline-block; }
+        .tag { background: #1e3a5f; color: #7dd3fc; padding: 2px 8px; border-radius: 4px;
+            font-size: 0.75rem; text-decoration: none; }
+    </style>"#;
 
-        <h2>{pin}{title}</h2>
+            let doc_content = format!(
+                r#"<h2 style="font-size: 1.4rem; color: #f1f5f9; margin-bottom: 1rem;">{pin}{title}</h2>
 
-        <div class="doc-meta-bar">
-            <span class="badge badge-info">{doc_type}</span>
-            {tags_html}
-            <span style="color: #64748b;">{word_count} words</span>
-            <span style="color: #64748b;" data-utc="{updated}">—</span>
-            <div style="margin-left: auto; display: flex; gap: 0.5rem;">
-                <a href="/docs/{id}/edit" class="btn-small btn-primary">Edit</a>
-                <a href="/docs" class="btn-small btn-muted">← Back</a>
-            </div>
-        </div>
-
-        <div class="doc-content">{content}</div>
+<div class="doc-meta-bar">
+    <span class="badge badge-info">{doc_type}</span>
+    {tags_html}
+    <span style="color: #64748b;">{word_count} words</span>
+    <span style="color: #64748b;" data-utc="{updated}">—</span>
+    <div style="margin-left: auto; display: flex; gap: 0.5rem;">
+        <a href="/docs/{id}/edit" class="btn-small btn-primary">Edit</a>
+        <a href="/docs" class="btn-small btn-muted">← Back</a>
     </div>
-    {tz_js}
-</body>
-</html>"#,
-                style = common_style(),
-                tz_selector = timezone_selector_html(),
+</div>
+
+<div class="doc-content">{content}</div>"#,
                 title = html_escape(&doc.title),
                 pin = doc.pin_icon(),
                 doc_type = doc.doc_type,
@@ -723,7 +623,13 @@ pub async fn view_doc_handler(
                 id = doc.id,
                 content = html_escape(&doc.content),
                 updated = format_timestamp(doc.updated_at),
-                tz_js = timezone_js(),
+            );
+
+            Html(web_ui_nav::page_shell(
+                &html_escape(&doc.title),
+                "Docs",
+                extra_head,
+                &doc_content,
             ))
         }
         Err(_) => Html("<h1>Document not found</h1>".to_string()),
@@ -797,64 +703,38 @@ pub async fn activity_handler(State(state): State<Arc<WebAppState>>) -> impl Int
             .join("\n")
     };
 
-    Html(format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Activity - RustAssistant</title>
-    {style}
-    <style>
-        .event-row {{ display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem;
-            border-bottom: 1px solid #1e293b; font-size: 0.9rem; }}
-        .event-row:hover {{ background: #1e293b; }}
-        .event-icon {{ font-size: 1.1rem; }}
-        .event-type {{ color: #64748b; min-width: 100px; font-size: 0.8rem; }}
-        .event-msg {{ flex: 1; }}
-        .event-time {{ color: #64748b; font-size: 0.8rem; min-width: 140px; text-align: right; }}
-        .event-details {{ font-size: 0.8rem; color: #94a3b8; padding-left: 1.5rem; }}
-        .event-error {{ border-left: 3px solid #ef4444; }}
-        .event-warn {{ border-left: 3px solid #f59e0b; }}
-        .event-info {{ border-left: 3px solid transparent; }}
-        .auto-refresh {{ color: #64748b; font-size: 0.8rem; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos">Repos</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity" class="active">Activity</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-                {tz_selector}
-            </nav>
-        </header>
+    let extra_head = r#"<style>
+        .event-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #1e293b; font-size: 0.9rem; }
+        .event-row:hover { background: #1e293b; }
+        .event-icon { font-size: 1.1rem; }
+        .event-type { color: #64748b; min-width: 100px; font-size: 0.8rem; }
+        .event-msg { flex: 1; }
+        .event-time { color: #64748b; font-size: 0.8rem; min-width: 140px; text-align: right; }
+        .event-details { font-size: 0.8rem; color: #94a3b8; padding-left: 1.5rem; }
+        .event-error { border-left: 3px solid #ef4444; }
+        .event-warn { border-left: 3px solid #f59e0b; }
+        .event-info { border-left: 3px solid transparent; }
+        .auto-refresh { color: #64748b; font-size: 0.8rem; }
+        .empty-state { text-align: center; padding: 3rem; color: #64748b; }
+    </style>"#;
 
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2>📊 Activity Feed</h2>
-            <span class="auto-refresh">Auto-refreshes every 10s</span>
-        </div>
+    let content = format!(
+        r#"<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.4rem; color: #f1f5f9;">⚡ Activity Feed</h2>
+    <span class="auto-refresh">Auto-refreshes every 10s</span>
+</div>
 
-        <div id="activity-feed" hx-get="/activity/feed" hx-trigger="every 10s" hx-swap="innerHTML">
-            {events_html}
-        </div>
+<div class="card" style="padding: 0;">
+    <div id="activity-feed" hx-get="/activity/feed" hx-trigger="every 10s" hx-swap="innerHTML">
+        {events_html}
     </div>
-    {tz_js}
-    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
-</body>
-</html>"#,
-        style = common_style(),
-        tz_selector = timezone_selector_html(),
+</div>"#,
         events_html = events_html,
-        tz_js = timezone_js(),
+    );
+
+    Html(web_ui_nav::page_shell(
+        "Activity", "Activity", extra_head, &content,
     ))
 }
 
@@ -918,98 +798,82 @@ pub async fn repo_settings_handler(
             .await;
 
     match repo {
-        Ok(Some(repo)) => Html(format!(
-            r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings: {name} - RustAssistant</title>
-    {style}
-    <style>
-        .settings-form {{ max-width: 600px; }}
-        .form-group {{ margin-bottom: 1.5rem; }}
-        .form-group label {{ display: block; margin-bottom: 0.3rem; color: #94a3b8; font-weight: 600; }}
-        .form-group input, .form-group select {{ width: 100%; padding: 0.75rem; border: 1px solid #334155;
-            background: #1e293b; color: #e2e8f0; border-radius: 6px; font-size: 1rem; }}
-        .form-group input:focus {{ outline: none; border-color: #0ea5e9; }}
-        .form-group .help {{ font-size: 0.8rem; color: #64748b; margin-top: 0.3rem; }}
-        .interval-presets {{ display: flex; gap: 0.5rem; margin-top: 0.5rem; }}
-        .interval-presets button {{ padding: 0.3rem 0.75rem; border: 1px solid #334155; background: #1e293b;
-            color: #94a3b8; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }}
-        .interval-presets button:hover {{ border-color: #0ea5e9; color: #0ea5e9; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🦀 RustAssistant</h1>
-            <nav>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/repos" class="active">Repos</a>
-                <a href="/queue">Tasks</a>
-                <a href="/ideas">Ideas</a>
-                <a href="/docs">Docs</a>
-                <a href="/activity">Activity</a>
-                <a href="/db">DB Explorer</a>
-                <a href="/scan/dashboard">Scan Progress</a>
-                <a href="/cache">Cache</a>
-            </nav>
-        </header>
+        Ok(Some(repo)) => {
+            let extra_head = r#"<style>
+        .settings-form { max-width: 600px; }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; margin-bottom: 0.3rem; color: #94a3b8; font-weight: 600; }
+        .form-group input, .form-group select { width: 100%; padding: 0.75rem; border: 1px solid #334155;
+            background: #1e293b; color: #e2e8f0; border-radius: 6px; font-size: 1rem; }
+        .form-group input:focus { outline: none; border-color: #0ea5e9; }
+        .form-group .help { font-size: 0.8rem; color: #64748b; margin-top: 0.3rem; }
+        .interval-presets { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+        .interval-presets button { padding: 0.3rem 0.75rem; border: 1px solid #334155; background: #1e293b;
+            color: #94a3b8; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .interval-presets button:hover { border-color: #0ea5e9; color: #0ea5e9; }
+    </style>"#;
 
-        <h2>⚙️ Settings: {name}</h2>
-
-        <form action="/repos/{id}/settings" method="post" class="settings-form">
-            <div class="form-group">
-                <label>Scan Interval (minutes)</label>
-                <input type="number" name="scan_interval_minutes" value="{interval}"
-                       min="5" max="1440" step="5" id="interval-input">
-                <div class="help">How often to check for changes. Min: 5 min, Max: 1440 min (24h).</div>
-                <div class="interval-presets">
-                    <button type="button" onclick="document.getElementById('interval-input').value=15">15m</button>
-                    <button type="button" onclick="document.getElementById('interval-input').value=30">30m</button>
-                    <button type="button" onclick="document.getElementById('interval-input').value=60">1h</button>
-                    <button type="button" onclick="document.getElementById('interval-input').value=120">2h</button>
-                    <button type="button" onclick="document.getElementById('interval-input').value=360">6h</button>
-                    <button type="button" onclick="document.getElementById('interval-input').value=720">12h</button>
-                    <button type="button" onclick="document.getElementById('interval-input').value=1440">24h</button>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label>Repository Path</label>
-                <input type="text" value="{path}" disabled>
-            </div>
-
-            <div class="form-group">
-                <label>Auto-Scan</label>
-                <span class="badge {scan_badge}">{scan_status}</span>
-            </div>
-
-            <div style="display: flex; gap: 1rem;">
-                <button type="submit" class="btn btn-success">Save Settings</button>
-                <a href="/repos" class="btn btn-muted">← Back to Repos</a>
-            </div>
-        </form>
-    </div>
-</body>
-</html>"#,
-            style = common_style(),
-            name = repo.name,
-            id = repo.id,
-            interval = repo.scan_interval_minutes,
-            path = repo.path,
-            scan_badge = if repo.auto_scan_enabled == 1 {
+            let scan_badge = if repo.auto_scan_enabled == 1 {
                 "badge-success"
             } else {
                 "badge-muted"
-            },
-            scan_status = if repo.auto_scan_enabled == 1 {
+            };
+            let scan_status = if repo.auto_scan_enabled == 1 {
                 "Enabled"
             } else {
                 "Disabled"
-            },
-        )),
+            };
+
+            let content = format!(
+                r#"<h2 style="font-size: 1.4rem; color: #f1f5f9; margin-bottom: 1.5rem;">⚙️ Settings: {name}</h2>
+
+<form action="/repos/{id}/settings" method="post" class="settings-form">
+    <div class="form-group">
+        <label>Scan Interval (minutes)</label>
+        <input type="number" name="scan_interval_minutes" value="{interval}"
+               min="5" max="1440" step="5" id="interval-input">
+        <div class="help">How often to check for changes. Min: 5 min, Max: 1440 min (24h).</div>
+        <div class="interval-presets">
+            <button type="button" onclick="document.getElementById('interval-input').value=15">15m</button>
+            <button type="button" onclick="document.getElementById('interval-input').value=30">30m</button>
+            <button type="button" onclick="document.getElementById('interval-input').value=60">1h</button>
+            <button type="button" onclick="document.getElementById('interval-input').value=120">2h</button>
+            <button type="button" onclick="document.getElementById('interval-input').value=360">6h</button>
+            <button type="button" onclick="document.getElementById('interval-input').value=720">12h</button>
+            <button type="button" onclick="document.getElementById('interval-input').value=1440">24h</button>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label>Repository Path</label>
+        <input type="text" value="{path}" disabled>
+    </div>
+
+    <div class="form-group">
+        <label>Auto-Scan</label>
+        <span class="badge {scan_badge}">{scan_status}</span>
+    </div>
+
+    <div style="display: flex; gap: 1rem;">
+        <button type="submit" class="btn btn-success">Save Settings</button>
+        <a href="/repos" class="btn btn-muted">← Back to Repos</a>
+    </div>
+</form>"#,
+                name = repo.name,
+                id = repo.id,
+                interval = repo.scan_interval_minutes,
+                path = repo.path,
+                scan_badge = scan_badge,
+                scan_status = scan_status,
+            );
+
+            Html(web_ui_nav::page_shell(
+                &format!("Settings: {}", repo.name),
+                "Repositories",
+                extra_head,
+                &content,
+            ))
+        }
         _ => Html("<h1>Repository not found</h1>".to_string()),
     }
 }
@@ -1296,62 +1160,4 @@ fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
-}
-
-/// Common CSS shared across all extension pages
-fn common_style() -> &'static str {
-    r#"<style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f172a; color: #e2e8f0; line-height: 1.6; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 1rem 2rem; }
-        header { display: flex; justify-content: space-between; align-items: center;
-            padding: 1rem 0; border-bottom: 1px solid #1e293b; margin-bottom: 1.5rem; }
-        header h1 { font-size: 1.3rem; color: #0ea5e9; }
-        nav { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-        nav a { color: #94a3b8; text-decoration: none; padding: 0.4rem 0.8rem;
-            border-radius: 6px; font-size: 0.9rem; }
-        nav a:hover { color: #e2e8f0; background: #1e293b; }
-        nav a.active { color: #0ea5e9; background: #0c2d4a; font-weight: 600; }
-        h2 { font-size: 1.4rem; margin-bottom: 1rem; color: #f1f5f9; }
-        .card { background: #1e293b; border-radius: 8px; border: 1px solid #334155; }
-        .btn, .btn-small { padding: 0.6rem 1.2rem; border-radius: 6px; border: none; cursor: pointer;
-            font-size: 0.9rem; font-weight: 500; text-decoration: none; display: inline-block;
-            transition: all 0.2s; }
-        .btn-small { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
-        .btn-primary { background: #0ea5e9; color: white; }
-        .btn-primary:hover { background: #0284c7; }
-        .btn-success { background: #22c55e; color: white; }
-        .btn-success:hover { background: #16a34a; }
-        .btn-danger { background: #ef4444; color: white; }
-        .btn-danger:hover { background: #dc2626; }
-        .btn-muted { background: #475569; color: #cbd5e1; }
-        .btn-muted:hover { background: #64748b; }
-        .badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
-        .badge-danger { background: #ef4444; color: white; }
-        .badge-warning { background: #f59e0b; color: white; }
-        .badge-info { background: #0ea5e9; color: white; }
-        .badge-primary { background: #6366f1; color: white; }
-        .badge-success { background: #22c55e; color: white; }
-        .badge-muted { background: #475569; color: #cbd5e1; }
-        .tag { background: #1e3a5f; color: #7dd3fc; padding: 2px 8px; border-radius: 4px;
-            font-size: 0.75rem; text-decoration: none; }
-        .tag:hover { background: #0284c7; color: white; }
-        .filter-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
-        .empty-state { text-align: center; padding: 3rem; color: #64748b; }
-
-        /* Progress bars */
-        .progress-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0;
-            border-bottom: 1px solid #1e293b; font-size: 0.9rem; }
-        .progress-name { font-weight: 600; min-width: 120px; }
-        .progress-status { font-size: 0.8rem; min-width: 80px; }
-        .progress-status.scanning { color: #f59e0b; }
-        .progress-status.idle { color: #22c55e; }
-        .progress-status.error { color: #ef4444; }
-        .progress-bar { flex: 1; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; }
-        .progress-fill { height: 100%; background: linear-gradient(90deg, #0ea5e9, #22c55e);
-            border-radius: 4px; transition: width 0.3s ease; }
-        .progress-text { color: #94a3b8; font-size: 0.8rem; min-width: 140px; text-align: right; }
-        .progress-error { color: #ef4444; font-size: 0.8rem; }
-    </style>"#
 }

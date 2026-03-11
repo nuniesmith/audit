@@ -65,110 +65,61 @@ fn ts(utc_str: &str) -> String {
     format!(r#"<span data-utc="{u}">{u}</span>"#, u = utc_str)
 }
 
-fn nav(active: &str) -> String {
-    web_ui_nav::nav(active)
-}
+const CACHE_EXTRA_STYLES: &str = r#"<style>
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: #1e293b; border-radius: 8px; border: 1px solid #334155;
+        padding: 1rem; text-align: center; }
+    .stat-value { font-size: 1.8rem; font-weight: 700; color: #f1f5f9; }
+    .stat-label { font-size: 0.85rem; color: #94a3b8; margin-top: 0.2rem; }
+    .stat-value.green { color: #22c55e; }
+    .stat-value.blue { color: #38bdf8; }
+    .stat-value.orange { color: #f59e0b; }
+    .stat-value.red { color: #ef4444; }
+    .btn-small { padding: 0.25rem 0.6rem; font-size: 0.8rem; border-radius: 6px; border: none;
+        cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; transition: all 0.2s; }
+    .btn-small.btn-primary { background: #0ea5e9; color: white; }
+    .btn-small.btn-primary:hover { background: #0284c7; }
+    th { position: sticky; top: 0; }
+    td { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.85rem; }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
+        font-size: 0.75rem; font-weight: 600; }
+    .badge-green { background: #064e3b; color: #6ee7b7; }
+    .badge-yellow { background: #713f12; color: #fde68a; }
+    .badge-red { background: #7f1d1d; color: #fca5a5; }
+    .badge-blue { background: #1e3a5f; color: #93c5fd; }
+    .badge-gray { background: #374151; color: #9ca3af; }
+    .progress-bar { background: #334155; border-radius: 4px; height: 8px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .empty-state { text-align: center; padding: 3rem; color: #64748b; }
+    .file-result { background: #0f172a; border-radius: 6px; padding: 1rem;
+        margin-top: 0.5rem; border: 1px solid #334155; }
+    .file-result pre { white-space: pre-wrap; word-break: break-word;
+        font-size: 0.8rem; color: #cbd5e1; max-height: 400px; overflow-y: auto; }
+    .score-pill { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px;
+        font-weight: 700; font-size: 0.85rem; }
+    .score-high { background: #064e3b; color: #6ee7b7; }
+    .score-mid { background: #713f12; color: #fde68a; }
+    .score-low { background: #7f1d1d; color: #fca5a5; }
+    .search-box { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .search-box input { flex: 1; background: #334155; color: #e2e8f0;
+        border: 1px solid #475569; border-radius: 6px; padding: 0.5rem 0.8rem; font-size: 0.9rem; }
+    .search-box input:focus { outline: none; border-color: #0ea5e9; }
+    .filter-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .filter-bar select { background: #334155; color: #e2e8f0; border: 1px solid #475569;
+        border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+    .breadcrumb { font-size: 0.9rem; margin-bottom: 1rem; color: #94a3b8; }
+    .breadcrumb a { color: #38bdf8; }
+    .breadcrumb .sep { margin: 0 0.4rem; color: #475569; }
+    .dir-tree .dir { color: #38bdf8; cursor: pointer; }
+    .dir-tree .file-analyzed { color: #22c55e; }
+    .dir-tree .file-pending { color: #94a3b8; }
+    .dir-tree .file-skipped { color: #64748b; text-decoration: line-through; }
+</style>"#;
 
-fn timezone_js() -> &'static str {
-    r#"<script>
-    function convertTimestamps() {
-        const tz = localStorage.getItem('rustassistant_tz') || Intl.DateTimeFormat().resolvedOptions().timeZone;
-        document.querySelectorAll('[data-utc]').forEach(el => {
-            const utc = el.getAttribute('data-utc');
-            if (utc && utc !== '—') {
-                try {
-                    const d = new Date(utc + 'Z');
-                    el.textContent = d.toLocaleString('en-US', {timeZone: tz, month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-                } catch(e) {}
-            }
-        });
-        const sel = document.getElementById('tz-select');
-        if (sel) {
-            sel.value = tz;
-            sel.addEventListener('change', e => { localStorage.setItem('rustassistant_tz', e.target.value); convertTimestamps(); });
-        }
-    }
-    document.addEventListener('DOMContentLoaded', convertTimestamps);
-    </script>"#
-}
-
-fn page_style() -> &'static str {
-    r#"<style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f172a; color: #e2e8f0; line-height: 1.6; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 1rem 2rem; }
-        header { display: flex; justify-content: space-between; align-items: center;
-            padding: 1rem 0; border-bottom: 1px solid #1e293b; margin-bottom: 1.5rem; }
-        header h1 { font-size: 1.3rem; color: #0ea5e9; }
-        nav { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
-        nav a { color: #94a3b8; text-decoration: none; padding: 0.4rem 0.8rem;
-            border-radius: 6px; font-size: 0.9rem; }
-        nav a:hover { color: #e2e8f0; background: #1e293b; }
-        nav a.active { color: #0ea5e9; background: #0c2d4a; font-weight: 600; }
-        h2 { font-size: 1.4rem; margin-bottom: 1rem; color: #f1f5f9; }
-        h3 { font-size: 1.1rem; margin-bottom: 0.5rem; color: #cbd5e1; }
-        .card { background: #1e293b; border-radius: 8px; border: 1px solid #334155;
-            padding: 1.2rem; margin-bottom: 1rem; }
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 1rem; margin-bottom: 1.5rem; }
-        .stat-card { background: #1e293b; border-radius: 8px; border: 1px solid #334155;
-            padding: 1rem; text-align: center; }
-        .stat-value { font-size: 1.8rem; font-weight: 700; color: #f1f5f9; }
-        .stat-label { font-size: 0.85rem; color: #94a3b8; margin-top: 0.2rem; }
-        .stat-value.green { color: #22c55e; }
-        .stat-value.blue { color: #38bdf8; }
-        .stat-value.orange { color: #f59e0b; }
-        .stat-value.red { color: #ef4444; }
-        .btn, .btn-small { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer;
-            font-size: 0.9rem; font-weight: 500; text-decoration: none; display: inline-block; }
-        .btn-small { padding: 0.25rem 0.6rem; font-size: 0.8rem; }
-        .btn-primary { background: #0ea5e9; color: white; }
-        .btn-primary:hover { background: #0284c7; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid #334155; }
-        th { background: #0f172a; color: #94a3b8; font-weight: 600; font-size: 0.85rem;
-            text-transform: uppercase; letter-spacing: 0.03em; position: sticky; top: 0; }
-        tr:hover { background: #1a2744; }
-        .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.85rem; }
-        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
-            font-size: 0.75rem; font-weight: 600; }
-        .badge-green { background: #064e3b; color: #6ee7b7; }
-        .badge-yellow { background: #713f12; color: #fde68a; }
-        .badge-red { background: #7f1d1d; color: #fca5a5; }
-        .badge-blue { background: #1e3a5f; color: #93c5fd; }
-        .badge-gray { background: #374151; color: #9ca3af; }
-        .progress-bar { background: #334155; border-radius: 4px; height: 8px; overflow: hidden; }
-        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
-        .dir-tree { font-family: monospace; font-size: 0.85rem; }
-        .dir-tree .dir { color: #38bdf8; cursor: pointer; }
-        .dir-tree .file-analyzed { color: #22c55e; }
-        .dir-tree .file-pending { color: #94a3b8; }
-        .dir-tree .file-skipped { color: #64748b; text-decoration: line-through; }
-        .empty-state { text-align: center; padding: 3rem; color: #64748b; }
-        a { color: #38bdf8; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .file-result { background: #0f172a; border-radius: 6px; padding: 1rem;
-            margin-top: 0.5rem; border: 1px solid #334155; }
-        .file-result pre { white-space: pre-wrap; word-break: break-word;
-            font-size: 0.8rem; color: #cbd5e1; max-height: 400px; overflow-y: auto; }
-        .score-pill { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px;
-            font-weight: 700; font-size: 0.85rem; }
-        .score-high { background: #064e3b; color: #6ee7b7; }
-        .score-mid { background: #713f12; color: #fde68a; }
-        .score-low { background: #7f1d1d; color: #fca5a5; }
-        .search-box { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-        .search-box input { flex: 1; background: #334155; color: #e2e8f0;
-            border: 1px solid #475569; border-radius: 6px; padding: 0.5rem 0.8rem;
-            font-size: 0.9rem; }
-        .search-box input:focus { outline: none; border-color: #0ea5e9; }
-        .filter-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
-        .filter-bar select { background: #334155; color: #e2e8f0; border: 1px solid #475569;
-            border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
-        .breadcrumb { font-size: 0.9rem; margin-bottom: 1rem; color: #94a3b8; }
-        .breadcrumb a { color: #38bdf8; }
-        .breadcrumb .sep { margin: 0 0.4rem; color: #475569; }
-    </style>"#
+fn cache_page_shell(title: &str, nav_active: &str, content: &str) -> String {
+    web_ui_nav::page_shell(title, nav_active, CACHE_EXTRA_STYLES, content)
 }
 
 // ============================================================================
@@ -463,52 +414,37 @@ pub async fn cache_overview_handler(State(state): State<Arc<WebAppState>>) -> im
         repo_cards = r#"<div class="empty-state"><p>No repositories tracked yet. Add one from the Repos page.</p></div>"#.to_string();
     }
 
-    Html(format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Cache Viewer — Rustassistant</title>
-        {style}
-        </head><body>
-        <div class="container">
-            <header>
-                <h1>🔬 Rustassistant</h1>
-                <nav>{nav}</nav>
-            </header>
+    let content = format!(
+        r#"<h2 style="font-size: 1.4rem; color: #f1f5f9; margin-bottom: 1rem;">📦 Cache Viewer</h2>
 
-            <h2>📦 Cache Viewer</h2>
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-value blue">{repos}</div>
+        <div class="stat-label">Repositories</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value green">{total_files}</div>
+        <div class="stat-label">Files Analyzed</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{total_tokens}</div>
+        <div class="stat-label">Total Tokens</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value orange">${total_cost:.4}</div>
+        <div class="stat-label">Total Cost</div>
+    </div>
+</div>
 
-            <div class="stat-grid">
-                <div class="stat-card">
-                    <div class="stat-value blue">{repos}</div>
-                    <div class="stat-label">Repositories</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value green">{total_files}</div>
-                    <div class="stat-label">Files Analyzed</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{total_tokens}</div>
-                    <div class="stat-label">Total Tokens</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value orange">${total_cost:.4}</div>
-                    <div class="stat-label">Total Cost</div>
-                </div>
-            </div>
-
-            {repo_cards}
-        </div>
-        {tz_js}
-        </body></html>"#,
-        style = page_style(),
-        nav = nav("Cache Viewer"),
+{repo_cards}"#,
         repos = repos.len(),
         total_files = grand_total_entries,
         total_tokens = format_tokens(grand_total_tokens),
         total_cost = grand_total_cost,
         repo_cards = repo_cards,
-        tz_js = timezone_js(),
-    ))
+    );
+
+    Html(cache_page_shell("Cache Viewer", "Cache", &content))
 }
 
 // ============================================================================
@@ -546,16 +482,14 @@ pub async fn cache_repo_detail_handler(
     let cache = match open_repo_cache(&repo_path, cache_hash.as_deref()).await {
         Some(c) => c,
         None => {
-            return Html(format!(
-                r#"<!DOCTYPE html><html><head>{style}</head><body>
-            <div class="container">
-                <header><h1>🔬 Rustassistant</h1><nav>{nav}</nav></header>
-                <div class="breadcrumb"><a href="/cache">Cache</a><span class="sep">›</span>{name}</div>
-                <div class="empty-state"><p>No cache database found for this repository. Run a scan first.</p></div>
-            </div></body></html>"#,
-                style = page_style(),
-                nav = nav("Cache Viewer"),
-                name = html_escape(&repo_name)
+            return Html(cache_page_shell(
+                &format!("{} — Cache", repo_name),
+                "Cache",
+                &format!(
+                    r#"<div class="breadcrumb"><a href="/cache">Cache</a><span class="sep">›</span>{name}</div>
+<div class="empty-state"><p>No cache database found for this repository. Run a scan first.</p></div>"#,
+                    name = html_escape(&repo_name)
+                ),
             ))
         }
     };
@@ -675,93 +609,80 @@ pub async fn cache_repo_detail_handler(
     let active_filter = query.filter.as_deref().unwrap_or("");
     let active_dir = query.dir.as_deref().unwrap_or("");
 
-    Html(format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{repo_name} Cache — Rustassistant</title>
-        {style}
-        </head><body>
-        <div class="container">
-            <header><h1>🔬 Rustassistant</h1><nav>{nav}</nav></header>
+    let content = format!(
+        r#"<div class="breadcrumb">
+    <a href="/cache">Cache</a><span class="sep">›</span>
+    <strong>{repo_name}</strong>
+</div>
 
-            <div class="breadcrumb">
-                <a href="/cache">Cache</a><span class="sep">›</span>
-                <strong>{repo_name}</strong>
-            </div>
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-value green">{files_count}</div>
+        <div class="stat-label">Files Analyzed</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{total_tokens}</div>
+        <div class="stat-label">Tokens Used</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value orange">${cost:.4}</div>
+        <div class="stat-label">Est. Cost</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value blue">{showing}</div>
+        <div class="stat-label">Showing</div>
+    </div>
+</div>
 
-            <div class="stat-grid">
-                <div class="stat-card">
-                    <div class="stat-value green">{files_count}</div>
-                    <div class="stat-label">Files Analyzed</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{total_tokens}</div>
-                    <div class="stat-label">Tokens Used</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value orange">${cost:.4}</div>
-                    <div class="stat-label">Est. Cost</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value blue">{showing}</div>
-                    <div class="stat-label">Showing</div>
-                </div>
-            </div>
+<!-- Directory quick-filter -->
+<div class="card" style="padding: 0.8rem;">
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+        <span style="color: #94a3b8; font-size: 0.85rem;">📁 Directories:</span>
+        <a href="/cache/{repo_id}" class="btn-small btn-primary">All</a>
+        {dir_filters}
+    </div>
+</div>
 
-            <!-- Directory quick-filter -->
-            <div class="card" style="padding: 0.8rem;">
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                    <span style="color: #94a3b8; font-size: 0.85rem;">📁 Directories:</span>
-                    <a href="/cache/{repo_id}" class="btn-small btn-primary">All</a>
-                    {dir_filters}
-                </div>
-            </div>
+<!-- Search -->
+<form method="get" action="/cache/{repo_id}" class="search-box">
+    <input type="text" name="filter" placeholder="Filter by file path..." value="{active_filter}">
+    <input type="hidden" name="dir" value="{active_dir}">
+    <button type="submit" class="btn btn-primary">Search</button>
+</form>
 
-            <!-- Search -->
-            <form method="get" action="/cache/{repo_id}" class="search-box">
-                <input type="text" name="filter" placeholder="Filter by file path..." value="{active_filter}">
-                <input type="hidden" name="dir" value="{active_dir}">
-                <button type="submit" class="btn btn-primary">Search</button>
-            </form>
+<!-- Sort controls -->
+<div class="filter-bar">
+    <span style="color: #94a3b8; font-size: 0.85rem;">Sort:</span>
+    <a href="/cache/{repo_id}?sort=name&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Name</a>
+    <a href="/cache/{repo_id}?sort=score&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Score</a>
+    <a href="/cache/{repo_id}?sort=tokens&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Tokens</a>
+    <a href="/cache/{repo_id}?sort=size&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Size</a>
+    <a href="/cache/{repo_id}?sort=date&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Date</a>
+</div>
 
-            <!-- Sort controls -->
-            <div class="filter-bar">
-                <span style="color: #94a3b8; font-size: 0.85rem;">Sort:</span>
-                <a href="/cache/{repo_id}?sort=name&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Name</a>
-                <a href="/cache/{repo_id}?sort=score&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Score</a>
-                <a href="/cache/{repo_id}?sort=tokens&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Tokens</a>
-                <a href="/cache/{repo_id}?sort=size&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Size</a>
-                <a href="/cache/{repo_id}?sort=date&filter={af}&dir={ad}" class="btn-small" style="background: #334155; color: #e2e8f0;">Date</a>
-            </div>
+<!-- File table -->
+<div class="card" style="padding: 0; overflow-x: auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>File Path</th>
+                <th style="text-align: center;">Score</th>
+                <th style="text-align: right;">Tokens</th>
+                <th style="text-align: right;">Size</th>
+                <th>Type</th>
+                <th>Analyzed</th>
+            </tr>
+        </thead>
+        <tbody>
+            {file_rows}
+        </tbody>
+    </table>
+</div>
 
-            <!-- File table -->
-            <div class="card" style="padding: 0; overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>File Path</th>
-                            <th style="text-align: center;">Score</th>
-                            <th style="text-align: right;">Tokens</th>
-                            <th style="text-align: right;">Size</th>
-                            <th>Type</th>
-                            <th>Analyzed</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {file_rows}
-                    </tbody>
-                </table>
-            </div>
-
-            <div style="margin-top: 1rem; text-align: center;">
-                <a href="/cache/{repo_id}/gaps" class="btn btn-primary">🔍 View Unanalyzed Files</a>
-            </div>
-        </div>
-        {tz_js}
-        </body></html>"#,
+<div style="margin-top: 1rem; text-align: center;">
+    <a href="/cache/{repo_id}/gaps" class="btn btn-primary">🔍 View Unanalyzed Files</a>
+</div>"#,
         repo_name = html_escape(&repo_name),
-        style = page_style(),
-        nav = nav("Cache Viewer"),
         files_count = stats.unique_files,
         total_tokens = format_tokens(stats.total_tokens),
         cost = stats.estimated_cost,
@@ -773,7 +694,12 @@ pub async fn cache_repo_detail_handler(
         af = html_escape(active_filter),
         ad = html_escape(active_dir),
         file_rows = file_rows,
-        tz_js = timezone_js(),
+    );
+
+    Html(cache_page_shell(
+        &format!("{} — Cache", repo_name),
+        "Cache",
+        &content,
     ))
 }
 
@@ -851,22 +777,20 @@ pub async fn cache_file_detail_handler(
     ) = match entry {
         Some(e) => e,
         None => {
-            return Html(format!(
-                r#"<!DOCTYPE html><html><head>{style}</head><body>
-                    <div class="container">
-                        <header><h1>🔬 Rustassistant</h1><nav>{nav}</nav></header>
-                        <div class="breadcrumb">
-                            <a href="/cache">Cache</a><span class="sep">›</span>
-                            <a href="/cache/{repo_id}">{repo_name}</a><span class="sep">›</span>
-                            <span class="mono">{path}</span>
-                        </div>
-                        <div class="empty-state"><p>No cached analysis found for this file.</p></div>
-                    </div></body></html>"#,
-                style = page_style(),
-                nav = nav("Cache Viewer"),
-                repo_id = repo_id,
-                repo_name = html_escape(&repo_name),
-                path = html_escape(&query.path),
+            return Html(cache_page_shell(
+                &format!("{} — Cache", html_escape(&query.path)),
+                "Cache",
+                &format!(
+                    r#"<div class="breadcrumb">
+                        <a href="/cache">Cache</a><span class="sep">›</span>
+                        <a href="/cache/{repo_id}">{repo_name}</a><span class="sep">›</span>
+                        <span class="mono">{path}</span>
+                    </div>
+                    <div class="empty-state"><p>No cached analysis found for this file.</p></div>"#,
+                    repo_id = repo_id,
+                    repo_name = html_escape(&repo_name),
+                    path = html_escape(&query.path),
+                ),
             ))
         }
     };
@@ -882,73 +806,60 @@ pub async fn cache_file_detail_handler(
         None => r#"<span style="color: #64748b;">No score extracted</span>"#.to_string(),
     };
 
-    Html(format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{file_path} — Rustassistant</title>
-        {style}
-        </head><body>
-        <div class="container">
-            <header><h1>🔬 Rustassistant</h1><nav>{nav}</nav></header>
+    let content = format!(
+        r#"<div class="breadcrumb">
+    <a href="/cache">Cache</a><span class="sep">›</span>
+    <a href="/cache/{repo_id}">{repo_name}</a><span class="sep">›</span>
+    <span class="mono">{file_path}</span>
+</div>
 
-            <div class="breadcrumb">
-                <a href="/cache">Cache</a><span class="sep">›</span>
-                <a href="/cache/{repo_id}">{repo_name}</a><span class="sep">›</span>
-                <span class="mono">{file_path}</span>
-            </div>
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 class="mono" style="font-size: 1.1rem; margin: 0;">{file_path}</h2>
+        {score_html}
+    </div>
 
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h2 class="mono" style="font-size: 1.1rem; margin: 0;">{file_path}</h2>
-                    {score_html}
-                </div>
-
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-                    <div>
-                        <div style="color: #94a3b8; font-size: 0.8rem;">Type</div>
-                        <div><span class="badge badge-blue">{cache_type}</span></div>
-                    </div>
-                    <div>
-                        <div style="color: #94a3b8; font-size: 0.8rem;">Tokens</div>
-                        <div class="mono">{tokens}</div>
-                    </div>
-                    <div>
-                        <div style="color: #94a3b8; font-size: 0.8rem;">File Size</div>
-                        <div class="mono">{file_size}</div>
-                    </div>
-                    <div>
-                        <div style="color: #94a3b8; font-size: 0.8rem;">Provider / Model</div>
-                        <div class="mono">{provider} / {model}</div>
-                    </div>
-                    <div>
-                        <div style="color: #94a3b8; font-size: 0.8rem;">Analyzed</div>
-                        <div>{created}</div>
-                    </div>
-                    <div>
-                        <div style="color: #94a3b8; font-size: 0.8rem;">Last Accessed</div>
-                        <div>{last_accessed}</div>
-                    </div>
-                    <div>
-                        <div style="color: #94a3b8; font-size: 0.8rem;">Access Count</div>
-                        <div class="mono">{access_count}</div>
-                    </div>
-                </div>
-            </div>
-
-            <h3 style="margin-top: 1.5rem;">📋 Analysis Result</h3>
-            <div class="file-result">
-                <pre>{result_escaped}</pre>
-            </div>
-
-            <div style="margin-top: 1rem;">
-                <a href="/cache/{repo_id}" class="btn" style="background: #475569; color: #e2e8f0;">← Back to File List</a>
-            </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+        <div>
+            <div style="color: #94a3b8; font-size: 0.8rem;">Type</div>
+            <div><span class="badge badge-blue">{cache_type}</span></div>
         </div>
-        {tz_js}
-        </body></html>"#,
+        <div>
+            <div style="color: #94a3b8; font-size: 0.8rem;">Tokens</div>
+            <div class="mono">{tokens}</div>
+        </div>
+        <div>
+            <div style="color: #94a3b8; font-size: 0.8rem;">File Size</div>
+            <div class="mono">{file_size}</div>
+        </div>
+        <div>
+            <div style="color: #94a3b8; font-size: 0.8rem;">Provider / Model</div>
+            <div class="mono">{provider} / {model}</div>
+        </div>
+        <div>
+            <div style="color: #94a3b8; font-size: 0.8rem;">Analyzed</div>
+            <div>{created}</div>
+        </div>
+        <div>
+            <div style="color: #94a3b8; font-size: 0.8rem;">Last Accessed</div>
+            <div>{last_accessed}</div>
+        </div>
+        <div>
+            <div style="color: #94a3b8; font-size: 0.8rem;">Access Count</div>
+            <div class="mono">{access_count}</div>
+        </div>
+    </div>
+</div>
+
+<h3 style="margin-top: 1.5rem;">📋 Analysis Result</h3>
+<div class="file-result">
+    <pre>{result_escaped}</pre>
+</div>
+
+<div style="margin-top: 1rem;">
+    <a href="/cache/{repo_id}" class="btn" style="background: #475569; color: #e2e8f0;">← Back to File List</a>
+</div>"#,
         file_path = html_escape(&query.path),
-        style = page_style(),
-        nav = nav("Cache Viewer"),
         repo_id = repo_id,
         repo_name = html_escape(&repo_name),
         score_html = score_html,
@@ -961,7 +872,12 @@ pub async fn cache_file_detail_handler(
         last_accessed = ts(&last_accessed),
         access_count = access_count,
         result_escaped = html_escape(&result_json),
-        tz_js = timezone_js(),
+    );
+
+    Html(cache_page_shell(
+        &format!("{} — Cache", html_escape(&query.path)),
+        "Cache",
+        &content,
     ))
 }
 
@@ -1123,65 +1039,52 @@ pub async fn cache_gaps_handler(
         "#ef4444"
     };
 
-    Html(format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Gaps — {repo_name} — Rustassistant</title>
-        {style}
-        </head><body>
-        <div class="container">
-            <header><h1>🔬 Rustassistant</h1><nav>{nav}</nav></header>
+    let gaps_content = format!(
+        r#"<div class="breadcrumb">
+            <a href="/cache">Cache</a><span class="sep">›</span>
+            <a href="/cache/{repo_id}">{repo_name}</a><span class="sep">›</span>
+            <strong>Coverage Gaps</strong>
+        </div>
 
-            <div class="breadcrumb">
-                <a href="/cache">Cache</a><span class="sep">›</span>
-                <a href="/cache/{repo_id}">{repo_name}</a><span class="sep">›</span>
-                <strong>Coverage Gaps</strong>
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-value">{total_source}</div>
+                <div class="stat-label">Source Files</div>
             </div>
-
-            <div class="stat-grid">
-                <div class="stat-card">
-                    <div class="stat-value">{total_source}</div>
-                    <div class="stat-label">Source Files</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value green">{total_analyzed}</div>
-                    <div class="stat-label">Analyzed</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value orange">{total_pending}</div>
-                    <div class="stat-label">Pending</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" style="color: {bar_color};">{coverage:.1}%</div>
-                    <div class="stat-label">Coverage</div>
-                </div>
+            <div class="stat-card">
+                <div class="stat-value green">{total_analyzed}</div>
+                <div class="stat-label">Analyzed</div>
             </div>
-
-            <!-- Coverage bar -->
-            <div class="card" style="padding: 1rem;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem;">
-                    <span style="color: #94a3b8; font-size: 0.85rem;">Analysis Coverage</span>
-                    <span style="color: #f1f5f9; font-weight: 600;">{coverage:.1}%</span>
-                </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {coverage}%; background: {bar_color};"></div>
-                </div>
+            <div class="stat-card">
+                <div class="stat-value orange">{total_pending}</div>
+                <div class="stat-label">Pending</div>
             </div>
-
-            <h3 style="margin-top: 1.5rem;">📋 Unanalyzed Files ({total_pending})</h3>
-            <div class="card" style="max-height: 600px; overflow-y: auto;">
-                {pending_html}
-            </div>
-
-            <div style="margin-top: 1rem;">
-                <a href="/cache/{repo_id}" class="btn" style="background: #475569; color: #e2e8f0;">← Back to File List</a>
+            <div class="stat-card">
+                <div class="stat-value" style="color: {bar_color};">{coverage:.1}%</div>
+                <div class="stat-label">Coverage</div>
             </div>
         </div>
-        {tz_js}
-        </body></html>"#,
+
+        <!-- Coverage bar -->
+        <div class="card" style="padding: 1rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem;">
+                <span style="color: #94a3b8; font-size: 0.85rem;">Analysis Coverage</span>
+                <span style="color: #f1f5f9; font-weight: 600;">{coverage:.1}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {coverage}%; background: {bar_color};"></div>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 1.5rem;">📋 Unanalyzed Files ({total_pending})</h3>
+        <div class="card" style="max-height: 600px; overflow-y: auto;">
+            {pending_html}
+        </div>
+
+        <div style="margin-top: 1rem;">
+            <a href="/cache/{repo_id}" class="btn" style="background: #475569; color: #e2e8f0;">← Back to File List</a>
+        </div>"#,
         repo_name = html_escape(&repo_name),
-        style = page_style(),
-        nav = nav("Cache Viewer"),
         repo_id = repo_id,
         total_source = total_source,
         total_analyzed = total_analyzed,
@@ -1189,6 +1092,11 @@ pub async fn cache_gaps_handler(
         coverage = coverage_pct,
         bar_color = bar_color,
         pending_html = pending_html,
-        tz_js = timezone_js(),
+    );
+
+    Html(cache_page_shell(
+        &format!("Gaps — {} — Cache", html_escape(&repo_name)),
+        "Cache",
+        &gaps_content,
     ))
 }

@@ -75,9 +75,60 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn nav(active: &str) -> String {
-    web_ui_nav::nav(active)
-}
+const SCAN_PROGRESS_STYLES: &str = r#"<style>
+    /* Mini stats */
+    .mini-stat { background: #1e293b; border-radius: 8px; border: 1px solid #334155;
+        padding: 0.75rem 1rem; text-align: center; }
+    .mini-val { font-size: 1.4rem; font-weight: 700; color: #0ea5e9; }
+    .mini-val.scanning { color: #fbbf24; animation: pulse 2s infinite; }
+    .mini-label { font-size: 0.75rem; color: #64748b; margin-top: 0.15rem; }
+
+    /* Scan cards */
+    .scan-card { background: #1e293b; border-radius: 8px; border: 1px solid #334155;
+        padding: 1.25rem; margin-bottom: 0.75rem; transition: border-color 0.3s; }
+    .scan-card.scanning { border-color: #0ea5e9; }
+    .scan-card.error { border-color: #ef4444; }
+
+    .scan-header { display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 0.75rem; }
+    .scan-repo-name { font-size: 1.1rem; font-weight: 600; color: #f1f5f9; }
+
+    .scan-badge { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem;
+        font-weight: 600; }
+    .scan-badge.active { background: #0c2d4a; color: #38bdf8; animation: pulse 2s infinite; }
+    .scan-badge.error { background: #3b1111; color: #f87171; }
+    .scan-badge.idle { background: #0a2910; color: #4ade80; }
+
+    /* The big counter */
+    .scan-counter { display: flex; align-items: baseline; gap: 0.25rem;
+        margin-bottom: 0.75rem; }
+    .counter-current { font-size: 2.2rem; font-weight: 800; color: #0ea5e9;
+        font-variant-numeric: tabular-nums; }
+    .counter-sep { font-size: 1.8rem; color: #475569; font-weight: 300; }
+    .counter-total { font-size: 1.8rem; font-weight: 600; color: #64748b;
+        font-variant-numeric: tabular-nums; }
+    .counter-label { font-size: 0.85rem; color: #64748b; margin-left: 0.5rem; }
+
+    /* Progress bar */
+    .scan-progress-track { width: 100%; height: 0.75rem; background: #0f172a;
+        border-radius: 0.5rem; overflow: hidden; margin-bottom: 0.5rem; }
+    .scan-progress-fill { height: 100%; border-radius: 0.5rem; transition: width 0.5s ease;
+        background: linear-gradient(90deg, #0ea5e9, #8b5cf6); }
+
+    /* Current file */
+    .scan-current-file { font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 0.8rem; color: #64748b; white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; }
+
+    .scan-error { background: rgba(239,68,68,0.1); border-left: 3px solid #ef4444;
+        padding: 0.5rem 0.75rem; border-radius: 0 4px 4px 0; font-size: 0.85rem;
+        color: #fca5a5; }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+</style>"#;
 
 // ============================================================================
 // Data structs
@@ -418,92 +469,12 @@ pub async fn scan_dashboard_handler(State(state): State<Arc<WebAppState>>) -> im
         cards = cards,
     );
 
-    let page = format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scan Progress — RustAssistant</title>
-<script src="https://unpkg.com/htmx.org@1.9.10"></script>
-<style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: #0f172a; color: #e2e8f0; line-height: 1.6; }}
-    .container {{ max-width: 1200px; margin: 0 auto; padding: 1rem 2rem; }}
-    nav {{ display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
-        padding: 1rem 0; border-bottom: 1px solid #1e293b; margin-bottom: 1.5rem; }}
-    nav a {{ color: #94a3b8; text-decoration: none; padding: 0.4rem 0.8rem;
-        border-radius: 6px; font-size: 0.9rem; }}
-    nav a:hover {{ color: #e2e8f0; background: #1e293b; }}
-    nav a.active {{ color: #0ea5e9; background: #0c2d4a; font-weight: 600; }}
-    h2 {{ font-size: 1.4rem; color: #f1f5f9; }}
-
-    /* Mini stats */
-    .mini-stat {{ background: #1e293b; border-radius: 8px; border: 1px solid #334155;
-        padding: 0.75rem 1rem; text-align: center; }}
-    .mini-val {{ font-size: 1.4rem; font-weight: 700; color: #0ea5e9; }}
-    .mini-val.scanning {{ color: #fbbf24; animation: pulse 2s infinite; }}
-    .mini-label {{ font-size: 0.75rem; color: #64748b; margin-top: 0.15rem; }}
-
-    /* Scan cards */
-    .scan-card {{ background: #1e293b; border-radius: 8px; border: 1px solid #334155;
-        padding: 1.25rem; margin-bottom: 0.75rem; transition: border-color 0.3s; }}
-    .scan-card.scanning {{ border-color: #0ea5e9; }}
-    .scan-card.error {{ border-color: #ef4444; }}
-
-    .scan-header {{ display: flex; justify-content: space-between; align-items: center;
-        margin-bottom: 0.75rem; }}
-    .scan-repo-name {{ font-size: 1.1rem; font-weight: 600; color: #f1f5f9; }}
-
-    .scan-badge {{ padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem;
-        font-weight: 600; }}
-    .scan-badge.active {{ background: #0c2d4a; color: #38bdf8; animation: pulse 2s infinite; }}
-    .scan-badge.error {{ background: #3b1111; color: #f87171; }}
-    .scan-badge.idle {{ background: #0a2910; color: #4ade80; }}
-
-    /* The big counter */
-    .scan-counter {{ display: flex; align-items: baseline; gap: 0.25rem;
-        margin-bottom: 0.75rem; }}
-    .counter-current {{ font-size: 2.2rem; font-weight: 800; color: #0ea5e9;
-        font-variant-numeric: tabular-nums; }}
-    .counter-sep {{ font-size: 1.8rem; color: #475569; font-weight: 300; }}
-    .counter-total {{ font-size: 1.8rem; font-weight: 600; color: #64748b;
-        font-variant-numeric: tabular-nums; }}
-    .counter-label {{ font-size: 0.85rem; color: #64748b; margin-left: 0.5rem; }}
-
-    /* Progress bar */
-    .scan-progress-track {{ width: 100%; height: 0.75rem; background: #0f172a;
-        border-radius: 0.5rem; overflow: hidden; margin-bottom: 0.5rem; }}
-    .scan-progress-fill {{ height: 100%; border-radius: 0.5rem; transition: width 0.5s ease;
-        background: linear-gradient(90deg, #0ea5e9, #8b5cf6); }}
-
-    /* Current file */
-    .scan-current-file {{ font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        font-size: 0.8rem; color: #64748b; white-space: nowrap; overflow: hidden;
-        text-overflow: ellipsis; }}
-
-    .scan-error {{ background: rgba(239,68,68,0.1); border-left: 3px solid #ef4444;
-        padding: 0.5rem 0.75rem; border-radius: 0 4px 4px 0; font-size: 0.85rem;
-        color: #fca5a5; }}
-
-    @keyframes pulse {{
-        0%, 100% {{ opacity: 1; }}
-        50% {{ opacity: 0.7; }}
-    }}
-</style>
-</head>
-<body>
-<div class="container">
-    {nav}
-    {content}
-</div>
-</body>
-</html>"#,
-        nav = nav("Scan Progress"),
-        content = content,
+    let page = web_ui_nav::page_shell(
+        "Scan Progress",
+        "Scan Progress",
+        SCAN_PROGRESS_STYLES,
+        &content,
     );
-
     Html(page)
 }
 
