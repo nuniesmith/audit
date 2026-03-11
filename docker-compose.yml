@@ -220,13 +220,6 @@ services:
             - NVIDIA_DRIVER_CAPABILITIES=compute,utility
         networks:
             - ra-net
-        # device_requests is the compose v2 way to request a GPU.
-        # Combined with `runtime: nvidia` above this is belt-and-suspenders:
-        # one of the two mechanisms will always work depending on toolkit version.
-        device_requests:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
         healthcheck:
             test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
