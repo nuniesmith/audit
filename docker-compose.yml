@@ -39,12 +39,7 @@ services:
     # RustAssistant (API + Web UI)
     # =========================================================================
     rustassistant:
-        build:
-            context: .
-            dockerfile: docker/Dockerfile
-            args:
-                SERVICE_TYPE: web
-                SERVICE_PORT: 3500
+        image: nuniesmith/rustassistant:latest
         container_name: ra-app
         restart: unless-stopped
         ports:

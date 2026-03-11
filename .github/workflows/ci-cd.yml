@@ -252,120 +252,136 @@ jobs:
                   # Secrets to inject into .env on the server
                   SECRET_XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
                   SECRET_GITHUB_TOKEN: ${{ secrets.SECRET_GITHUB_TOKEN }}
-                  SECRET_POSTGRES_PW: ${{ secrets.RA_POSTGRES_PASSWORD }}
-                  SECRET_REDIS_PW: ${{ secrets.RA_REDIS_PASSWORD }}
                   SECRET_DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_ACTIONS }}
                   SECRET_GITHUB_OWNER: ${{ secrets.SECRET_GITHUB_OWNER || 'nuniesmith' }}
               run: |
                   set -euo pipefail
+                  SCP_CMD="scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P ${ORYX_PORT} -i ~/.ssh/deploy_key"
                   SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${ORYX_PORT} -i ~/.ssh/deploy_key ${ORYX_USER}@${ORYX_HOST}"
 
                   echo "═══════════════════════════════════════════════════"
                   echo "  Deploying RustAssistant to oryx (CUDA server)"
+                  echo "  Image: nuniesmith/rustassistant:latest"
+                  echo "  Commit: ${{ github.sha }}"
                   echo "═══════════════════════════════════════════════════"
 
-                  # ── Step 1: Clone or pull the repository ───────────────
+                  # ── Step 1: Ensure deploy directory exists ─────────────
                   echo ""
-                  echo "📥 Step 1: Sync repository..."
-                  $SSH_CMD bash -s <<'REMOTE_GIT'
-                  set -euo pipefail
-                  PROJECT_DIR=~/rustassistant
+                  echo "📁 Step 1: Preparing deploy directory..."
+                  $SSH_CMD "mkdir -p ~/rustassistant"
+                  echo "✅ Directory ready"
 
-                  if [ ! -d "$PROJECT_DIR/.git" ]; then
-                      echo "First deployment — cloning..."
-                      mkdir -p ~/
-                      git clone https://github.com/${{ github.repository }}.git "$PROJECT_DIR"
-                      cd "$PROJECT_DIR"
-                      git checkout main
+                  # ── Step 2: Upload docker-compose.yml ──────────────────
+                  echo ""
+                  echo "📤 Step 2: Uploading docker-compose.yml..."
+                  $SCP_CMD docker-compose.yml ${ORYX_USER}@${ORYX_HOST}:~/rustassistant/docker-compose.yml
+                  echo "✅ docker-compose.yml uploaded"
+
+                  # ── Step 3: Generate & upload .env ─────────────────────
+                  echo ""
+                  echo "🔑 Step 3: Generating .env from secrets..."
+
+                  # Read existing service-generated passwords from the server so
+                  # they survive redeploys.  On first deploy the .env won't exist
+                  # yet, so we generate fresh random values and they persist from
+                  # that point on.  This avoids the Postgres/Redis password skew
+                  # that would occur if we generated new values on every run.
+                  EXISTING_PG_PW=$($SSH_CMD \
+                      "grep -m1 '^RA_POSTGRES_PASSWORD=' ~/rustassistant/.env 2>/dev/null \
+                       | cut -d= -f2-" || true)
+                  EXISTING_RD_PW=$($SSH_CMD \
+                      "grep -m1 '^RA_REDIS_PASSWORD=' ~/rustassistant/.env 2>/dev/null \
+                       | cut -d= -f2-" || true)
+                  EXISTING_SESSION=$($SSH_CMD \
+                      "grep -m1 '^RA_SESSION_SECRET=' ~/rustassistant/.env 2>/dev/null \
+                       | cut -d= -f2-" || true)
+                  EXISTING_ENC=$($SSH_CMD \
+                      "grep -m1 '^RA_ENCRYPTION_KEY=' ~/rustassistant/.env 2>/dev/null \
+                       | cut -d= -f2-" || true)
+
+                  if [ -n "$EXISTING_PG_PW" ]; then
+                      PG_PW="$EXISTING_PG_PW"
+                      echo "  → Postgres password: reusing existing value"
                   else
-                      echo "Pulling latest changes..."
-                      cd "$PROJECT_DIR"
-                      git fetch origin
-                      git checkout main
-                      git reset --hard origin/main
-                  fi
-                  echo "✅ Repository synced at $(git rev-parse --short HEAD)"
-                  REMOTE_GIT
-
-                  # ── Step 2: Generate .env from GitHub Secrets ──────────
-                  echo ""
-                  echo "🔑 Step 2: Injecting secrets into .env..."
-
-                  # Generate passwords on the fly if not provided via secrets
-                  PG_PW="${SECRET_POSTGRES_PW}"
-                  if [ -z "$PG_PW" ]; then
                       PG_PW=$(openssl rand -base64 48 | tr -d '/+=\n' | head -c 32)
-                      echo "  → Generated random Postgres password"
+                      echo "  → Postgres password: generated (first deploy)"
                   fi
 
-                  RD_PW="${SECRET_REDIS_PW}"
-                  if [ -z "$RD_PW" ]; then
+                  if [ -n "$EXISTING_RD_PW" ]; then
+                      RD_PW="$EXISTING_RD_PW"
+                      echo "  → Redis password: reusing existing value"
+                  else
                       RD_PW=$(openssl rand -base64 48 | tr -d '/+=\n' | head -c 32)
-                      echo "  → Generated random Redis password"
+                      echo "  → Redis password: generated (first deploy)"
                   fi
 
-                  SESSION_SECRET=$(openssl rand -hex 32)
-                  ENCRYPTION_KEY=$(openssl rand -hex 32)
+                  if [ -n "$EXISTING_SESSION" ]; then
+                      SESSION_SECRET="$EXISTING_SESSION"
+                      echo "  → Session secret: reusing existing value"
+                  else
+                      SESSION_SECRET=$(openssl rand -hex 32)
+                      echo "  → Session secret: generated (first deploy)"
+                  fi
 
-                  # Write .env to the server
-                  $SSH_CMD bash -s <<REMOTE_ENV
-                  set -euo pipefail
-                  cat > ~/rustassistant/.env <<'ENVBLOCK'
-                  # =============================================================================
-                  # RustAssistant — .env (auto-generated by CI/CD)
-                  # Deployed: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-                  # Commit:   ${{ github.sha }}
-                  # =============================================================================
+                  if [ -n "$EXISTING_ENC" ]; then
+                      ENCRYPTION_KEY="$EXISTING_ENC"
+                      echo "  → Encryption key: reusing existing value"
+                  else
+                      ENCRYPTION_KEY=$(openssl rand -hex 32)
+                      echo "  → Encryption key: generated (first deploy)"
+                  fi
 
-                  # ── Ports (avoid FKS conflicts) ──
-                  RA_PORT=3500
-                  RA_POSTGRES_PORT=5433
-                  RA_REDIS_PORT=6380
-                  RA_OLLAMA_PORT=11434
+                  # Build .env with printf so no bare "KEY: value" lines appear
+                  # at column-0 inside this YAML block scalar (which would cause
+                  # the YAML parser to treat them as mapping keys).
+                  ENV_FILE=/tmp/rustassistant.env
+                  printf '%s\n' \
+                      "# RustAssistant .env — generated by CI/CD $(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+                      "# Commit: ${{ github.sha }}" \
+                      "" \
+                      "RA_PORT=3500" \
+                      "RA_POSTGRES_PORT=5433" \
+                      "RA_REDIS_PORT=6380" \
+                      "RA_OLLAMA_PORT=11434" \
+                      "" \
+                      "RA_POSTGRES_PASSWORD=${PG_PW}" \
+                      "RA_REDIS_PASSWORD=${RD_PW}" \
+                      "RA_SESSION_SECRET=${SESSION_SECRET}" \
+                      "RA_ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
+                      "" \
+                      "XAI_API_KEY=${SECRET_XAI_API_KEY}" \
+                      "XAI_BASE_URL=https://api.x.ai/v1" \
+                      "REMOTE_MODEL=grok-2-latest" \
+                      "LOCAL_MODEL=qwen2.5-coder:7b" \
+                      "FORCE_REMOTE_MODEL=false" \
+                      "" \
+                      "GITHUB_TOKEN=${SECRET_GITHUB_TOKEN}" \
+                      "GITHUB_OWNER=${SECRET_GITHUB_OWNER:-nuniesmith}" \
+                      "" \
+                      "REPOS_BASE_PATH=/home/jordan/repos" \
+                      "" \
+                      "AUTO_SCAN_ENABLED=true" \
+                      "AUTO_SCAN_INTERVAL=60" \
+                      "AUTO_SCAN_MAX_CONCURRENT=3" \
+                      "REPO_SYNC_INTERVAL_SECS=300" \
+                      "" \
+                      "RUST_LOG=info,rustassistant=debug" \
+                      > "${ENV_FILE}"
 
-                  # ── Generated Secrets ──
-                  RA_POSTGRES_PASSWORD=${PG_PW}
-                  RA_REDIS_PASSWORD=${RD_PW}
-                  RA_SESSION_SECRET=${SESSION_SECRET}
-                  RA_ENCRYPTION_KEY=${ENCRYPTION_KEY}
+                  $SCP_CMD "${ENV_FILE}" ${ORYX_USER}@${ORYX_HOST}:~/rustassistant/.env
+                  $SSH_CMD "chmod 600 ~/rustassistant/.env"
+                  rm -f "${ENV_FILE}"
+                  echo "✅ .env uploaded (mode 600)"
 
-                  # ── AI Providers ──
-                  XAI_API_KEY=${SECRET_XAI_API_KEY}
-                  XAI_BASE_URL=https://api.x.ai/v1
-                  REMOTE_MODEL=grok-2-latest
-                  LOCAL_MODEL=qwen2.5-coder:7b
-                  FORCE_REMOTE_MODEL=false
-
-                  # ── GitHub ──
-                  GITHUB_TOKEN=${SECRET_GITHUB_TOKEN}
-                  GITHUB_OWNER=${SECRET_GITHUB_OWNER:-nuniesmith}
-
-                  # ── Repo Mount ──
-                  REPOS_BASE_PATH=/home/jordan/repos
-
-                  # ── Scanner ──
-                  AUTO_SCAN_ENABLED=true
-                  AUTO_SCAN_INTERVAL=60
-                  AUTO_SCAN_MAX_CONCURRENT=3
-                  REPO_SYNC_INTERVAL_SECS=300
-
-                  # ── Logging ──
-                  RUST_LOG=info,rustassistant=debug
-                  ENVBLOCK
-
-                  chmod 600 ~/rustassistant/.env
-                  echo "✅ .env written (mode 600)"
-                  REMOTE_ENV
-
-                  # ── Step 3: Docker pull and compose up ─────────────────
+                  # ── Step 4: Pull image and restart services ────────────
                   echo ""
-                  echo "🐳 Step 3: Pulling images and starting services..."
-                  $SSH_CMD bash -s <<'REMOTE_DEPLOY'
+                  echo "🐳 Step 4: Pulling image and restarting services..."
+                  $SSH_CMD bash -s << 'REMOTE_DEPLOY'
                   set -euo pipefail
                   cd ~/rustassistant
 
-                  echo "Pulling latest images..."
-                  docker compose pull rustassistant || true
+                  echo "Pulling latest image from Docker Hub..."
+                  docker compose pull rustassistant
 
                   echo "Stopping existing services..."
                   docker compose down --remove-orphans 2>/dev/null || true
@@ -374,8 +390,8 @@ jobs:
                   docker compose up -d --remove-orphans
 
                   echo ""
-                  echo "Waiting for services to become healthy..."
-                  sleep 10
+                  echo "Waiting for services to become healthy (30s)..."
+                  sleep 30
 
                   echo ""
                   echo "═══════════════════════════════════════════════════"
@@ -387,14 +403,19 @@ jobs:
                   echo "═══════════════════════════════════════════════════"
                   echo "  Port Bindings"
                   echo "═══════════════════════════════════════════════════"
-                  docker compose ps --format '{{.Name}}\t{{.Ports}}' 2>/dev/null || docker ps --filter "name=ra-" --format "table {{.Names}}\t{{.Ports}}"
+                  docker compose ps --format '{{.Name}}\t{{.Ports}}' 2>/dev/null \
+                      || docker ps --filter "name=ra-" --format "table {{.Names}}\t{{.Ports}}"
 
                   echo ""
                   echo "═══════════════════════════════════════════════════"
                   echo "  GPU Status"
                   echo "═══════════════════════════════════════════════════"
-                  nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu --format=csv,noheader 2>/dev/null || echo "(nvidia-smi not available on host)"
-                  docker compose exec -T ra-ollama nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo "(GPU not visible inside Ollama container — check nvidia-container-toolkit)"
+                  nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu \
+                      --format=csv,noheader 2>/dev/null \
+                      || echo "(nvidia-smi not available on host)"
+                  docker compose exec -T ra-ollama \
+                      nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null \
+                      || echo "(GPU not visible inside Ollama container — check nvidia-container-toolkit)"
 
                   echo ""
                   echo "═══════════════════════════════════════════════════"
@@ -403,7 +424,6 @@ jobs:
                   df -h / | tail -1
                   docker system df 2>/dev/null || true
 
-                  # Prune dangling images to reclaim space
                   docker image prune -f 2>/dev/null || true
 
                   echo ""
