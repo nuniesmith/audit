@@ -394,13 +394,41 @@ jobs:
                   fi
                   echo "  ✅ nvidia runtime registered with Docker"
 
-                  # ── Check host GPU is visible ──────────────────────────
+                  # ── Check host GPU is visible via nvidia-smi ──────────
                   GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "")
                   if [ -n "$GPU_NAME" ]; then
                       echo "  ✅ Host GPU: ${GPU_NAME}"
                   else
                       echo "  ⚠️  nvidia-smi returned no GPU — skipping host check"
                   fi
+
+                  # ── Wait for NVML / nvidia-container-cli to be ready ──
+                  # After a reboot or Docker restart the nvidia kernel modules
+                  # may not be fully initialised yet.  nvidia-container-cli
+                  # exercises the same NVML path the container runtime uses, so
+                  # we poll it before launching any GPU containers.  Without this
+                  # wait Docker throws:
+                  #   nvidia-container-cli: detection error: nvml error: unknown error
+                  echo "  Waiting for nvidia-container-cli NVML readiness..."
+                  NVML_READY=0
+                  for attempt in $(seq 1 24); do
+                      if nvidia-container-cli info > /dev/null 2>&1; then
+                          NVML_READY=1
+                          break
+                      fi
+                      echo "    attempt ${attempt}/24 — NVML not ready yet, waiting 5s..."
+                      sleep 5
+                  done
+
+                  if [ "${NVML_READY}" = "0" ]; then
+                      echo "  ❌ NVML still not ready after 120s — aborting"
+                      echo "  📋 nvidia-container-cli info output:"
+                      nvidia-container-cli info 2>&1 || true
+                      echo "  📋 nvidia-smi output:"
+                      nvidia-smi 2>&1 || true
+                      exit 1
+                  fi
+                  echo "  ✅ NVML ready (nvidia-container-cli info succeeded)"
 
                   echo "✅ GPU preflight passed"
 
