@@ -380,11 +380,57 @@ jobs:
                   set -euo pipefail
                   cd ~/rustassistant
 
+                  # ── GPU preflight ──────────────────────────────────────
+                  echo ""
+                  echo "🔍 GPU preflight check..."
+
+                  # Verify the host GPU driver is working
+                  if ! nvidia-smi --query-gpu=name --format=csv,noheader > /dev/null 2>&1; then
+                      echo "❌ nvidia-smi failed — host GPU driver is not working"
+                      exit 1
+                  fi
+                  GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
+                  echo "  ✅ Host GPU: ${GPU_NAME}"
+
+                  # Ensure nvidia runtime is registered with Docker
+                  if ! docker info 2>/dev/null | grep -q "nvidia"; then
+                      echo "  ⚠️  nvidia runtime not in Docker — configuring now..."
+                      sudo nvidia-ctk runtime configure --runtime=docker
+                      sudo systemctl restart docker
+                      sleep 5
+                      if ! docker info 2>/dev/null | grep -q "nvidia"; then
+                          echo "  ❌ Failed to register nvidia runtime with Docker"
+                          exit 1
+                      fi
+                      echo "  ✅ nvidia runtime registered and Docker restarted"
+                  else
+                      echo "  ✅ nvidia runtime already registered with Docker"
+                  fi
+
+                  # Quick smoke-test: run nvidia-smi inside a container with the nvidia runtime
+                  if docker run --rm --runtime=nvidia \
+                      -e NVIDIA_VISIBLE_DEVICES=all \
+                      nvidia/cuda:12.0-base-ubuntu20.04 \
+                      nvidia-smi --query-gpu=name --format=csv,noheader > /dev/null 2>&1; then
+                      echo "  ✅ GPU visible inside Docker containers"
+                  else
+                      echo "  ⚠️  GPU smoke-test failed (image may not be cached) — continuing anyway"
+                  fi
+
+                  echo "✅ GPU preflight passed"
+
+                  # ── Pull latest app image ──────────────────────────────
+                  echo ""
                   echo "Pulling latest image from Docker Hub..."
                   docker compose pull rustassistant
 
                   echo "Stopping existing services..."
                   docker compose down --remove-orphans 2>/dev/null || true
+
+                  # Force-remove the Ollama container so it is recreated with the
+                  # correct runtime (Docker caches the runtime at creation time;
+                  # a plain restart does NOT apply a runtime change).
+                  docker rm -f ra-ollama 2>/dev/null || true
 
                   # Start core services only — exclude the one-shot model-puller
                   # so a slow Ollama CUDA init can't abort the whole deploy.
@@ -400,6 +446,43 @@ jobs:
                   echo ""
                   echo "Waiting for core services to stabilise (30s)..."
                   sleep 30
+
+                  # ── Verify Ollama is actually using the GPU ────────────
+                  echo ""
+                  echo "🔍 Verifying Ollama GPU usage..."
+
+                  RUNTIME=$(docker inspect ra-ollama --format '{{.HostConfig.Runtime}}' 2>/dev/null || echo "unknown")
+                  echo "  Ollama container runtime: ${RUNTIME}"
+                  if [ "${RUNTIME}" != "nvidia" ]; then
+                      echo "  ❌ Ollama is NOT using the nvidia runtime (got: ${RUNTIME})"
+                      echo "     Check that docker-compose.yml has 'runtime: nvidia' under ra-ollama"
+                      echo "  📋 Ollama logs (last 20 lines):"
+                      docker compose logs --tail=20 ra-ollama || true
+                      exit 1
+                  fi
+                  echo "  ✅ Ollama container runtime: nvidia"
+
+                  # Check Ollama logs confirm CUDA was detected (give it up to 20s)
+                  GPU_DETECTED=0
+                  for i in $(seq 1 10); do
+                      if docker logs ra-ollama 2>&1 | grep -q "library=CUDA"; then
+                          GPU_DETECTED=1
+                          break
+                      fi
+                      sleep 2
+                  done
+
+                  if [ "${GPU_DETECTED}" = "1" ]; then
+                      VRAM=$(docker logs ra-ollama 2>&1 \
+                          | grep "inference compute" \
+                          | grep -oP 'total="\K[^"]+' | tail -1 || echo "unknown")
+                      echo "  ✅ Ollama detected GPU via CUDA (VRAM: ${VRAM})"
+                  else
+                      echo "  ❌ Ollama did not detect the GPU — running on CPU"
+                      echo "  📋 Ollama startup logs:"
+                      docker logs ra-ollama 2>&1 | tail -20 || true
+                      exit 1
+                  fi
 
                   echo ""
                   echo "═══════════════════════════════════════════════════"
@@ -423,7 +506,7 @@ jobs:
                       || echo "(nvidia-smi not available on host)"
                   docker compose exec -T ra-ollama \
                       nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null \
-                      || echo "(GPU not visible inside Ollama container — check nvidia-container-toolkit)"
+                      || echo "(GPU not visible inside Ollama container)"
 
                   echo ""
                   echo "═══════════════════════════════════════════════════"
