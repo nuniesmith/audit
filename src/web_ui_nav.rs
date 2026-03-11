@@ -93,6 +93,11 @@ const NAV_GROUPS: &[NavGroup] = &[
                 icon: "📈",
             },
             NavItem {
+                label: "Audits",
+                href: "/audit",
+                icon: "🔬",
+            },
+            NavItem {
                 label: "Cache",
                 href: "/cache",
                 icon: "🗄️",

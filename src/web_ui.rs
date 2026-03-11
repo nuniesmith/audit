@@ -374,6 +374,7 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
                     <div class="repo-actions">
                         <a href="/repos/{id}/toggle-scan" class="btn-small btn-primary">Toggle Scan</a>
                         <a href="/scanner/{id}/force" class="btn-small btn-success">Scan Now</a>
+                        <a href="/audit/new?repo_id={id}" class="btn-small btn-audit">🔬 Full Audit</a>
                         <a href="/repos/{id}/delete" class="btn-small btn-danger" onclick="return confirm('Delete this repository?')">Delete</a>
                     </div>
                 </div>"#,
@@ -414,6 +415,8 @@ fn render_repos_page(repos: Vec<RepoItem>) -> String {
         .btn-small.btn-success:hover { background: #16a34a; }
         .btn-small.btn-danger { background: #ef4444; color: white; }
         .btn-small.btn-danger:hover { background: #dc2626; }
+        .btn-small.btn-audit { background: #7c3aed; color: white; }
+        .btn-small.btn-audit:hover { background: #6d28d9; }
     </style>"#;
 
     let content = format!(

@@ -17,6 +17,7 @@ use crate::research::worker::refresh_rag_index;
 use crate::scanner::github::sync_repos_to_db;
 use crate::sync_scheduler::{SyncScheduler, SyncSchedulerConfig};
 use crate::web_api::{web_api_router, WebState};
+use crate::web_ui_audit::{create_audit_router, AuditWebState};
 // Neuromorphic mapper removed - feature not currently implemented
 
 use crate::scanner::Scanner;
@@ -193,6 +194,9 @@ pub async fn run_server(config: Config) -> Result<()> {
             }
         };
 
+    // Clone before moving into RepoAppState so AuditWebState can share the same client
+    let grok_for_audit = grok_for_repo.clone();
+
     let repo_app_state = RepoAppState::from_env(
         Arc::clone(&sync_service),
         Arc::clone(&model_router),
@@ -238,6 +242,11 @@ pub async fn run_server(config: Config) -> Result<()> {
     let audit_state = Arc::new(AuditState::from_env(audit_db).await);
 
     // ------------------------------------------------------------------
+    // Build AuditWebState for the full-audit WebUI routes (/audit/*)
+    // ------------------------------------------------------------------
+    let audit_web_state = AuditWebState::new(state.db_pool.clone(), grok_for_audit);
+
+    // ------------------------------------------------------------------
     // Build WebhookState for the GitHub push-event → sync trigger
     // ------------------------------------------------------------------
     let webhook_state = WebhookState {
@@ -280,6 +289,8 @@ pub async fn run_server(config: Config) -> Result<()> {
             "/api/github/webhook",
             post(handle_github_webhook).with_state(webhook_state),
         )
+        // Full audit web UI (/audit, /audit/new, /audit/:id, …)
+        .merge(create_audit_router(audit_web_state))
         // New dashboard API (separate state)
         .merge(web_api_router(web_state))
         // Repo management + chat API at /api/v1

@@ -40,6 +40,7 @@
 
 pub mod cache;
 pub mod endpoint;
+pub mod full_audit;
 pub mod report;
 pub mod runner;
 pub mod types;
@@ -50,6 +51,11 @@ pub mod types;
 
 pub use cache::{AuditCache, AuditCacheConfig};
 pub use endpoint::{audit_router, handle_audit_get, handle_audit_post};
+pub use full_audit::{
+    db_get_audit_report_json, db_get_audit_report_markdown, db_get_audit_status,
+    db_get_runs_for_repo, db_list_audit_runs, AuditRunStatus, AuditRunSummary, FileAuditResult,
+    FileSeverity, FullAuditConfig, FullAuditEngine, FullAuditReport,
+};
 pub use report::{AuditReport, ReportFormat};
 pub use runner::{AuditRunner, AuditRunnerConfig};
 pub use types::{AuditFinding, AuditRequest, AuditResponse, AuditSeverity, AuditStatus};
