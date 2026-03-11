@@ -196,15 +196,31 @@ async fn test_get_document_by_id() {
         .await
         .expect("Failed to upload");
 
+    assert_eq!(
+        upload_response.status(),
+        StatusCode::CREATED,
+        "Upload must succeed before we can test GET by id"
+    );
+
     let upload_body: ApiResponse<Value> = upload_response.json().await.unwrap();
-    let doc_id = upload_body.data.unwrap()["id"]
-        .as_str()
-        .unwrap()
+    assert!(
+        upload_body.success,
+        "Upload response must be successful: {:?}",
+        upload_body.error
+    );
+    let doc_id = upload_body
+        .data
+        .as_ref()
+        .and_then(|d| d["id"].as_str())
+        .expect("Upload response must contain an id field")
         .to_string();
 
-    // Get document
+    // Get document — include the API key so auth/middleware handling is
+    // identical to the upload request and no edge-case in anonymous-read
+    // path can cause a 404.
     let response = client
         .get(format!("{}/api/documents/{}", base_url, doc_id))
+        .header("X-API-Key", &api_key)
         .send()
         .await
         .expect("Failed to get document");
