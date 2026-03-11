@@ -627,56 +627,73 @@ async fn test_invalid_json() {
 #[tokio::test]
 async fn test_pagination() {
     let (pool, api_key) = setup_test_env().await;
-
-    // Clean up any documents left over from other tests so we get a precise count.
-    // Child rows in document_chunks, document_tags, and document_embeddings are
-    // removed automatically via ON DELETE CASCADE foreign keys.
-    sqlx::query("DELETE FROM documents")
-        .execute(&pool)
-        .await
-        .expect("Failed to clean documents");
-
     let base_url = create_test_server(pool, api_key.clone()).await;
 
     let client = reqwest::Client::new();
 
-    // Upload 25 documents
+    // Use a run-unique tag so this test's documents can be counted in isolation
+    // without a global DELETE that would race against other concurrent tests
+    // (e.g. test_get_document_by_id uploads a document and immediately GETs it;
+    // a DELETE FROM documents here would delete that document out from under it,
+    // causing a spurious 404).
+    let run_tag = format!("pagination-run-{}", uuid::Uuid::new_v4());
+
+    // Upload 25 documents, all tagged with the run-unique tag
     for i in 1..=25 {
         let upload_req = UploadDocumentRequest {
-            title: format!("Document {}", i),
-            content: format!("Content {}", i),
+            title: format!("Pagination Doc {}", i),
+            content: format!("Pagination content {}", i),
             doc_type: "markdown".to_string(),
-            tags: vec![],
+            tags: vec![run_tag.clone()],
             repo_id: None,
             source_type: None,
             source_url: None,
         };
 
-        client
+        let resp = client
             .post(format!("{}/api/documents", base_url))
             .header("X-API-Key", &api_key)
             .json(&upload_req)
             .send()
             .await
             .expect("Failed to upload");
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::CREATED,
+            "Upload {} must succeed",
+            i
+        );
     }
 
-    // Get first page
+    // Get first page filtered by the run-unique tag so the count is always
+    // exactly 25, regardless of documents uploaded by other parallel tests.
     let page1 = client
-        .get(format!("{}/api/documents?page=1&limit=10", base_url))
+        .get(format!(
+            "{}/api/documents?page=1&limit=10&tag={}",
+            base_url, run_tag
+        ))
         .send()
         .await
-        .expect("Failed to send");
+        .expect("Failed to send page 1 request");
 
+    assert_eq!(page1.status(), StatusCode::OK);
     let page1_body: ApiResponse<Value> = page1.json().await.unwrap();
-    assert_eq!(page1_body.data.as_ref().unwrap()["total_pages"], 3);
+    assert_eq!(
+        page1_body.data.as_ref().unwrap()["total_pages"],
+        3,
+        "Expected 3 pages for 25 docs with limit 10"
+    );
 
-    // Get second page
+    // Get second page (also filtered)
     let page2 = client
-        .get(format!("{}/api/documents?page=2&limit=10", base_url))
+        .get(format!(
+            "{}/api/documents?page=2&limit=10&tag={}",
+            base_url, run_tag
+        ))
         .send()
         .await
-        .expect("Failed to send");
+        .expect("Failed to send page 2 request");
 
     assert_eq!(page2.status(), StatusCode::OK);
 }
