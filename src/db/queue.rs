@@ -204,35 +204,6 @@ pub struct FileAnalysis {
 }
 
 // ============================================================================
-// TODO Item (Extracted from Code) — DEPRECATED
-// ============================================================================
-
-/// TODO comments are now written directly to the `tasks` table
-/// by `scanner/github.rs` (source = `"github_scanner"`) and the queue processor
-/// (source = `"queue_processor"`). The `todo_items` table was dropped by
-/// migration `017_drop_todo_items.sql`.
-///
-/// This struct is kept here only so that existing call-sites that reference
-/// `db::queue::TodoItem` continue to compile. Prefer `db::core::Task` for new code.
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct TodoItem {
-    pub id: String,
-    pub repo_id: String,
-    pub file_path: String,
-    pub line_number: i32,
-    pub content: String,
-    pub todo_type: String,
-    pub priority: Option<i32>,
-    pub context: Option<String>,
-    pub estimated_effort: Option<f32>,
-    pub task_id: Option<String>,
-    pub content_hash: String,
-    pub is_active: bool,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-// ============================================================================
 // Repository Cache Metadata
 // ============================================================================
 

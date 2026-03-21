@@ -30,6 +30,7 @@
 #   RA_POSTGRES_PORT=5433 PostgreSQL (FKS uses 5432)
 #   RA_REDIS_PORT=6380    Redis      (FKS uses 6379)
 #   RA_OLLAMA_PORT=11434  Ollama     (no conflict)
+#   OPENCLAW_GATEWAY=18789/18790  OpenClaw gateway
 # =============================================================================
 
 set -euo pipefail
@@ -60,17 +61,25 @@ ARG_REPOS_PATH=""
 ARG_GITHUB_OWNER=""
 ARG_REMOTE_MODEL=""
 ARG_LOCAL_MODEL=""
+ARG_DISCORD_BOT_TOKEN=""
+ARG_OPENCLAW_GATEWAY_TOKEN=""
+ARG_TAILSCALE_IP=""
+ARG_RA_PROXY_API_KEYS=""
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
 while [ $# -gt 0 ]; do
     case "$1" in
-        --xai-key)         ARG_XAI_KEY="$2";        shift 2 ;;
-        --github-token)    ARG_GITHUB_TOKEN="$2";    shift 2 ;;
-        --repos-path)      ARG_REPOS_PATH="$2";      shift 2 ;;
-        --github-owner)    ARG_GITHUB_OWNER="$2";    shift 2 ;;
-        --remote-model)    ARG_REMOTE_MODEL="$2";    shift 2 ;;
-        --local-model)     ARG_LOCAL_MODEL="$2";     shift 2 ;;
-        --force|-f)        FORCE=true;               shift   ;;
+        --xai-key)                ARG_XAI_KEY="$2";                shift 2 ;;
+        --github-token)           ARG_GITHUB_TOKEN="$2";           shift 2 ;;
+        --repos-path)             ARG_REPOS_PATH="$2";             shift 2 ;;
+        --github-owner)           ARG_GITHUB_OWNER="$2";           shift 2 ;;
+        --remote-model)           ARG_REMOTE_MODEL="$2";           shift 2 ;;
+        --local-model)            ARG_LOCAL_MODEL="$2";            shift 2 ;;
+        --discord-bot-token)      ARG_DISCORD_BOT_TOKEN="$2";      shift 2 ;;
+        --openclaw-gateway-token) ARG_OPENCLAW_GATEWAY_TOKEN="$2"; shift 2 ;;
+        --tailscale-ip)           ARG_TAILSCALE_IP="$2";           shift 2 ;;
+        --ra-proxy-api-keys)      ARG_RA_PROXY_API_KEYS="$2";      shift 2 ;;
+        --force|-f)               FORCE=true;                      shift   ;;
         --help|-h)
             sed -n '2,/^# ====/{ /^# ====/d; s/^# \{0,1\}//; p; }' "$0"
             exit 0
@@ -154,6 +163,22 @@ ok "Postgres password generated (32 chars)"
 ok "Redis password generated    (32 chars)"
 ok "Session secret generated    (64 hex)"
 ok "Encryption key generated    (64 hex)"
+
+# ── Generate OpenClaw / proxy secrets ────────────────────────────────────────
+if [ -n "$ARG_RA_PROXY_API_KEYS" ]; then
+    RA_PROXY_API_KEYS="$ARG_RA_PROXY_API_KEYS"
+else
+    RA_PROXY_API_KEYS="$(gen_password 48)"
+fi
+ok "Proxy API key generated     (48 chars)"
+
+if [ -n "$ARG_OPENCLAW_GATEWAY_TOKEN" ]; then
+    OPENCLAW_GATEWAY_TOKEN="$ARG_OPENCLAW_GATEWAY_TOKEN"
+else
+    OPENCLAW_GATEWAY_TOKEN="$(gen_password 32)"
+fi
+ok "OpenClaw gateway token gen  (32 chars)"
+
 echo
 
 # ── Resolve API keys ────────────────────────────────────────────────────────
@@ -187,6 +212,31 @@ REMOTE_MODEL="${REMOTE_MODEL:-grok-4-1-fast-reasoning}"
 LOCAL_MODEL="$(resolve_secret "$ARG_LOCAL_MODEL" "LOCAL_MODEL" "" "true")"
 LOCAL_MODEL="${LOCAL_MODEL:-qwen2.5-coder:7b}"
 
+# ── Resolve OpenClaw / Tailscale secrets ─────────────────────────────────────
+DISCORD_BOT_TOKEN="$(resolve_secret "$ARG_DISCORD_BOT_TOKEN" "DISCORD_BOT_TOKEN" \
+    "Enter Discord bot token [leave blank to skip]:" "true")"
+if [ -n "$DISCORD_BOT_TOKEN" ]; then
+    ok "Discord bot token configured"
+else
+    warn "DISCORD_BOT_TOKEN not set — Discord integration will be disabled"
+fi
+
+OPENCLAW_GATEWAY_TOKEN="$(resolve_secret "$OPENCLAW_GATEWAY_TOKEN" "OPENCLAW_GATEWAY_TOKEN" \
+    "Enter OpenClaw gateway token [auto-generated]:" "true")"
+ok "OpenClaw gateway token configured"
+
+TAILSCALE_IP="$(resolve_secret "$ARG_TAILSCALE_IP" "TAILSCALE_IP" \
+    "Enter Tailscale IP (required for Tailscale binding):")"
+if [ -n "$TAILSCALE_IP" ]; then
+    ok "Tailscale IP configured: $TAILSCALE_IP"
+else
+    warn "TAILSCALE_IP not set — set it later in .env for Tailscale binding"
+fi
+
+RA_PROXY_API_KEYS="$(resolve_secret "$RA_PROXY_API_KEYS" "RA_PROXY_API_KEYS" \
+    "Enter proxy API keys [auto-generated]:" "true")"
+ok "Proxy API keys configured"
+
 echo
 
 # ── Write .env ───────────────────────────────────────────────────────────────
@@ -203,6 +253,7 @@ cat > "$ENV_FILE" <<ENVFILE
 #   5433  → PostgreSQL
 #   6380  → Redis
 #   11434 → Ollama
+#   18789/18790 → OpenClaw gateway
 # =============================================================================
 
 # ── Ports ────────────────────────────────────────────────────────────────────
@@ -223,6 +274,18 @@ XAI_BASE_URL=https://api.x.ai/v1
 REMOTE_MODEL=${REMOTE_MODEL}
 LOCAL_MODEL=${LOCAL_MODEL}
 FORCE_REMOTE_MODEL=false
+
+# ── Tailscale ────────────────────────────────────────────────────────────────
+TAILSCALE_IP=${TAILSCALE_IP}
+
+# ── Proxy Auth (shared with OpenClaw + external apps) ────────────────────────
+RA_PROXY_API_KEYS=${RA_PROXY_API_KEYS}
+
+# ── OpenClaw ─────────────────────────────────────────────────────────────────
+DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+OPENCLAW_IMAGE=openclaw:local
+OPENCLAW_BASE_IMAGE=openclaw-base:local
 
 # ── GitHub ───────────────────────────────────────────────────────────────────
 GITHUB_TOKEN=${GITHUB_TOKEN}
@@ -258,13 +321,17 @@ printf "  %-28s %s\n" "Redis password:" "${RA_REDIS_PASSWORD:0:4}...${RA_REDIS_P
 printf "  %-28s %s\n" "Grok API key:" "$([ -n "$XAI_KEY" ] && echo "configured" || echo "not set")"
 printf "  %-28s %s\n" "GitHub token:" "$([ -n "$GITHUB_TOKEN" ] && echo "configured" || echo "not set")"
 printf "  %-28s %s\n" "Repos mount:"  "$REPOS_PATH"
+printf "  %-28s %s\n" "Tailscale IP:" "$([ -n "$TAILSCALE_IP" ] && echo "$TAILSCALE_IP" || echo "not set")"
+printf "  %-28s %s\n" "Proxy API keys:" "${RA_PROXY_API_KEYS:0:4}...${RA_PROXY_API_KEYS: -4}"
+printf "  %-28s %s\n" "Discord bot token:" "$([ -n "$DISCORD_BOT_TOKEN" ] && echo "configured" || echo "not set")"
+printf "  %-28s %s\n" "OpenClaw gateway:" "${OPENCLAW_GATEWAY_TOKEN:0:4}...${OPENCLAW_GATEWAY_TOKEN: -4}"
 echo
 
 printf "${BOLD}Next steps:${NC}\n"
 echo "  1. Review: ${CYAN}cat $ENV_FILE${NC}"
 echo "  2. Start:  ${CYAN}cd $PROJECT_ROOT && docker compose up -d${NC}"
 echo "  3. Pull model: ${CYAN}docker compose exec ra-ollama ollama pull qwen2.5-coder:7b${NC}"
-echo "  4. Open:   ${CYAN}http://\$(hostname -I | awk '{print \$1}'):3500/dashboard${NC}"
+echo "  4. Health: ${CYAN}curl -sf http://\$(hostname -I | awk '{print \$1}'):3500/healthz${NC}"
 echo
 warn "Never commit .env to version control!"
 echo

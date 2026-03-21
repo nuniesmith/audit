@@ -1,10 +1,10 @@
 //! Rustassistant Server
 //!
-//! A clean REST API for notes, repositories, and tasks.
-//! Includes integrated Web UI for repository and queue management.
-//! Also mounts:
-//!   /api/web/*  — pipeline dispatch, chat, SSE streaming, job history
+//! API-only server for notes, repositories, and tasks.
+//! Mounts:
 //!   /api/v1/*   — repo CRUD + chat with repo-context injection
+//!   /v1/*       — OpenAI-compatible proxy
+//!   /healthz    — health check
 
 use axum::response::Html;
 use axum::{
@@ -26,20 +26,12 @@ use tracing::info;
 use rustassistant::api::repos::{repo_router, RepoAppState};
 use rustassistant::auto_scanner::{AutoScanner, AutoScannerConfig};
 use rustassistant::db::{
-    self, get_next_task, get_stats, list_repositories, list_tasks, update_task_status, Database,
+    self, get_next_task, get_stats, list_repositories, list_tasks, update_task_status,
 };
-use rustassistant::git::GitManager;
 use rustassistant::model_router::{ModelRouter, ModelRouterConfig};
 use rustassistant::repo_sync::RepoSyncService;
 use rustassistant::sync_scheduler::{SyncScheduler, SyncSchedulerConfig};
-use rustassistant::web_api::{web_api_router, WebState};
-use rustassistant::web_ui::{create_router as create_web_ui_router, WebAppState};
-use rustassistant::web_ui_cache_viewer::create_cache_viewer_router;
-use rustassistant::web_ui_chat::create_chat_router;
-use rustassistant::web_ui_db_explorer::create_db_explorer_router;
-use rustassistant::web_ui_extensions::create_extension_router;
-use rustassistant::web_ui_scan_progress::create_scan_progress_router;
-use rustassistant::web_ui_settings::create_settings_router;
+// WebUI removed — RustAssistant is API-only (batch-015)
 
 // ============================================================================
 // Application State
@@ -421,12 +413,6 @@ async fn main() -> anyhow::Result<()> {
     );
     std::fs::create_dir_all(&workspace)?;
 
-    let git_manager = Arc::new(
-        GitManager::new(workspace.clone(), true)
-            .map_err(|e| anyhow::anyhow!("GitManager init failed: {}", e))?,
-    );
-    let web_pipeline_state = WebState::new(db.clone(), git_manager, workspace);
-
     // ── RepoSyncService + ModelRouter + SyncScheduler ─────────────────────
     let sync_service = Arc::new(tokio::sync::RwLock::new(RepoSyncService::new()));
     let model_router = Arc::new(ModelRouter::new(ModelRouterConfig {
@@ -490,32 +476,15 @@ async fn main() -> anyhow::Result<()> {
     .start();
     info!(interval_secs = sync_interval_secs, "SyncScheduler started");
 
-    // Create app state for Web UI
-    let web_state = WebAppState::new(Database::from_pool(db.clone()), repos_dir.clone());
-
-    // Build combined router
+    // Build combined router (API-only — no WebUI)
     let api_router = create_api_router(api_state);
-    let web_router = create_web_ui_router(web_state.clone());
-    let extension_router = create_extension_router(web_state.clone());
-    let cache_viewer_router = create_cache_viewer_router(Arc::new(web_state.clone()));
-    let db_explorer_router = create_db_explorer_router(Arc::new(web_state.clone()));
-    let scan_progress_router = create_scan_progress_router(Arc::new(web_state.clone()));
-    let chat_router = create_chat_router(Arc::new(web_state.clone()));
-    let settings_router = create_settings_router(Arc::new(web_state.clone()));
 
     let app = Router::new()
-        .merge(web_router)
-        .merge(extension_router)
-        .merge(cache_viewer_router)
-        .merge(db_explorer_router)
-        .merge(scan_progress_router)
-        .merge(chat_router)
-        .merge(settings_router)
         .merge(api_router)
-        // Pipeline dispatch + chat + SSE + job history
-        .merge(web_api_router(web_pipeline_state))
         // Repo CRUD + chat with repo context + /api/v1/repos/:id/sync etc.
-        .nest("/api/v1", repo_router(repo_app_state));
+        .nest("/api/v1", repo_router(repo_app_state))
+        // Health check for OpenClaw / external probes
+        .route("/healthz", get(health_check));
 
     // Start auto-scanner in background if enabled
     let scanner_config = AutoScannerConfig {

@@ -90,17 +90,6 @@ pub mod token_budget;
 pub mod tree_state;
 pub mod types;
 pub mod vector_index;
-pub mod web_api;
-pub mod web_ui;
-pub mod web_ui_api_keys;
-pub mod web_ui_audit;
-pub mod web_ui_cache_viewer;
-pub mod web_ui_chat;
-pub mod web_ui_db_explorer;
-pub mod web_ui_extensions;
-pub mod web_ui_nav;
-pub mod web_ui_scan_progress;
-pub mod web_ui_settings;
 pub mod webhooks;
 
 pub use api::{

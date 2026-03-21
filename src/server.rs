@@ -16,10 +16,7 @@ use crate::repo_sync::RepoSyncService;
 use crate::research::worker::refresh_rag_index;
 use crate::scanner::github::sync_repos_to_db;
 use crate::sync_scheduler::{SyncScheduler, SyncSchedulerConfig};
-use crate::web_api::{web_api_router, WebState};
-use crate::web_ui_api_keys::{create_api_keys_router, ApiKeysState};
-use crate::web_ui_audit::{create_audit_router, AuditWebState};
-// Neuromorphic mapper removed - feature not currently implemented
+// WebUI removed — RustAssistant is API-only (batch-015)
 
 use crate::scanner::Scanner;
 use crate::tags::TagScanner;
@@ -35,11 +32,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing::{info, warn};
 
@@ -124,17 +119,6 @@ pub async fn run_server(config: Config) -> Result<()> {
     let state = AppState::new(config.clone()).await?;
 
     // ------------------------------------------------------------------
-    // Build the RustAssistant dashboard web state
-    // ------------------------------------------------------------------
-    let workspace = PathBuf::from(
-        std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "data/workspaces".to_string()),
-    );
-    std::fs::create_dir_all(&workspace)
-        .map_err(|e| AuditError::other(format!("Cannot create workspace dir: {}", e)))?;
-
-    let web_state = WebState::new(state.db_pool.clone(), state.git_manager.clone(), workspace);
-
-    // ------------------------------------------------------------------
     // Build RepoSyncService + ModelRouter + SyncScheduler
     // ------------------------------------------------------------------
 
@@ -195,8 +179,8 @@ pub async fn run_server(config: Config) -> Result<()> {
             }
         };
 
-    // Clone before moving into RepoAppState so AuditWebState can share the same client
-    let grok_for_audit = grok_for_repo.clone();
+    // Clone before moving into RepoAppState so AuditState can share the same client
+    let _grok_for_audit = grok_for_repo.clone();
 
     let repo_app_state = RepoAppState::from_env(
         Arc::clone(&sync_service),
@@ -243,11 +227,6 @@ pub async fn run_server(config: Config) -> Result<()> {
     let audit_state = Arc::new(AuditState::from_env(audit_db).await);
 
     // ------------------------------------------------------------------
-    // Build AuditWebState for the full-audit WebUI routes (/audit/*)
-    // ------------------------------------------------------------------
-    let audit_web_state = AuditWebState::new(state.db_pool.clone(), grok_for_audit);
-
-    // ------------------------------------------------------------------
     // Build WebhookState for the GitHub push-event → sync trigger
     // ------------------------------------------------------------------
     let webhook_state = WebhookState {
@@ -257,12 +236,6 @@ pub async fn run_server(config: Config) -> Result<()> {
 
     // SECURITY: Configure restrictive CORS policy
     let cors = build_cors_layer();
-
-    // ------------------------------------------------------------------
-    // Static file serving for the dashboard SPA
-    // ------------------------------------------------------------------
-    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
-    let serve_static = ServeDir::new(&static_dir).append_index_html_on_directories(true);
 
     // ------------------------------------------------------------------
     // Compose routers
@@ -290,40 +263,22 @@ pub async fn run_server(config: Config) -> Result<()> {
             "/api/github/webhook",
             post(handle_github_webhook).with_state(webhook_state),
         )
-        // Full audit web UI (/audit, /audit/new, /audit/:id, …)
-        .merge(create_audit_router(audit_web_state))
-        // New dashboard API (separate state)
-        .merge(web_api_router(web_state))
         // Repo management + chat API at /api/v1
         .nest("/api/v1", repo_router(repo_app_state.clone()))
         // OpenAI-compatible proxy at /v1  (for external apps e.g. futures trading bot)
         .nest("/v1", proxy_router(ProxyState::new(repo_app_state)))
-        // API key management WebUI at /api-keys
-        .merge(create_api_keys_router(Arc::new(ApiKeysState::new(
-            state.db_pool.clone(),
-        ))))
-        // Serve static files (dashboard HTML/CSS/JS) at /static and /
-        .nest_service("/static", serve_static.clone())
-        .fallback_service(serve_static)
+        // Health check (aliased for OpenClaw / external probes)
+        .route("/healthz", get(health_check))
         // Middleware (applied last, wraps everything)
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
-    info!("Dashboard available at  http://{}/", socket_addr);
-    info!(
-        "API docs at             http://{}/api/web/health",
-        socket_addr
-    );
+    info!("RustAssistant API-only server on http://{}/", socket_addr);
     info!(
         "OpenAI-compatible proxy http://{}/v1/chat/completions",
         socket_addr
     );
-    info!("API key management      http://{}/api-keys", socket_addr);
-    info!(
-        "Tailscale proxy URL     http://100.113.72.63:{}/v1",
-        config.server.port
-    );
-    info!("Security: Restrictive CORS enabled, Git URL whitelist active");
+    info!("Health check            http://{}/healthz", socket_addr);
 
     // Start server
     let listener = tokio::net::TcpListener::bind(&socket_addr)

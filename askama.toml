@@ -1,3 +1,0 @@
-[general]
-# Configure Askama to look for templates in src/templates
-dirs = ["src/templates"]

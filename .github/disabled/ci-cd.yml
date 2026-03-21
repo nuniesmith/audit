@@ -24,7 +24,7 @@
 #
 #   ── Application Secrets (injected into .env on deploy) ──
 #   XAI_API_KEY                 xAI Grok API key
-#   GITHUB_TOKEN_DEPLOY         GitHub PAT for repo sync (not GITHUB_TOKEN to avoid conflicts)
+#   GITHUB_TOKEN         GitHub PAT for repo sync (not GITHUB_TOKEN to avoid conflicts)
 #   RA_POSTGRES_PASSWORD        (optional — generated if missing)
 #   RA_REDIS_PASSWORD           (optional — generated if missing)
 #
