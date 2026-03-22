@@ -23,6 +23,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 // Import from our crate
+use rustassistant::api::proxy::{proxy_router, ProxyState};
 use rustassistant::api::repos::{repo_router, RepoAppState};
 use rustassistant::auto_scanner::{AutoScanner, AutoScannerConfig};
 use rustassistant::db::{
@@ -482,7 +483,9 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .merge(api_router)
         // Repo CRUD + chat with repo context + /api/v1/repos/:id/sync etc.
-        .nest("/api/v1", repo_router(repo_app_state))
+        .nest("/api/v1", repo_router(repo_app_state.clone()))
+        // OpenAI-compatible proxy at /v1 (for OpenClaw, futures bot, curl, etc.)
+        .nest("/v1", proxy_router(ProxyState::new(repo_app_state)))
         // Health check for OpenClaw / external probes
         .route("/healthz", get(health_check));
 

@@ -198,7 +198,73 @@ impl ProxyState {
 pub struct OaiMessage {
     /// `"system"` | `"user"` | `"assistant"`
     pub role: String,
+    /// Conversation text — may arrive as a plain string or as the newer OpenAI
+    /// array-of-parts format: `[{"type":"text","text":"..."}]`.  The custom
+    /// deserialiser normalises both forms to a plain `String`; non-text parts
+    /// (e.g. `image_url`) are silently ignored since this proxy is text-only.
+    #[serde(deserialize_with = "deserialize_oai_content")]
     pub content: String,
+}
+
+/// Deserialise the OpenAI `content` field.
+///
+/// The OpenAI Chat Completions API allows `content` to be either:
+///   - a plain string:  `"content": "Hello"`
+///   - an array of typed parts: `"content": [{"type":"text","text":"Hello"}]`
+///
+/// Clients such as OpenClaw use the array form when building multi-turn
+/// conversations with tool calls, so we must accept both.  All `"text"` parts
+/// are concatenated (separated by `"\n"`); other part types are dropped.
+fn deserialize_oai_content<'de, D>(de: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, SeqAccess, Visitor};
+    use std::fmt;
+
+    struct ContentVisitor;
+
+    impl<'de> Visitor<'de> for ContentVisitor {
+        type Value = String;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a string or an array of OpenAI content parts")
+        }
+
+        /// Plain string form — the common case for simple clients.
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<String, E> {
+            Ok(v.to_owned())
+        }
+
+        fn visit_string<E: de::Error>(self, v: String) -> Result<String, E> {
+            Ok(v)
+        }
+
+        /// Array-of-parts form: `[{"type":"text","text":"..."}, ...]`
+        /// Used by OpenClaw and newer OpenAI client libraries.
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<String, A::Error> {
+            #[derive(serde::Deserialize)]
+            struct Part {
+                #[serde(rename = "type")]
+                kind: String,
+                text: Option<String>,
+            }
+
+            let mut texts: Vec<String> = Vec::new();
+            while let Some(part) = seq.next_element::<Part>()? {
+                if part.kind == "text" {
+                    if let Some(t) = part.text {
+                        texts.push(t);
+                    }
+                }
+                // Non-text parts (image_url, tool_result, etc.) are silently
+                // dropped — this proxy is text-only.
+            }
+            Ok(texts.join("\n"))
+        }
+    }
+
+    de.deserialize_any(ContentVisitor)
 }
 
 /// OpenAI `POST /v1/chat/completions` request body.
@@ -903,6 +969,13 @@ async fn handle_list_models(State(state): State<ProxyState>) -> impl IntoRespons
         ModelEntry::ra("auto", 131_072, 32_768, now),
         ModelEntry::ra("local", 16_384, 8_192, now),
         ModelEntry::ra("remote", 131_072, 32_768, now),
+        // OpenAI-provider-prefixed aliases — OpenClaw (and other clients that
+        // use the OpenAI SDK with a custom base URL) prepend "openai/" to the
+        // model id.  Advertise these so the client's model validation passes.
+        ModelEntry::ra("openai/rustassistant", 131_072, 32_768, now),
+        ModelEntry::ra("openai/auto", 131_072, 32_768, now),
+        ModelEntry::ra("openai/local", 16_384, 8_192, now),
+        ModelEntry::ra("openai/remote", 131_072, 32_768, now),
     ];
 
     // ── Live Ollama models ───────────────────────────────────────────────────
@@ -959,14 +1032,21 @@ fn check_auth(state: &ProxyState, headers: &HeaderMap) -> Option<(StatusCode, Js
 /// - `"local"` — always use Ollama
 /// - `"remote"` — always use Grok
 /// - `"grok-*"` / `"grok"` — always use Grok
+/// - `"anthropic/*"` / `"claude-*"` — treated as explicit remote (Grok) targets.
+///   OpenClaw and other OpenAI-compatible clients send Anthropic model names
+///   (e.g. `anthropic/claude-opus-4-6`) when configured with a custom base URL;
+///   we intercept and route to the remote backend without the classifier round-trip.
 /// - `"ra:<hint>"` — strip prefix, use hint as the classification prompt
-/// - anything else — treat as `"auto"`
+/// - anything else — treat as `"auto"` (message-classifier decides)
 async fn route_from_model_field(
     state: &RepoAppState,
     model: &str,
     last_user_msg: &str,
 ) -> (TaskKind, ModelTarget) {
-    let model_lc = model.to_lowercase();
+    // Strip the "openai/" provider prefix that OpenAI-SDK clients (OpenClaw,
+    // Cursor, etc.) prepend when configured with a custom OPENAI_API_BASE.
+    let raw = model.to_lowercase();
+    let model_lc = raw.strip_prefix("openai/").unwrap_or(&raw).to_string();
 
     match model_lc.as_str() {
         "local" => {
@@ -978,6 +1058,14 @@ async fn route_from_model_field(
             (TaskKind::ArchitecturalReason, target)
         }
         _ if model_lc.starts_with("grok-") => {
+            let target = state.model_router.route(&TaskKind::ArchitecturalReason);
+            (TaskKind::ArchitecturalReason, target)
+        }
+        // OpenAI-compatible clients (e.g. OpenClaw) configured with a custom base URL
+        // often send the Anthropic model name verbatim.  Route these straight to the
+        // remote backend so we skip the classifier round-trip and give the caller a
+        // sensible echoed model name in the response.
+        _ if model_lc.starts_with("anthropic/") || model_lc.starts_with("claude-") => {
             let target = state.model_router.route(&TaskKind::ArchitecturalReason);
             (TaskKind::ArchitecturalReason, target)
         }

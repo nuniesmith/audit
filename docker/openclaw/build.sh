@@ -195,9 +195,20 @@ fi
 if [ "$BUILD_LAYER" = true ]; then
     banner "Step 3/3: Building RustAssistant OpenClaw image ..."
 
+    # When the base was built from source the Discord extension is properly
+    # compiled (plugin-sdk/discord.js exists), so we keep it.  When using a
+    # pulled/pre-built registry image the artifact is missing and causes a noisy
+    # startup error — suppress it by removing the extension at layer-build time.
+    if [ "$BUILD_BASE" = true ]; then
+        SUPPRESS_DISCORD="false"
+    else
+        SUPPRESS_DISCORD="true"
+    fi
+
     docker build \
         -f "$OPENCLAW_DIR/Dockerfile" \
         --build-arg "OPENCLAW_BASE_IMAGE=$OPENCLAW_BASE_TAG" \
+        --build-arg "SUPPRESS_DISCORD_PLUGIN=$SUPPRESS_DISCORD" \
         --platform "$OPENCLAW_PLATFORM" \
         -t "$OPENCLAW_TAG" \
         "$PROJECT_ROOT"

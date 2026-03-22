@@ -1,19 +1,23 @@
 # ============================================================================
-# Multi-stage Dockerfile for RustAssistant API & Web UI
+# RustAssistant — API Server Dockerfile
 # ============================================================================
-# Build Arguments:
-#   SERVICE_TYPE: "api" or "web" (default: "web")
-#   SERVICE_PORT: Service port (default: 3500)
 #
-# Target: Oryx server (AMD64, CUDA GPU, bare-metal Linux)
+# Multi-stage build for the RustAssistant API-only server.
+# Produces a minimal runtime image without build tools or source code.
 #
-# Examples:
-#   docker build -f docker/Dockerfile -t rustassistant:web .
-#   docker build -f docker/Dockerfile --build-arg SERVICE_PORT=3500 -t rustassistant:web .
+# Target: Oryx server (AMD64 primary, ARM64 optional)
+#
+# Build:
+#   docker build -f docker/rustassistant/Dockerfile -t rustassistant:latest .
+#   docker build -f docker/rustassistant/Dockerfile --build-arg SERVICE_PORT=3500 -t rustassistant:latest .
+#
+# Requires:
+#   - Cargo.toml, Cargo.lock, src/, migrations/ in build context (project root)
+#   - SQLX_OFFLINE=true (no live DB needed — project uses runtime sqlx::query())
 # ============================================================================
 
 # ----------------------------------------------------------------------------
-# Stage 1: Builder - Compile RustAssistant
+# Stage 1: Builder — Compile RustAssistant
 # ----------------------------------------------------------------------------
 # Use debian:trixie-slim (glibc 2.41) as the builder base to satisfy ort-sys/ONNX Runtime
 # prebuilt binaries which require glibc 2.38+ (__isoc23_strtoll etc.).
@@ -21,13 +25,14 @@
 FROM debian:trixie-slim AS builder
 
 # Install Rust toolchain + build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     pkg-config \
     libssl-dev \
     ca-certificates \
     git \
     g++ \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -38,64 +43,60 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
     sh -s -- -y --no-modify-path --profile minimal --default-toolchain 1.92.0 && \
     chmod -R a+w /usr/local/rustup /usr/local/cargo
 
-# Create build directory
 WORKDIR /build
 
-# Copy dependency files first for better layer caching
+# ── Dependency caching layer ─────────────────────────────────────────────────
+# Copy manifests first so deps are only rebuilt when Cargo.toml/lock change.
 COPY Cargo.toml Cargo.lock ./
 
-# Create dummy source structure to build dependencies
-RUN mkdir -p src/bin src/templates/layouts src/templates/pages && \
+# Create a minimal dummy source tree that satisfies Cargo's workspace/bin layout.
+# This lets `cargo build` download and compile all dependencies without the real
+# source, producing a cacheable layer.
+RUN mkdir -p src/bin && \
     echo "fn main() {}" > src/bin/server.rs && \
+    echo "fn main() {}" > src/bin/cli.rs && \
+    echo "fn main() {}" > src/bin/github-sync-daemon.rs && \
     echo "fn main() {}" > src/main.rs && \
-    touch src/lib.rs && \
-    touch src/templates/layouts/base.html src/templates/pages/dashboard.html
+    touch src/lib.rs
 
-# Build dependencies only (this layer will be cached)
+# Build dependencies only (this layer is cached until Cargo.toml/lock change)
 ENV SQLX_OFFLINE=true
-RUN cargo build --release --bin rustassistant-server
+RUN cargo build --release --bin rustassistant-server 2>&1 || true
 
-# Remove dummy files and rustassistant build artifacts to force rebuild
-RUN rm -rf src target/release/rustassistant* target/release/.fingerprint/rustassistant*
+# Remove dummy source and any fingerprints so Cargo rebuilds with real source
+RUN rm -rf src target/release/rustassistant* target/release/.fingerprint/rustassistant* \
+    target/release/deps/rustassistant* target/release/deps/librust*
 
-# Copy actual source code and configuration
+# ── Real source build ────────────────────────────────────────────────────────
 COPY src ./src
-COPY askama.toml ./askama.toml
-COPY static ./static
 COPY migrations ./migrations
 
-# Build the actual binary with optimizations
 ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin rustassistant-server && \
     strip /build/target/release/rustassistant-server
 
 # ----------------------------------------------------------------------------
-# Stage 2: Runtime - Minimal production image
+# Stage 2: Runtime — Minimal production image
 # ----------------------------------------------------------------------------
-# Runtime must also have glibc 2.38+ since the binary was linked against trixie (glibc 2.41)
-# and ort-sys embeds ONNX Runtime symbols requiring __isoc23_strtoll etc.
+# Runtime must also use trixie (glibc 2.38+) since the binary was linked against
+# trixie's glibc 2.41 and ort-sys embeds ONNX symbols requiring __isoc23_strtoll.
 FROM debian:trixie-slim
 
-# Build arguments for service configuration
-ARG SERVICE_TYPE=web
 ARG SERVICE_PORT=3500
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3t64 \
     curl \
-    wget \
-    sqlite3 \
     git \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash rustassistant && \
-    mkdir -p /app/data /app/config /app/static /app/repos && \
+    mkdir -p /app/data /app/config /app/workspace /app/docs && \
     chown -R rustassistant:rustassistant /app
 
-# Set working directory
 WORKDIR /app
 
 # Copy binary from builder
@@ -103,35 +104,34 @@ COPY --from=builder --chown=rustassistant:rustassistant \
     /build/target/release/rustassistant-server \
     /usr/local/bin/rustassistant-server
 
-# Copy static assets (for web UI)
-COPY --from=builder --chown=rustassistant:rustassistant \
-    /build/static ./static
-
-# Copy config directory template
+# Copy config directory if present
 COPY --chown=rustassistant:rustassistant config ./config
+
+# Copy migrations for runtime auto-migration
+COPY --from=builder --chown=rustassistant:rustassistant \
+    /build/migrations ./migrations
 
 # Switch to non-root user
 USER rustassistant
 
-# Environment variables with defaults
-# These can be overridden by docker-compose or docker run
+# Environment variables with sane defaults.
+# All can be overridden by docker-compose environment{} or .env.
+# NOTE: The binary (src/bin/server.rs) reads HOST and PORT, not SERVER_HOST/SERVER_PORT.
 ENV HOST=0.0.0.0 \
     PORT=${SERVICE_PORT} \
     RUST_LOG=info,rustassistant=debug \
     DATABASE_URL=postgres://rustassistant:changeme@localhost:5432/rustassistant \
     CACHE_ENABLED=true \
-    SERVICE_TYPE=${SERVICE_TYPE}
+    SQLX_OFFLINE=true \
+    MULTI_TENANT_MODE=false \
+    TELEMETRY_ENABLED=false \
+    ANALYTICS_ENABLED=true
 
-# Expose service port (default from build arg)
 EXPOSE ${SERVICE_PORT}
 
-# Dynamic health check based on service type
+# Health check — uses /health (available in all image versions).
+# /healthz alias exists in newer builds but /health is the safe default.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD if [ "$SERVICE_TYPE" = "api" ]; then \
-    curl -f http://localhost:${PORT:-3500}/health || exit 1; \
-    else \
-    wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3500}/health || exit 1; \
-    fi
+    CMD curl -sf http://127.0.0.1:${PORT:-3500}/health || exit 1
 
-# Run the server
 CMD ["rustassistant-server"]

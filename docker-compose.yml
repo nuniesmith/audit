@@ -6,7 +6,10 @@
 services:
     # ── RustAssistant API ─────────────────────────────────────────────────────
     ra-app:
-        image: nuniesmith/rustassistant:latest
+        build:
+            context: .
+            dockerfile: docker/rustassistant/Dockerfile
+        image: ${RA_IMAGE:-nuniesmith/rustassistant:latest}
         container_name: ra-app
         depends_on:
             ra-postgres:
@@ -24,8 +27,8 @@ services:
             GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
             # Proxy auth key — shared with OpenClaw and futures app
             RA_PROXY_API_KEYS: ${RA_PROXY_API_KEYS}
-            SERVER_HOST: 0.0.0.0
-            SERVER_PORT: 3500
+            HOST: 0.0.0.0
+            PORT: "3500"
             RUST_LOG: info
             SQLX_OFFLINE: "true"
             CACHE_ENABLED: "true"
@@ -43,7 +46,7 @@ services:
             - ra-workspace:/app/workspace
         restart: unless-stopped
         healthcheck:
-            test: ["CMD", "curl", "-sf", "http://127.0.0.1:3500/healthz"]
+            test: ["CMD", "curl", "-sf", "http://127.0.0.1:3500/health"]
             interval: 30s
             timeout: 5s
             retries: 5
@@ -89,9 +92,14 @@ services:
             retries: 5
 
     # ── Ollama (local LLM) ────────────────────────────────────────────────────
+    # Optional: only starts when the "ollama" profile is active.
+    #   docker compose --profile ollama up -d
+    #   ./run.sh up              ← starts without Ollama
+    #   ./run.sh up --ollama     ← starts with Ollama
     ra-ollama:
         image: ollama/ollama:latest
         container_name: ra-ollama
+        profiles: [ollama]
         environment:
             OLLAMA_NUM_GPU: 0 # set to 1 once nvidia-container-toolkit is fixed (todo #2)
         volumes:
@@ -112,6 +120,7 @@ services:
     ra-ollama-init:
         image: ollama/ollama:latest
         container_name: ra-ollama-init
+        profiles: [ollama]
         depends_on:
             - ra-ollama
         entrypoint: >
@@ -149,7 +158,7 @@ services:
             OPENAI_API_BASE: http://ra-app:3500/v1
             OPENAI_API_KEY: ${RA_PROXY_API_KEYS}
 
-            # Discord
+            # Discord — token kept so the gateway can use it once the plugin is fixed
             DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
 
             # GitHub readonly (reuse the deploy PAT — already has repo read scope)
@@ -164,19 +173,24 @@ services:
         volumes:
             - openclaw-config:/home/node/.openclaw
             - openclaw-workspace:/home/node/.openclaw/workspace
+            - ./openclaw/config/openclaw.json:/home/node/.openclaw/openclaw.json:ro
         ports:
             - "${TAILSCALE_IP}:18789:18789"
             - "${TAILSCALE_IP}:18790:18790"
+            # localhost binding — gives the browser a secure context for the Control UI
+            - "127.0.0.1:18789:18789"
+            - "127.0.0.1:18790:18790"
         init: true
         restart: unless-stopped
         command:
             - node
-            - dist/index.js
+            - openclaw.mjs
             - gateway
             - --bind
-            - "0.0.0.0"
+            - lan
             - --port
             - "18789"
+            - --allow-unconfigured
         healthcheck:
             test:
                 - CMD
@@ -214,7 +228,7 @@ services:
         stdin_open: true
         tty: true
         init: true
-        entrypoint: ["node", "dist/index.js"]
+        entrypoint: ["node", "openclaw.mjs"]
 
 volumes:
     ra-postgres-data:
